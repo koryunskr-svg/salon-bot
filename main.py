@@ -1,6 +1,6 @@
-# main.py
 import logging
 import os
+import time  # <-- ДОБАВЛЕНО: для защиты от спама
 from datetime import datetime, timedelta
 import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 
 # Глобальные данные сессии
 user_data = {}
+user_last_msg = {}  # <-- ДОБАВЛЕНО: для защиты от спама
 
 def format_duration(minutes):
     """Форматирует минуты в формат: 90 → '1 ч 30 мин'"""
@@ -68,6 +69,14 @@ def format_duration(minutes):
 # --- START ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+
+    # === ЗАЩИТА ОТ СПАМА ===
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
+
     user_data[chat_id] = {"state": MENU}
 
     # Привязка chat_id через start=bind_...
@@ -113,6 +122,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     chat_id = query.from_user.id
 
+    # === ЗАЩИТА ОТ СПАМА ===
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
+
     if query.data == "book":
         return await select_service_type(update, context)
     elif query.data == "modify":
@@ -129,6 +145,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- ПОКАЗ ЦЕН ---
 async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+
+    # === ЗАЩИТА ОТ СПАМА ===
+    chat_id = query.from_user.id
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
+
     services = get_sheet_data(SHEET_ID, "Услуги!A2:E")
     prices_text = "💅 МАНИКЮРНЫЕ\n"
     in_manicure = True
@@ -154,6 +179,14 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- ВЫБОР ТИПА УСЛУГИ ---
 async def select_service_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+
+    # === ЗАЩИТА ОТ СПАМА ===
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
+
     services = get_sheet_data(SHEET_ID, "Услуги!A2:A")
     service_types = list(set(row[0] for row in services if row))
 
@@ -169,6 +202,13 @@ async def select_subservice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     service_type = query.data.split("_", 1)[1]
     chat_id = query.from_user.id
+
+    # === ЗАЩИТА ОТ СПАМА ===
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
 
     subservices = get_sheet_data(SHEET_ID, "Услуги!A2:B")
     options = [row[1] for row in subservices if row and len(row) > 1 and row[0] == service_type]
@@ -187,6 +227,14 @@ async def select_subservice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     chat_id = query.from_user.id
+
+    # === ЗАЩИТА ОТ СПАМА ===
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
+
     subservice = query.data.split("_", 1)[1]
     user_data[chat_id]["subservice"] = subservice
 
@@ -226,6 +274,14 @@ async def select_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     priority = query.data.split("_")[1]
     chat_id = query.from_user.id
+
+    # === ЗАЩИТА ОТ СПАМА ===
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
+
     user_data[chat_id]["priority"] = priority
 
     available_dates = find_available_slots(
@@ -248,6 +304,14 @@ async def select_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     date_str = query.data.split("_", 1)[1]
     chat_id = query.from_user.id
+
+    # === ЗАЩИТА ОТ СПАМА ===
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
+
     user_data[chat_id]["date"] = date_str
 
     masters = get_sheet_data(SHEET_ID, "График мастеров!A2:E")
@@ -271,6 +335,13 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     master_key = query.data.split("_", 1)[1]
     chat_id = query.from_user.id
+
+    # === ЗАЩИТА ОТ СПАМА ===
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
 
     date_str = user_data[chat_id]["date"]
     service_type = user_data[chat_id]["service_type"]
@@ -309,6 +380,13 @@ async def reserve_slot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     master = data[1]
     time_str = data[2]
     chat_id = query.from_user.id
+
+    # === ЗАЩИТА ОТ СПАМА ===
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
 
     date_str = user_data[chat_id]["date"]
     dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
@@ -379,6 +457,14 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
 # --- ВВОД ИМЕНИ ---
 async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+
+    # === ЗАЩИТА ОТ СПАМА ===
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
+
     name = update.message.text.strip()
     user_data[chat_id]["name"] = name
     await update.message.reply_text("Теперь введите ваш телефон или нажмите кнопку ниже.", reply_markup=ReplyKeyboardRemove())
@@ -388,10 +474,26 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- ВВОД ТЕЛЕФОНА ---
 async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+
+    # === ЗАЩИТА ОТ СПАМА ===
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
+
     if update.message.contact:
         phone = update.message.contact.phone_number
     else:
         phone = update.message.text.strip()
+
+    # === ВАЛИДАЦИЯ ТЕЛЕФОНА ===
+    clean_phone = ''.join(filter(str.isdigit, phone))
+    if len(clean_phone) < 10 or len(clean_phone) > 15:
+        await update.message.reply_text("❌ Неверный формат телефона. Пожалуйста, введите от 10 до 15 цифр.")
+        return  # возвращаемся к вводу
+    phone = clean_phone
+    # =========================
 
     user_data[chat_id]["phone"] = phone
 
@@ -440,6 +542,14 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     chat_id = query.from_user.id
+
+    # === ЗАЩИТА ОТ СПАМА ===
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
+
     temp_booking = user_data[chat_id]["temp_booking"]
 
     update_calendar_event(
@@ -480,6 +590,14 @@ async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_reservation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     chat_id = query.from_user.id
+
+    # === ЗАЩИТА ОТ СПАМА ===
+    now = time.time()
+    if now - user_last_msg.get(chat_id, 0) < 1.5:
+        return
+    user_last_msg[chat_id] = now
+    # =======================
+
     temp_booking = user_data[chat_id].get("temp_booking")
     if temp_booking and temp_booking.get("event_id"):
         delete_calendar_event(CALENDAR_ID, temp_booking["event_id"])
