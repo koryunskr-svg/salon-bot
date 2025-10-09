@@ -1,7 +1,8 @@
 # utils/reminders.py
 from datetime import datetime, timedelta
 import pytz
-from config import TIMEZONE
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from config import TIMEZONE, SHEET_ID
 from utils.google import get_sheet_data, update_sheet_row
 
 async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
@@ -22,6 +23,7 @@ async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
         event_time = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
         event_time = TIMEZONE.localize(event_time)
 
+        # Напоминание за 24 часа
         if abs((event_time - now).total_seconds() - 24*3600) < 300 and row[11] == "❌":
             try:
                 await context.bot.send_message(
@@ -29,14 +31,15 @@ async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
                     text=f"Напоминаем: завтра у вас запись на {row[4]} к {row[5]} в {time_str}.",
                     reply_markup=build_confirm_cancel_kb(record_id)
                 )
-                update_sheet_row("SHEET_ID", "Записи", i+2, row[:11] + ["✅"] + row[12:])
+                update_sheet_row(SHEET_ID, "Записи", i+2, row[:11] + ["✅"] + row[12:])
             except:
                 await notify_admins(context, f"❌ Не удалось отправить напоминание клиенту {name}. Позвоните: {phone}.")
 
+        # Напоминание за 1 час
         if abs((event_time - now).total_seconds() - 3600) < 300 and row[12] == "❌":
             try:
                 await context.bot.send_message(chat_id=chat_id, text="Через час у вас приём. Не опаздывайте!")
-                update_sheet_row("SHEET_ID", "Записи", i+2, row[:12] + ["✅"] + row[13:])
+                update_sheet_row(SHEET_ID, "Записи", i+2, row[:12] + ["✅"] + row[13:])
             except:
                 await notify_admins(context, f"❌ Не удалось отправить напоминание клиенту {name}. Позвоните: {phone}.")
 
