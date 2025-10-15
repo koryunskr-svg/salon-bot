@@ -12,3 +12,4 @@ async def notify_admins(context, message):
             await context.bot.send_message(chat_id=chat_id, text=message)
         except Exception as e:
             print(f"Не удалось отправить админу {chat_id}: {e}")
+
