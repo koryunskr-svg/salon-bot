@@ -278,7 +278,7 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(row) < 5:
             continue
         category, subservice, duration, buffer, price = row[0], row[1],
- int(row[2]), int(row[3]), row[4]
+        int(row[2]), int(row[3]), row[4]
         duration_min = duration + buffer
         formatted_duration = format_duration(duration_min)
         price_str = f"{int(float(price))} ₽" if price.replace('.', '').isdigit() else "цена не указана"
@@ -923,3 +923,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
