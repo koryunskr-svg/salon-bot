@@ -9,3 +9,4 @@ SHEET_ID = os.getenv("SHEET_ID")
 TIMEZONE = pytz.timezone(os.getenv("TZ", "Europe/Moscow"))
 RESERVATION_TIMEOUT = 120
 WARNING_TIMEOUT = 60
+
