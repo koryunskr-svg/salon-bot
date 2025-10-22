@@ -36,7 +36,17 @@ def safe_update_sheet_row(sheet_id, sheet_name, row_index, values):
     return update_sheet_row(sheet_id, sheet_name, row_index, values)
 
 @retry_google_api()
-def safe_create_calendar_event(calendar_id, summary, start_time, end_time, color_id, description):
+def safe_create_calendar_event(calendar_id, summary, start_time, end_time, color_id=None, description=None):
     return create_calendar_event(calendar_id, summary, start_time, end_time, color_id, description)
 
-# Остальные функции Google API...
+@retry_google_api()
+def safe_get_calendar_events(calendar_id, time_min, time_max):
+    return get_calendar_events(calendar_id, time_min, time_max)
+
+@retry_google_api()
+def safe_update_calendar_event(calendar_id, event_id, summary=None, color_id=None, description=None):
+    return update_calendar_event(calendar_id, event_id, summary, color_id, description)
+
+@retry_google_api()
+def safe_delete_calendar_event(calendar_id, event_id):
+    return delete_calendar_event(calendar_id, event_id)
