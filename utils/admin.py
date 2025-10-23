@@ -1,6 +1,8 @@
 # utils/admin.py
 import logging
 from typing import List
+from utils.safe_google import safe_get_sheet_data as get_sheet_data  # ← через safe_google
+from config import SHEET_ID
 
 # Импортируем через safe_google, как в main.py
 from utils.safe_google import safe_get_sheet_data as get_sheet_data
@@ -53,3 +55,4 @@ async def notify_admins(context, message: str):
             await context.bot.send_message(chat_id=chat_id, text=message)
         except Exception as e:
             logger.exception("Не удалось отправить админу %s сообщение: %s", chat_id, e)
+
