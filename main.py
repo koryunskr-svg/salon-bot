@@ -769,9 +769,6 @@ async def handle_cancel_reminder(record_id: str, query, context):
 import time
 from datetime import datetime, time as datetime_time
 
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
-
 from config import SHEET_ID
 from utils.safe_google import safe_append_to_sheet as append_to_sheet
 from utils.admin import load_admins, notify_admins
@@ -945,3 +942,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
