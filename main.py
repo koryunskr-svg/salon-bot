@@ -189,16 +189,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("✅ Вы привязаны к записи. Напоминания будут приходить сюда.")
                 return
 
-    salon_schedule = get_sheet_data(SHEET_ID, "График мастеров!A2:E2")
+    # 🔧 ИСПРАВЛЕНО: поиск по имени "Салон"
+    all_schedule = get_sheet_data(SHEET_ID, "График мастеров!A2:F")
     schedule_text = "10:00–20:00"
-    if salon_schedule and len(salon_schedule) > 0:
-        try:
-            days = salon_schedule[0][1]
-            start_time = salon_schedule[0][2]
-            end_time = salon_schedule[0][3]
-            schedule_text = f"{days}: {start_time}–{end_time}"
-        except IndexError:
-            pass
+    for row in all_schedule:
+        if len(row) >= 4 and row[0] == "Салон":
+            try:
+                days = row[1]
+                start_time = row[2]
+                end_time = row[3]
+                schedule_text = f"{days}: {start_time}–{end_time}"
+                break
+            except Exception:
+                pass
 
     keyboard = [
         [InlineKeyboardButton("📅 Записаться на приём", callback_data="book")],
@@ -277,8 +280,7 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for row in services:
         if len(row) < 5:
             continue
-        category, subservice, duration, buffer, price = row[0], row[1],
-        int(row[2]), int(row[3]), row[4]
+        category, subservice, duration, buffer, price = row[0], row[1], int(row[2]), int(row[3]), row[4]
         duration_min = duration + buffer
         formatted_duration = format_duration(duration_min)
         price_str = f"{int(float(price))} ₽" if price.replace('.', '').isdigit() else "цена не указана"
@@ -387,12 +389,37 @@ async def select_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
     date_str = query.data.split("_", 1)[1]
     context.user_data["date"] = date_str
 
-    masters = get_sheet_data(SHEET_ID, "График мастеров!A2:E")
+    # 🔧 ИСПРАВЛЕНО: читаем A2:F, определяем день недели, проверяем график
+    from datetime import datetime as dt_mod
+    try:
+        target_date = dt_mod.strptime(date_str, "%d.%m.%Y")
+        day_name = target_date.strftime("%a")
+        short_day = {"Mon": "Пн", "Tue": "Вт", "Wed": "Ср", "Thu": "Чт", "Fri": "Пт", "Sat": "Сб", "Sun": "Вс"}.get(day_name)
+    except Exception:
+        await query.edit_message_text("❌ Неверный формат даты.")
+        return
+
+    masters = get_sheet_data(SHEET_ID, "График мастеров!A2:F")
     available_masters = []
 
     for row in masters:
-        if len(row) >= 6 and date_str[:2] in row[5]:
-            available_masters.append(row[0])
+        if len(row) < 2:
+            continue
+        master_name = row[0]
+        if master_name == "Салон":
+            continue
+        work_days = row[1].split(", ") if len(row) > 1 else []
+        if short_day not in work_days:
+            continue
+        if len(row) > 5 and row[5].strip():
+            blacklisted_dates = [d.strip() for d in row[5].split(",")]
+            if date_str in blacklisted_dates:
+                continue
+        available_masters.append(master_name)
+
+    if not available_masters:
+        await query.edit_message_text("❌ На эту дату нет работающих мастеров.")
+        return
 
     keyboard = [[InlineKeyboardButton(m, callback_data=f"master_{m}")] for m in available_masters]
     keyboard.append([InlineKeyboardButton("👤 Любой мастер", callback_data="master_any")])
@@ -538,7 +565,7 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
         await context.bot.send_message(job.chat_id,
- "Слот был освобождён из-за неактивности. Вы можете начать запись заново.")
+  "Слот был освобождён из-за неактивности. Вы можете начать запись заново.")
     context.user_data.clear()
 
 # --- ВВОД ИМЕНИ ---
@@ -832,8 +859,6 @@ def main():
         return
 
     # === Добавлено: перехват системных сигналов (SIGTERM/SIGINT) для корректного удаления lock-файла ===
-    # Это минимальная, неинвазивная правка: не дублирует finally, только гарантирует
-    # удаление lock-файла при остановке сервиса/контейнера (Timeweb.Cloud / Amvera).
     import signal
     import sys
 
@@ -843,14 +868,12 @@ def main():
             remove_lock_file()
         except Exception:
             pass
-        # Завершаем процесс — дальше выполнится finally, если это обычный выход
         sys.exit(0)
 
     try:
         signal.signal(signal.SIGTERM, _handle_exit)
         signal.signal(signal.SIGINT, _handle_exit)
     except Exception as _err:
-        # В редких окружениях установка signal может быть недоступна (например, ограниченный runtime).
         logging.debug(f"Не удалось установить signal handlers: {_err}")
     # ==============================================================================================
 
@@ -882,6 +905,7 @@ def main():
         logging.critical(f"❌ Не удалось создать приложение: {e}")
         remove_lock_file()
         return
+
     register_handlers_directly(application)
 
     # Глобальная обработка ошибок
@@ -899,8 +923,6 @@ def main():
     application.job_queue.run_daily(
         generate_slots_for_10_days,
         time=datetime.strptime("00:00", "%H:%M").time(),
-
-
         days=(0, 1, 2, 3, 4, 5, 6)
     )
     application.job_queue.run_repeating(send_reminders, interval=60, first=10)
@@ -923,4 +945,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
