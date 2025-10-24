@@ -226,7 +226,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
 
     if data == "book":
+    return await select_service_type(update, context)
+
+# 🔹 Обработка "Назад" с учётом состояния
+if data == "back":
+    current_state = context.user_data.get("state")
+    if current_state == SELECT_SUBSERVICE:
         return await select_service_type(update, context)
+    elif current_state == SHOW_PRICE_INFO:
+        service_type = context.user_data.get("service_type")
+        if service_type:
+            context.user_data["state"] = SELECT_SERVICE_TYPE
+            subservices = get_sheet_data(SHEET_ID, "Услуги!A2:B")
+            options = [row[1] for row in subservices if row and len(row) > 1 and row[0] == service_type]
+            keyboard = [[InlineKeyboardButton(opt, callback_data=f"subservice_{opt}")] for opt in options]
+            keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.callback_query.edit_message_text(f"Выберите услугу ({service_type}):", reply_markup=reply_markup)
+            return SELECT_SUBSERVICE
+    elif current_state in (SELECT_PRIORITY, SELECT_DATE, SELECT_MASTER, SELECT_TIME):
+        # Возврат к выбору услуги
+        return await show_price_info(update, context)
+    # По умолчанию — в главное меню
+    await start(update, context)
+    return MENU
+
     elif data == "modify":
         await query.edit_message_text("Введите ваше имя или телефон:")
         context.user_data["state"] = MODIFY_RESERVATION
@@ -280,6 +304,7 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for row in services:
         if len(row) < 5:
             continue
+
         category, subservice, duration, buffer, price = row[0], row[1], int(row[2]), int(row[3]), row[4]
         duration_min = duration + buffer
         formatted_duration = format_duration(duration_min)
@@ -389,8 +414,10 @@ async def select_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
     date_str = query.data.split("_", 1)[1]
     context.user_data["date"] = date_str
 
+    # 🔧 ИСПРАВЛЕНО: читаем A2:F, определяем день недели, проверяем график
+    from datetime import datetime as dt_mod
     try:
-        target_date = datetime.strptime(date_str, "%d.%m.%Y")
+        target_date = dt_mod.strptime(date_str, "%d.%m.%Y")
         day_name = target_date.strftime("%a")
         short_day = {"Mon": "Пн", "Tue": "Вт", "Wed": "Ср", "Thu": "Чт", "Fri": "Пт", "Sat": "Сб", "Sun": "Вс"}.get(day_name)
     except Exception:
@@ -415,7 +442,6 @@ async def select_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 continue
         available_masters.append(master_name)
 
-    # 🔍 Добавлено: отладочное сообщение
     if not available_masters:
         await query.edit_message_text(f"❌ Нет мастеров на {date_str} ({short_day}).\nДоступные дни: {[row[1] for row in masters if len(row)>1 and row[0]!='Салон']}")
         return
@@ -536,6 +562,7 @@ async def reserve_slot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         RESERVATION_TIMEOUT,
         chat_id=update.effective_chat.id,
         user_id=update.effective_user.id,
+
         name=f"reservation_timeout_{update.effective_chat.id}"
     )
     context.job_queue.run_once(
@@ -770,8 +797,8 @@ from datetime import datetime, time as datetime_time
 
 from config import SHEET_ID
 from utils.safe_google import safe_append_to_sheet as append_to_sheet
-from utils.admin import load_admins, notify_admins
 
+from utils.admin import load_admins, notify_admins
 WORK_HOURS = (datetime_time(9, 0), datetime_time(21, 0))
 TRIGGER_WORDS = ["админ", "связаться", "помощь", "человек", "менеджер"]
 
@@ -902,8 +929,6 @@ def main():
         remove_lock_file()
         return
 
-    register_handlers_directly(application)
-
     # Глобальная обработка ошибок
     application.add_error_handler(global_error_handler)
     
@@ -929,6 +954,9 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, enter_name), group=1)
     application.add_handler(MessageHandler(filters.CONTACT, enter_phone), group=1)
 
+ # 🔹 Регистрация дополнительных хэндлеров — ПОСЛЕ основных
+    register_handlers_directly(application)
+
     logging.info("🚀 Бот запущен в продакшен-режиме")
     
     try:
@@ -941,5 +969,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
