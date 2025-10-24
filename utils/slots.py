@@ -1,8 +1,8 @@
 # utils/slots.py
 from datetime import datetime, timedelta
 import pytz
-from config import TIMEZONE
-from utils.google import get_sheet_data, get_calendar_events, create_calendar_event
+from config import TIMEZONE, SHEET_ID, CALENDAR_ID
+from utils.safe_google import safe_get_sheet_data as get_sheet_data, safe_get_calendar_events as get_calendar_events, safe_create_calendar_event as create_calendar_event
 
 def generate_slots_for_10_days(context=None):
     today = datetime.now(TIMEZONE).date()
