@@ -1,3 +1,5 @@
+main.py
+
 # main.py
 import logging
 import logging.handlers
@@ -225,9 +227,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     data = query.data
 
-    if data == "book":
-    return await select_service_type(update, context)
-
 # 🔹 Обработка "Назад" с учётом состояния
 if data == "back":
     current_state = context.user_data.get("state")
@@ -251,6 +250,9 @@ if data == "back":
     await start(update, context)
     return MENU
 
+ # Остальные условия
+    if data == "book":
+        return await select_service_type(update, context)
     elif data == "modify":
         await query.edit_message_text("Введите ваше имя или телефон:")
         context.user_data["state"] = MODIFY_RESERVATION
@@ -341,7 +343,7 @@ async def select_subservice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     options = [row[1] for row in subservices if row and len(row) > 1 and row[0] == service_type]
 
     keyboard = [[InlineKeyboardButton(opt, callback_data=f"subservice_{opt}")] for opt in options]
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="book")])
+    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(f"Выберите услугу ({service_type}):", reply_markup=reply_markup)
@@ -379,7 +381,7 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
         [InlineKeyboardButton("👩‍🦰 Сначала мастер", callback_data="priority_master")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="book")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="back)],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -401,7 +403,7 @@ async def select_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dates = sorted(list(set(d["date"] for d in available_dates)))
 
     keyboard = [[InlineKeyboardButton(d, callback_data=f"date_{d}")] for d in dates]
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="book")])
+    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text("Выберите дату:", reply_markup=reply_markup)
@@ -448,7 +450,7 @@ async def select_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [[InlineKeyboardButton(m, callback_data=f"master_{m}")] for m in available_masters]
     keyboard.append([InlineKeyboardButton("👤 Любой мастер", callback_data="master_any")])
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="book")])
+    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text("Выберите мастера:", reply_markup=reply_markup)
@@ -969,3 +971,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
