@@ -1,8 +1,15 @@
 # utils/reminders.py
 from datetime import datetime, timedelta
-import pytz
-from config import TIMEZONE
-from utils.google import get_sheet_data, update_sheet_row
+import logging
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+
+from config import TIMEZONE, SHEET_ID
+from utils.safe_google import safe_get_sheet_data as get_sheet_data, safe_update_sheet_row as update_sheet_row
+from utils.admin import notify_admins
+
+logger = logging.getLogger(__name__)
 
 async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(TIMEZONE)
