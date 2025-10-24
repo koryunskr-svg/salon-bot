@@ -389,10 +389,8 @@ async def select_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
     date_str = query.data.split("_", 1)[1]
     context.user_data["date"] = date_str
 
-    # 🔧 ИСПРАВЛЕНО: читаем A2:F, определяем день недели, проверяем график
-    from datetime import datetime as dt_mod
     try:
-        target_date = dt_mod.strptime(date_str, "%d.%m.%Y")
+        target_date = datetime.strptime(date_str, "%d.%m.%Y")
         day_name = target_date.strftime("%a")
         short_day = {"Mon": "Пн", "Tue": "Вт", "Wed": "Ср", "Thu": "Чт", "Fri": "Пт", "Sat": "Сб", "Sun": "Вс"}.get(day_name)
     except Exception:
@@ -417,8 +415,9 @@ async def select_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 continue
         available_masters.append(master_name)
 
+    # 🔍 Добавлено: отладочное сообщение
     if not available_masters:
-        await query.edit_message_text("❌ На эту дату нет работающих мастеров.")
+        await query.edit_message_text(f"❌ Нет мастеров на {date_str} ({short_day}).\nДоступные дни: {[row[1] for row in masters if len(row)>1 and row[0]!='Салон']}")
         return
 
     keyboard = [[InlineKeyboardButton(m, callback_data=f"master_{m}")] for m in available_masters]
@@ -942,4 +941,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
