@@ -379,7 +379,7 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
         [InlineKeyboardButton("👩‍🦰 Сначала мастер", callback_data="priority_master")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back)],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -483,7 +483,7 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         callback_data = f"slot_{master}_{time_str}"
         keyboard.append([InlineKeyboardButton(f"{time_str} — {master}", callback_data=callback_data)])
 
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="book")])
+    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text("Выберите время:", reply_markup=reply_markup)
@@ -955,7 +955,6 @@ def main():
     application.add_handler(MessageHandler(filters.CONTACT, enter_phone), group=1)
 
  # 🔹 Регистрация дополнительных хэндлеров — ПОСЛЕ основных
-    register_handlers_directly(application)
 
     logging.info("🚀 Бот запущен в продакшен-режиме")
     
