@@ -955,6 +955,7 @@ def main():
     application.add_handler(MessageHandler(filters.CONTACT, enter_phone), group=1)
 
  # 🔹 Регистрация дополнительных хэндлеров — ПОСЛЕ основных
+register_handlers_directly(application)
 
     logging.info("🚀 Бот запущен в продакшен-режиме")
     
