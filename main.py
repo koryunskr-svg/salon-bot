@@ -225,30 +225,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     data = query.data
 
-# 🔹 Обработка "Назад" с учётом состояния
-if data == "back":
-    current_state = context.user_data.get("state")
-    if current_state == SELECT_SUBSERVICE:
-        return await select_service_type(update, context)
-    elif current_state == SHOW_PRICE_INFO:
-        service_type = context.user_data.get("service_type")
-        if service_type:
-            context.user_data["state"] = SELECT_SERVICE_TYPE
-            subservices = get_sheet_data(SHEET_ID, "Услуги!A2:B")
-            options = [row[1] for row in subservices if row and len(row) > 1 and row[0] == service_type]
-            keyboard = [[InlineKeyboardButton(opt, callback_data=f"subservice_{opt}")] for opt in options]
-            keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.callback_query.edit_message_text(f"Выберите услугу ({service_type}):", reply_markup=reply_markup)
-            return SELECT_SUBSERVICE
-    elif current_state in (SELECT_PRIORITY, SELECT_DATE, SELECT_MASTER, SELECT_TIME):
-        # Возврат к выбору услуги
-        return await show_price_info(update, context)
-    # По умолчанию — в главное меню
-    await start(update, context)
-    return MENU
+    # 🔹 Обработка "Назад" с учётом состояния
+    if data == "back":
+        current_state = context.user_data.get("state")
+        if current_state == SELECT_SUBSERVICE:
+            return await select_service_type(update, context)
+        elif current_state == SHOW_PRICE_INFO:
+            service_type = context.user_data.get("service_type")
+            if service_type:
+                context.user_data["state"] = SELECT_SERVICE_TYPE
+                subservices = get_sheet_data(SHEET_ID, "Услуги!A2:B")
+                options = [row[1] for row in subservices if row and len(row) > 1 and row[0] == service_type]
+                keyboard = [[InlineKeyboardButton(opt, callback_data=f"subservice_{opt}")] for opt in options]
+                keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.callback_query.edit_message_text(f"Выберите услугу ({service_type}):", reply_markup=reply_markup)
+                return SELECT_SUBSERVICE
+        elif current_state in (SELECT_PRIORITY, SELECT_DATE, SELECT_MASTER, SELECT_TIME):
+            # Возврат к выбору услуги
+            return await show_price_info(update, context)
+        # По умолчанию — в главное меню
+        await start(update, context)
+        return MENU
 
- # Остальные условия
+    # Остальные условия
     if data == "book":
         return await select_service_type(update, context)
     elif data == "modify":
