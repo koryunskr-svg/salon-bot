@@ -204,7 +204,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
 
     keyboard = [
-        [InlineKeyboardButton("📅 Записаться на приём", callback_data="book")],
+        [InlineKeyboardButton("📅 Записаться на приём", callback_data="back")],
         [InlineKeyboardButton("❌ Отменить или изменить запись", callback_data="modify")],
         [InlineKeyboardButton("💅 Услуги и цены", callback_data="prices")],
         [InlineKeyboardButton("📞 Связаться с админом", callback_data="contact_admin")],
@@ -268,6 +268,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await show_price_info(update, context)
     if data.startswith("priority_"):
         return await select_priority(update, context)
+    if data.startswith("date_"):
+    return await select_master(update, context)
     if data.startswith("date_"):
         return await select_master(update, context)
     if data.startswith("master_"):
@@ -844,7 +846,7 @@ async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(
             "👨‍💼 Режим записи от имени клиента:",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📅 Записаться на приём", callback_data="book")]
+                [InlineKeyboardButton("📅 Записаться на приём", callback_data="back")]
             ])
         )
     except Exception:
