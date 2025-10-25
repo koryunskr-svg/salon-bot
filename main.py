@@ -1,5 +1,3 @@
-main.py
-
 # main.py
 import logging
 import logging.handlers
@@ -971,5 +969,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
