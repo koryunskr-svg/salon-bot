@@ -883,25 +883,6 @@ def main():
     if not create_lock_file():
         return
 
-    # === Добавлено: перехват системных сигналов (SIGTERM/SIGINT) для корректного удаления lock-файла ===
-    import signal
-    import sys
-
-    def _handle_exit(signum, frame):
-        logging.info(f"Получен системный сигнал {signum}, завершаем работу...")
-        try:
-            remove_lock_file()
-        except Exception:
-            pass
-        sys.exit(0)
-
-    try:
-        signal.signal(signal.SIGTERM, _handle_exit)
-        signal.signal(signal.SIGINT, _handle_exit)
-    except Exception as _err:
-        logging.debug(f"Не удалось установить signal handlers: {_err}")
-    # ==============================================================================================
-
     # Настройка прод-логирования
     setup_production_logging()
     
@@ -930,6 +911,36 @@ def main():
         logging.critical(f"❌ Не удалось создать приложение: {e}")
         remove_lock_file()
         return
+
+    # === Перенесённый и улучшённый обработчик системных сигналов ===
+    import signal
+    import sys
+
+    def _handle_exit(signum, frame):
+        logging.info(f"Получен системный сигнал {signum}, завершаем работу...")
+        try:
+            # Сначала пробуем корректно остановить application (sync run_polling)
+            try:
+                application.stop()
+            except Exception:
+                pass
+            # затем удаляем lock-файл
+            try:
+                remove_lock_file()
+            except Exception:
+                pass
+        except Exception:
+            pass
+        # окончательно завершаем процесс
+        sys.exit(0)
+
+    try:
+        signal.signal(signal.SIGTERM, _handle_exit)
+        signal.signal(signal.SIGINT, _handle_exit)
+    except Exception as _err:
+        logging.debug(f"Не удалось установить signal handlers: {_err}")
+    # ================================================================
+
 
     # Глобальная обработка ошибок
     application.add_error_handler(global_error_handler)
