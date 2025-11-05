@@ -1,18 +1,34 @@
-# Python cache
+# .gitignore
+# Бот и секреты
+.env
+bot.lock
+bot_data.pickle
+
+# Логи
+logs/
+*.log
+
+# Кэш Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Virtual environment
+# Виртуальные окружения
+.env/
 venv/
-.venv/
+ENV/
+.env/bin/
 
-# Environment variables
-.env
-
-# IDE settings
-.idea/
-.vscode/
-
-# System files
+# ОС
 .DS_Store
 Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
