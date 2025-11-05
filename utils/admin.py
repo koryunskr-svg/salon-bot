@@ -1,21 +1,14 @@
 # utils/admin.py
 import logging
 from typing import List
-from utils.safe_google import safe_get_sheet_data as get_sheet_data  # ← через safe_google
-from config import SHEET_ID
-
-# Импортируем через safe_google, как в main.py
+# ← через safe_google
 from utils.safe_google import safe_get_sheet_data as get_sheet_data
 from config import SHEET_ID
-
 logger = logging.getLogger(__name__)
-
 ADMIN_CHAT_IDS: List[int] = []
 
-
 def load_admins():
-    """
-    Загружает список администраторов из Google Sheets.
+    """Загружает список администраторов из Google Sheets.
     Ожидается лист "Администраторы" с колонками A: chat_id, B: имя, C: 'Да'/'Нет' (активен).
     """
     global ADMIN_CHAT_IDS
@@ -25,7 +18,6 @@ def load_admins():
         logger.exception("Не удалось получить список админов из таблицы: %s", e)
         ADMIN_CHAT_IDS = []
         return
-
     ids = []
     for row in admins:
         if len(row) >= 3:
@@ -41,18 +33,15 @@ def load_admins():
     ADMIN_CHAT_IDS = ids
     logger.info("Загружены админы: %s", ADMIN_CHAT_IDS)
 
-
 async def notify_admins(context, message: str):
-    """
-    Асинхронно шлёт сообщение всем загруженным администраторам.
-    """
+    """Асинхронно шлёт сообщение всем загруженным администраторам."""
     if not ADMIN_CHAT_IDS:
         logger.debug("ADMIN_CHAT_IDS пуст — нет кому слать уведомления")
         return
-
     for chat_id in ADMIN_CHAT_IDS:
         try:
             await context.bot.send_message(chat_id=chat_id, text=message)
         except Exception as e:
             logger.exception("Не удалось отправить админу %s сообщение: %s", chat_id, e)
 
+logger.info("✅ Модуль admin.py загружен.")
