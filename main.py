@@ -1,10 +1,16 @@
-# main.py
-import logging
+# main.py - Q-1914 - 04.11.25
+import loggig
 import logging.handlers
 import os
-from datetime import datetime, timedelta
 import time
+from datetime import datetime, timedelta
+from datetime import time as datetime_timeф
 import pytz
+import signal
+import sys
+import threading
+from typing import Dict, Any
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     Application,
@@ -14,76 +20,159 @@ from telegram.ext import (
     filters,
     ContextTypes,
     PicklePersistence,
+    ApplicationBuilder,
 )
 
+# --- ИМПОРТЫ ИЗ КОНФИГА И УТИЛИТ ---
 from config import TELEGRAM_TOKEN, TIMEZONE, RESERVATION_TIMEOUT, WARNING_TIMEOUT, SHEET_ID, CALENDAR_ID
 from utils.safe_google import (
-    safe_get_sheet_data as get_sheet_data,
-    safe_append_to_sheet as append_to_sheet,
-    safe_update_sheet_row as update_sheet_row,
-    safe_get_calendar_events as get_calendar_events,
-    safe_create_calendar_event as create_calendar_event,
-    safe_update_calendar_event as update_calendar_event,
-    safe_delete_calendar_event as delete_calendar_event,
+    safe_get_sheet_data,
+    safe_append_to_sheet,
+    safe_update_sheet_row,
+    safe_get_calendar_events,
+    safe_create_calendar_event,
+    safe_update_calendar_event,
+    safe_delete_calendar_event,
 )
-from utils.slots import generate_slots_for_10_days, find_available_slots
-from utils.reminders import send_reminders
+from utils.slots import generate_slots_for_n_days, find_available_slots
+from utils.reminders import send_reminders, handle_confirm_reminder, handle_cancel_reminder
 from utils.admin import load_admins, notify_admins
+from utils.validation import validate_name, validate_phone
+from utils.settings import load_settings_from_table
 
-# =============== ПРОДАКШЕН-ЛОГИРОВАНИЕ ===============
+# --- GLOBALS ---
+TRIGGER_WORDS = []
+logger = logging.getLogger(__name__)
+
+# --- RATE LIMITING ---
+class RateLimiter:
+    def __init__(self, max_requests: int = 15, window: int = 60):
+        self.max_requests = max_requests
+        self.window = window
+        self.requests = {}
+    
+    def is_limited(self, user_id: int) -> bool:
+        now = time.time()
+        if user_id not in self.requests:
+            self.requests[user_id] = []
+        self.requests[user_id] = [req_time for req_time in self.requests[user_id] if now - req_time < self.window]
+        if len(self.requests[user_id]) >= self.max_requests:
+            return True
+        self.requests[user_id].append(now)
+        return False
+
+rate_limiter = RateLimiter(max_requests=15, window=60)
+
+# --- КЭШИРОВАНИЕ НАСТРОЕК С TTL ---
+_settings_cache: Dict[str, Any] = {}
+_settings_cache_timestamp: float = 0
+_cache_lock = threading.Lock()
+CACHE_TTL: int = 300  # 5 минут
+
+def get_cached_settings() -> Dict[str, Any]:
+    global _settings_cache, _settings_cache_timestamp
+    now = time.time()
+    if _settings_cache and (now - _settings_cache_timestamp) <= CACHE_TTL:
+        return _settings_cache
+    with _cache_lock:
+        now = time.time()
+        if not _settings_cache or (now - _settings_cache_timestamp) > CACHE_TTL:
+            try:
+                raw = safe_get_sheet_data(SHEET_ID, "Настройки!A2:B") or []
+                _settings_cache = {str(row[0]).strip(): str(row[1]).strip() for row in raw if len(row) >= 2 and row[0] and row[1]}
+                _settings_cache_timestamp = now
+                missing = [k for k in ["Время начала работы", "Время окончания работы"] if k not in _settings_cache]
+                if missing:
+                    logger.warning(f"⚠️ Отсутствуют настройки: {missing}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка загрузки настроек: {e}")
+                if not _settings_cache:
+                    _settings_cache = {}
+                    _settings_cache_timestamp = now
+        return _settings_cache
+
+def get_setting(key: str, default: str = "") -> str:
+    return get_cached_settings().get(key, default)
+
+def invalidate_settings_cache():
+    global _settings_cache, _settings_cache_timestamp
+    with _cache_lock:
+        _settings_cache = {}
+        _settings_cache_timestamp = 0
+        logger.info("🧹 Кэш настроек сброшен")
+
+# --- КЭШИРОВАНИЕ УСЛУГ ---
+_services_cache = None
+_services_cache_timestamp = 0
+SERVICES_CACHE_TTL = 300
+
+def get_cached_services():
+    global _services_cache, _services_cache_timestamp
+    now = time.time()
+    if _services_cache is None or (now - _services_cache_timestamp) > SERVICES_CACHE_TTL:
+        try:
+            _services_cache = safe_get_sheet_data(SHEET_ID, "Услуги!A2:G") or []
+            _services_cache_timestamp = now
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки услуг: {e}")
+            _services_cache = []
+    return _services_cache
+
+def calculate_service_step(subservice: str) -> int:
+    services = get_cached_services()
+    for row in services:
+        if len(row) > 1 and row[1] == subservice:
+            try:
+                duration = int(row[2]) if row[2] else 0
+                buffer = int(row[3]) if row[3] else 0
+                return duration + buffer
+            except (ValueError, TypeError):
+                break
+    return int(get_setting("Дефолтный шаг услуги", "60"))
+
+def invalidate_services_cache():
+    global _services_cache, _services_cache_timestamp
+    _services_cache = None
+    _services_cache_timestamp = 0
+
+# --- LOGGING SETUP ---
 def setup_production_logging():
-    """Настройка прод-логирования"""
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s - [%(filename)s:%(lineno)d]'
-    )
-    
-    file_handler = logging.handlers.RotatingFileHandler(
-        'bot_production.log',
-        maxBytes=10*1024*1024,
-        backupCount=5
-    )
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s - [%(filename)s:%(lineno)d]')
+    os.makedirs("logs", exist_ok=True)
+    file_handler = logging.handlers.RotatingFileHandler('logs/bot.log', maxBytes=10*1024*1024, backupCount=5)
     file_handler.setFormatter(formatter)
-    
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-    
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
+    if not root.handlers:
+        root.addHandler(file_handler)
+        root.addHandler(console_handler)
 
-def log_business_event(event_type, **kwargs):
-    """Логирование бизнес-событий"""
-    logging.info(f"BUSINESS_EVENT: {event_type} - {kwargs}")
-
-# =============== ГЛОБАЛЬНАЯ ОБРАБОТКА ОШИБОК ===============
-async def global_error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Глобальная обработка ошибок"""
-    logging.error(f"Exception while handling an update: {context.error}", exc_info=context.error)
-    
-    try:
-        if update and update.effective_message:
+# --- GLOBAL ERROR HANDLER ---
+async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logger.error("Exception while handling an update:", exc_info=context.error)
+    if update and hasattr(update, 'effective_message') and update.effective_message:
+        try:
             await update.effective_message.reply_text(
-                "❌ Произошла техническая ошибка. Мы уже работаем над исправлением. "
-                "Пожалуйста, попробуйте позже."
+                "❌ Произошла техническая ошибка. Мы уже работаем над исправлением. Пожалуйста, попробуйте позже."
             )
+        except Exception:
+            pass
+    try:
+        await notify_admins(context, f"🚨 Критическая ошибка бота: {context.error}")
     except Exception:
-        pass
-    
-    await notify_admins(context, f"🚨 Критическая ошибка бота: {context.error}")
+        logger.exception("Не удалось уведомить админов")
 
-# =============== АВТООЧИСТКА СТАРЫХ СЕССИЙ ===============
+# --- ACTIVITY / SESSIONS ---
 async def update_last_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обновляет метку времени последней активности пользователя"""
     context.user_data["_last_activity"] = time.time()
 
 async def global_activity_updater(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Глобальный обработчик для обновления активности на ЛЮБОЕ сообщение"""
-    await update_last_activity(update, context)
+    if update.effective_message and getattr(update.effective_message, "text", "") and not update.effective_message.text.startswith('/'):
+        await update_last_activity(update, context)
 
 async def cleanup_old_sessions_job(context: ContextTypes.DEFAULT_TYPE):
-    """Удаляет сессии пользователей, неактивных более 30 дней"""
     now = time.time()
     max_age = 30 * 24 * 60 * 60
     to_remove = [
@@ -91,57 +180,91 @@ async def cleanup_old_sessions_job(context: ContextTypes.DEFAULT_TYPE):
         if now - data.get("_last_activity", now) > max_age
     ]
     for user_id in to_remove:
-        del context.application.user_data[user_id]
+        try:
+            del context.application.user_data[user_id]
+        except KeyError:
+            pass
     if to_remove:
-        logging.info(f"🧹 Очищено {len(to_remove)} старых сессий")
+        logger.info(f"🧹 Очищено {len(to_remove)} старых сессий")
 
-# =============== ПРОВЕРКА КОНФИГУРАЦИИ ===============
-def validate_configuration():
-    """Проверяет корректность конфигурации при старте"""
-    required_config = {
-        "TELEGRAM_TOKEN": TELEGRAM_TOKEN,
-        "SHEET_ID": SHEET_ID, 
-        "CALENDAR_ID": CALENDAR_ID,
-        "TIMEZONE": TIMEZONE
-    }
-    
-    missing = [key for key, value in required_config.items() if not value]
-    if missing:
-        logging.critical(f"❌ Не заданы обязательные параметры в config.py: {', '.join(missing)}")
-        return False
-    
-    if not all([RESERVATION_TIMEOUT, WARNING_TIMEOUT]):
-        logging.critical("❌ Не заданы таймауты резервирования")
-        return False
-        
-    logging.info("✅ Конфигурация проверена успешно")
-    return True
+# --- CLEANUP STUCK RESERVATIONS WITH WAITING LIST CHECK ---
+async def cleanup_stuck_reservations_job(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        now = datetime.now(TIMEZONE)
+        stuck_count = 0
+        processed_slots = 0
+        MAX_SLOTS = 50
+        for user_id, user_data in list(context.application.user_data.items()):
+            if processed_slots >= MAX_SLOTS:
+                break
+            if not isinstance(user_data, dict):
+                continue
+            temp_booking = user_data.get("temp_booking")
+            if temp_booking and isinstance(temp_booking, dict):
+                booking_time = temp_booking.get("created_at")
+                if booking_time:
+                    try:
+                        booking_dt = datetime.fromisoformat(booking_time)
+                        if (now - booking_dt).total_seconds() > 1800:
+                            event_id = temp_booking.get("event_id")
+                            if event_id:
+                                safe_delete_calendar_event(CALENDAR_ID, event_id)
+                            slot_date = temp_booking.get("date")
+                            slot_time = temp_booking.get("time")
+                            slot_master = temp_booking.get("master")
+                            if slot_date and slot_time and slot_master:
+                                await check_waiting_list(slot_date, slot_time, slot_master, context)
+                                processed_slots += 1
+                            if user_id in context.application.user_data:
+                                del context.application.user_data[user_id]
+                            stuck_count += 1
+                    except (ValueError, TypeError):
+                        pass
+        if stuck_count:
+            logger.info(f"🧹 Очищено {stuck_count} зависших бронирований, проверено {processed_slots} слотов")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при очистке зависших бронирований: {e}")
 
-# =============== ЗАЩИТА ОТ ПОВТОРНОГО ЗАПУСКА ===============
+# --- HEALTH CHECK ---
+async def health_check_job(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        test_data = safe_get_sheet_data(SHEET_ID, "Настройки!A1:B1") or []
+        test_events = safe_get_calendar_events(
+            CALENDAR_ID,
+            datetime.now(TIMEZONE).isoformat(),
+            (datetime.now(TIMEZONE) + timedelta(hours=1)).isoformat()
+        ) or []
+        active_users = len(context.application.user_data)
+        active_jobs = len(context.job_queue.jobs())
+        logger.info(f"🏥 Health Check: Sheets={bool(test_data)}, Calendar={bool(test_events)}, Users={active_users}, Jobs={active_jobs}")
+        log_business_event("health_check", sheets_connected=bool(test_data), calendar_connected=bool(test_events), active_users=active_users, active_jobs=active_jobs)
+    except Exception as e:
+        logger.error(f"❌ Health Check failed: {e}")
+        await notify_admins(context, f"🚨 Health Check failed: {e}")
+
+# --- LOCK FILE ---
 def create_lock_file():
-    """Создает lock-файл для защиты от повторного запуска"""
     lock_file = "bot.lock"
     if os.path.exists(lock_file):
-        logging.critical("❌ Бот уже запущен! Файл bot.lock существует.")
+        logger.critical("❌ Бот уже запущен! Файл bot.lock существует.")
         return False
-    
     try:
         with open(lock_file, 'w') as f:
             f.write(str(os.getpid()))
         return True
     except Exception as e:
-        logging.error(f"❌ Не удалось создать lock-файл: {e}")
+        logger.error(f"❌ Не удалось создать lock-файл: {e}")
         return False
 
 def remove_lock_file():
-    """Удаляет lock-файл при завершении работы"""
     try:
         if os.path.exists("bot.lock"):
             os.remove("bot.lock")
+            logger.info("🗑️ Lock-файл удалён.")
     except Exception as e:
-        logging.error(f"❌ Не удалось удалить lock-файл: {e}")
+        logger.error(f"❌ Не удалось удалить lock-файл: {e}")
 
-# Состояния диалога
+# --- STATES ---
 (
     MENU,
     SELECT_SERVICE_TYPE,
@@ -155,14 +278,31 @@ def remove_lock_file():
     ENTER_PHONE,
     CONFIRM_RESERVATION,
     MODIFY_RESERVATION,
-    WAITING_LIST_NAME,
-    WAITING_LIST_PHONE,
-    CALLBACK_NAME,
-    CALLBACK_PHONE,
-    ADMIN_RECORD_START,
-) = range(17)
+    AWAITING_ADMIN_MESSAGE,
+    AWAITING_REPEAT_CONFIRMATION,
+    AWAITING_WAITING_LIST_DETAILS,
+    AWAITING_ADMIN_SEARCH,
+    AWAITING_MY_RECORDS_NAME,
+    AWAITING_MY_RECORDS_PHONE,
+    AWAITING_WL_CATEGORY,
+    AWAITING_WL_MASTER,
+    AWAITING_WL_DATE,
+    AWAITING_WL_TIME,
+    AWAITING_WL_PRIORITY,
+    AWAITING_CONFIRMATION,
+    AWAITING_ADMIN_NEW_DATE,
+    AWAITING_ADMIN_NEW_MASTER,
+    AWAITING_ADMIN_NEW_TIME,
+    AWAITING_PHONE_FOR_CALLBACK,
+) = range(28)
 
-def format_duration(minutes):
+ACTIVE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано"}
+CANCELLABLE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано"}
+
+# --- HELPERS ---
+def format_duration(minutes: int) -> str:
+    if not isinstance(minutes, int) or minutes < 0:
+        return "N/A"
     hours = minutes // 60
     mins = minutes % 60
     if hours == 0:
@@ -172,382 +312,545 @@ def format_duration(minutes):
     else:
         return f"{hours} ч {mins} мин"
 
-# --- START ---
+def validate_configuration():
+    required = {
+        "TELEGRAM_TOKEN": TELEGRAM_TOKEN,
+        "SHEET_ID": SHEET_ID,
+        "CALENDAR_ID": CALENDAR_ID,
+        "TIMEZONE": TIMEZONE
+    }
+    missing = [k for k, v in required.items() if not v]
+    if missing:
+        logger.critical(f"❌ Не заданы обязательные параметры: {', '.join(missing)}")
+        return False
+    if not all([RESERVATION_TIMEOUT, WARNING_TIMEOUT]):
+        logger.critical("❌ Не заданы таймауты резервирования")
+        return False
+    logger.info("✅ Конфигурация проверена успешно")
+    return True
+
+def log_business_event(event_type, **kwargs):
+    logger.info(f"BUSINESS_EVENT: {event_type} - {kwargs}")
+
+def validate_time_format(time_str: str) -> bool:
+    try:
+        if not isinstance(time_str, str):
+            return False
+        datetime.strptime(time_str, "%H:%M")
+        return True
+    except ValueError:
+        return False
+
+def validate_work_schedule(work_time_str: str) -> bool:
+    if not isinstance(work_time_str, str):
+        return False
+    if work_time_str.lower().strip() == "выходной":
+        return True
+    if "-" not in work_time_str:
+        return False
+    times = work_time_str.split("-")
+    if len(times) != 2:
+        return False
+    return validate_time_format(times[0].strip()) and validate_time_format(times[1].strip())
+
+def validate_date_format(date_str: str) -> bool:
+    try:
+        if not isinstance(date_str, str):
+            return False
+        if not date_str.count('.') == 2:
+            return False
+        datetime.strptime(date_str, "%d.%m.%Y")
+        return True
+    except ValueError:
+        return False
+
+# --- CHECK WAITING LIST (С ПОДДЕРЖКОЙ ПРИОРИТЕТА И БЛИЗКИХ СЛОТОВ) ---
+async def check_waiting_list(slot_date: str, slot_time: str, master: str, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        MAX_DIFF = int(get_setting("Максимальное отклонение времени для листа ожидания", "30"))
+        MAX_NOTIFY = int(get_setting("Максимальное количество уведомлений из листа ожидания", "1"))
+        waiting_list = safe_get_sheet_data(SHEET_ID, "Лист ожидания!A3:M") or []
+        candidates = []
+        for idx, row in enumerate(waiting_list, start=2):
+            if len(row) < 12:
+                continue
+            wait_date = str(row[7]).strip() if len(row) > 7 and row[7] else ""
+            wait_time = str(row[8]).strip() if len(row) > 8 and row[8] else ""
+            wait_master = str(row[6]).strip() if len(row) > 6 and row[6] else ""
+            status = str(row[10]).strip() if len(row) > 10 and row[10] else ""
+            chat_id = str(row[11]).strip() if len(row) > 11 and row[11] else ""
+            priority = int(row[9]) if len(row) > 9 and row[9] and str(row[9]).isdigit() else 1
+            if status == "ожидает" and chat_id.isdigit() and wait_date == slot_date and (wait_master == master or wait_master == "любой"):
+                try:
+                    slot_min = int(slot_time[:2]) * 60 + int(slot_time[3:5])
+                    wait_min = int(wait_time[:2]) * 60 + int(wait_time[3:5])
+                    diff = abs(slot_min - wait_min)
+                    if diff <= MAX_DIFF:
+                        candidates.append({
+                            'priority': priority,
+                            'diff': diff,
+                            'idx': idx,
+                            'row': row,
+                            'chat_id': int(chat_id),
+                            'req_time': wait_time
+                        })
+                except (ValueError, IndexError):
+                    continue
+        candidates.sort(key=lambda x: (-x['priority'], x['diff']))
+        notified = 0
+        for cand in candidates[:MAX_NOTIFY]:
+            try:
+                await context.bot.send_message(
+                    chat_id=cand['chat_id'],
+                    text=f"🎉 Появилось свободное время!\n📅 Дата: {slot_date}\n⏰ Время: {slot_time} (запрашивали {cand['req_time']})\n👩‍💼 Мастер: {master}\nНажмите /start для записи."
+                )
+                updated = list(cand['row'])
+                updated[10] = "уведомлен"
+                safe_update_sheet_row(SHEET_ID, "Лист ожидания", cand['idx'], updated)
+                notified += 1
+                logger.info(f"✅ Уведомлён клиент: {cand['chat_id']}, приоритет {cand['priority']}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка уведомления: {e}")
+        if notified:
+            logger.info(f"📢 Уведомлено {notified} клиентов из листа ожидания")
+    except Exception as e:
+        logger.error(f"❌ Ошибка в check_waiting_list: {e}", exc_info=True)
+
+# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ЗАПИСЕЙ ---
+async def _display_records(update: Update, context: ContextTypes.DEFAULT_TYPE, records, title="Ваши активные записи:"):
+    query = update.callback_query
+    msg = f"📋 <b>{title}</b>\n\n"
+    kb = []
+    for r in records:
+        rid = str(r[0]).strip() if len(r) > 0 else "N/A"
+        svc = str(r[4]).strip() if len(r) > 4 else "N/A"
+        cat = str(r[3]).strip() if len(r) > 3 else "N/A"
+        mst = str(r[5]).strip() if len(r) > 5 else "N/A"
+        dt = str(r[6]).strip() if len(r) > 6 else "N/A"
+        tm = str(r[7]).strip() if len(r) > 7 else "N/A"
+        st = str(r[8]).strip() if len(r) > 8 else "N/A"
+        msg += f"<b>ID:</b> {rid}\n<b>Услуга:</b> {svc} ({cat})\n<b>Мастер:</b> {mst}\n<b>Дата:</b> {dt}\n<b>Время:</b> {tm}\n<b>Статус:</b> {st}\n"
+        if st in CANCELLABLE_STATUSES:
+            kb.append([InlineKeyboardButton(f"❌ Отменить {dt} {tm}", callback_data=f"cancel_record_{rid}")])
+        else:
+            msg += "<b>Действие:</b> Отмена невозможна\n"
+        msg += "\n"
+    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="start")])
+    rm = InlineKeyboardMarkup(kb)
+    if query:
+        await query.edit_message_text(msg, reply_markup=rm, parse_mode='HTML')
+    else:
+        await update.message.reply_text(msg, reply_markup=rm, parse_mode='HTML')
+
+async def _validate_booking_checks(context: ContextTypes.DEFAULT_TYPE, name: str, phone: str, date_str: str, time_str: str, service_type: str):
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+    try:
+        new_start = TIMEZONE.localize(datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M"))
+        new_end = new_start + timedelta(minutes=calculate_service_step(context.user_data.get("subservice", "default")))
+    except ValueError:
+        return False, "❌ Неверный формат даты/времени"
+    for r in records:
+        if len(r) > 7 and str(r[1]).strip() == name and str(r[2]).strip() == phone and str(r[8]).strip() == "подтверждено":
+            rec_date = str(r[6]).strip()
+            rec_time = str(r[7]).strip()
+            try:
+                rec_start = TIMEZONE.localize(datetime.strptime(f"{rec_date} {rec_time}", "%d.%m.%Y %H:%M"))
+                rec_end = rec_start + timedelta(minutes=calculate_service_step(str(r[4]).strip()))
+                if max(new_start, rec_start) < min(new_end, rec_end):
+                    return False, f"❌ У вас уже есть запись на {rec_date} в {rec_time} к {str(r[5]).strip()} (услуга: {str(r[4]).strip()})."
+            except ValueError:
+                continue
+    for r in records:
+        if len(r) > 4 and str(r[1]).strip() == name and str(r[2]).strip() == phone and str(r[3]).strip() == service_type and str(r[8]).strip() == "подтверждено":
+            context.user_data["repeat_booking_conflict"] = {
+                "category": str(r[3]).strip(),
+                "date": str(r[6]).strip(),
+                "time": str(r[7]).strip(),
+                "master": str(r[5]).strip()
+            }
+            return "CONFIRM_REPEAT", None
+    return True, None
+
+# --- HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     log_business_event("user_started", user_id=update.effective_user.id)
-    
-    context.user_data["state"] = MENU
-
-    if context.args and context.args[0].startswith("bind_"):
-        record_id = context.args[0].split("bind_")[1]
-        records = get_sheet_data(SHEET_ID, "Записи!A2:P")
-        for idx, row in enumerate(records, start=2):
-            if len(row) > 0 and row[0] == record_id:
-                row_to_write = row[:13] + [str(update.effective_chat.id)] + row[14:]
-                update_sheet_row(SHEET_ID, "Записи", idx, row_to_write)
-                await update.message.reply_text("✅ Вы привязаны к записи. Напоминания будут приходить сюда.")
-                return
-
-    # 🔧 ИСПРАВЛЕНО: поиск по имени "Салон"
-    all_schedule = get_sheet_data(SHEET_ID, "График мастеров!A2:F")
-    schedule_text = "10:00–20:00"
-    for row in all_schedule:
-        if len(row) >= 4 and row[0] == "Салон":
-            try:
-                days = row[1]
-                start_time = row[2]
-                end_time = row[3]
-                schedule_text = f"{days}: {start_time}–{end_time}"
+  
+    greeting = get_setting("Текст приветствия", "Добро пожаловать!")
+    schedule_text = "График работы не указан"
+    org_name = get_setting("Название заведения", "").strip()
+    if not org_name:
+        schedule_text = "⚠️ Название заведения не задано в настройках"
+    else:
+        data = safe_get_sheet_data(SHEET_ID, "График мастеров!A2:H") or []
+        found = False
+        for row in data:
+            if len(row) > 0 and str(row[0]).strip() == org_name:
+                if len(row) > 3:
+                    days = row[1] or "Пн-Вс"
+                    start = row[2] or "09:00"
+                    end = row[3] or "18:00"
+                    schedule_text = f"{days} {start}–{end}"
+                    found = True
                 break
-            except Exception:
-                pass
-
-    keyboard = [
-        [InlineKeyboardButton("📅 Записаться на приём", callback_data="back")],
+        if not found:
+            schedule_text = f"❌ Расписание для '{org_name}' не найдено"
+    kb = [
+        [InlineKeyboardButton("📅 Записаться на приём", callback_data="book")],
         [InlineKeyboardButton("❌ Отменить или изменить запись", callback_data="modify")],
+        [InlineKeyboardButton("📋 Мои записи", callback_data="my_records")],
         [InlineKeyboardButton("💅 Услуги и цены", callback_data="prices")],
         [InlineKeyboardButton("📞 Связаться с админом", callback_data="contact_admin")],
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await update.message.reply_text(
-        f"Добро пожаловать в салон красоты!\n\nМы работаем:\n{schedule_text}",
-        reply_markup=reply_markup
-    )
+    rm = InlineKeyboardMarkup(kb)
+    text = f"{greeting}\n\nМы работаем: {schedule_text}"
+    if update.message:
+        await update.message.reply_text(text, reply_markup=rm)
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=rm)
+    context.user_data["state"] = MENU
     return MENU
 
-# --- ОБРАБОТКА КНОПОК ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await update_last_activity(update, context)
-    
     data = query.data
-
-    # 🔹 Обработка "Назад" с учётом состояния
     if data == "back":
-        current_state = context.user_data.get("state")
-        if current_state == SELECT_SUBSERVICE:
-            return await select_service_type(update, context)
-        elif current_state == SHOW_PRICE_INFO:
-            service_type = context.user_data.get("service_type")
-            if service_type:
-                context.user_data["state"] = SELECT_SERVICE_TYPE
-                subservices = get_sheet_data(SHEET_ID, "Услуги!A2:B")
-                options = [row[1] for row in subservices if row and len(row) > 1 and row[0] == service_type]
-                keyboard = [[InlineKeyboardButton(opt, callback_data=f"subservice_{opt}")] for opt in options]
-                keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.callback_query.edit_message_text(f"Выберите услугу ({service_type}):", reply_markup=reply_markup)
-                return SELECT_SUBSERVICE
-        elif current_state in (SELECT_PRIORITY, SELECT_DATE, SELECT_MASTER, SELECT_TIME):
-            # Возврат к выбору услуги
-            return await show_price_info(update, context)
-        # По умолчанию — в главное меню
+        state = context.user_data.get("state")
+        back_map = {
+            SELECT_SUBSERVICE: select_service_type,
+            SHOW_PRICE_INFO: select_subservice,
+            SELECT_DATE: show_price_info,
+            SELECT_MASTER: show_price_info,
+            SELECT_TIME: lambda u,c: select_date(u,c) if context.user_data.get("priority")=="date" else select_master(u,c),
+            ENTER_NAME: select_time,
+            ENTER_PHONE: enter_name,
+        }
+        if state in back_map:
+            return await back_map[state](update, context)
+        elif state in (CONFIRM_RESERVATION, AWAITING_REPEAT_CONFIRMATION):
+            await query.edit_message_text("❌ Возврат невозможен. Подтвердите или отмените запись.")
+            return
+        elif state == AWAITING_WAITING_LIST_DETAILS:
+            await start(update, context)
+            return MENU
+        elif state == AWAITING_ADMIN_SEARCH:
+            return await handle_record_command(update, context)
+        else:
+            await start(update, context)
+            return MENU
+    if data == "start":
         await start(update, context)
         return MENU
-
-    # Остальные условия
     if data == "book":
         return await select_service_type(update, context)
-    elif data == "modify":
-        await query.edit_message_text("Введите ваше имя или телефон:")
-        context.user_data["state"] = MODIFY_RESERVATION
-        return MODIFY_RESERVATION
-    elif data == "prices":
-        return await show_prices(update, context)
-    elif data == "contact_admin":
-        await query.edit_message_text("Напишите ваше сообщение — администратор свяжется с вами.")
-        context.user_data["state"] = MENU
+    if data == "modify":
+        await query.edit_message_text("❌ Возможность отменить/изменить запись пока недоступна через бота. Обратитесь к администратору.")
         return MENU
-
+    if data == "my_records":
+        return await show_my_records(update, context)
+    if data == "prices":
+        return await show_prices(update, context)
+    if data == "contact_admin":
+        await query.edit_message_text("Напишите ваше сообщение — администратор свяжется с вами.")
+        context.user_data["state"] = AWAITING_ADMIN_MESSAGE
+        return
+    # АДМИНСКИЕ ФУНКЦИИ
+    admin_handlers = {
+        "admin_book_for_client": admin_book_for_client,
+        "admin_manage_record": admin_manage_record,
+        "admin_back": handle_record_command,
+    }
+    if data in admin_handlers:
+        return await admin_handlers[data](update, context)
+    if data.startswith("admin_cancel_"):
+        return await admin_cancel_record(update, context, data.split("admin_cancel_", 1)[1])
+    if data.startswith("admin_reschedule_"):
+        return await admin_reschedule_record(update, context, data.split("admin_reschedule_", 1)[1])
+    if data.startswith("admin_manage_"):
+        return await admin_show_record_details(update, context, data.split("admin_manage_", 1)[1])
+    if data.startswith("admin_new_date_"):
+        return await admin_process_new_date(update, context, data.split("admin_new_date_", 1)[1])
+    if data.startswith("admin_new_master_"):
+        return await admin_process_new_master(update, context, data.split("admin_new_master_", 1)[1])
+    if data.startswith("admin_new_slot_"):
+        parts = data.split("admin_new_slot_", 1)[1].split("_", 1)
+        if len(parts) == 2:
+            return await admin_process_new_slot(update, context, parts[0], parts[1])
+    if data in ["admin_change_date", "admin_change_master", "admin_change_time", "admin_change_all", "admin_skip_master"]:
+        handler_map = {
+            "admin_change_date": admin_change_date,
+            "admin_change_master": admin_change_master,
+            "admin_change_time": admin_change_time,
+            "admin_change_all": admin_change_all,
+            "admin_skip_master": admin_skip_master,
+        }
+        return await handler_map[data](update, context)
+    if data.startswith("admin_confirm_reschedule_"):
+        return await admin_confirm_reschedule(update, context, data.split("admin_confirm_reschedule_", 1)[1])
+    if data.startswith("admin_force_reschedule_"):
+        return await admin_force_reschedule(update, context, data.split("admin_force_reschedule_", 1)[1])
     if data.startswith("service_"):
+        context.user_data["service_type"] = data.split("service_", 1)[1]
         return await select_subservice(update, context)
     if data.startswith("subservice_"):
+        context.user_data["subservice"] = data.split("subservice_", 1)[1]
         return await show_price_info(update, context)
     if data.startswith("priority_"):
-        return await select_priority(update, context)
+        context.user_data["priority"] = data.split("priority_", 1)[1]
+        return await select_date(update, context)
     if data.startswith("date_"):
-    return await select_master(update, context)
-    if data.startswith("date_"):
-        return await select_master(update, context)
+        context.user_data["date"] = data.split("date_", 1)[1]
+        if context.user_data.get("priority") == "date":
+            return await select_master(update, context)
+        else:
+            return await select_time(update, context)
     if data.startswith("master_"):
-        return await select_time(update, context)
+        context.user_data["selected_master"] = data.split("master_", 1)[1]
+        if context.user_data.get("priority") == "master":
+            return await select_date(update, context)
+        else:
+            return await select_time(update, context)
     if data.startswith("slot_"):
-        return await reserve_slot(update, context)
-
+        parts = data.split("_", 2)
+        if len(parts) == 3:
+            return await reserve_slot(update, context, parts[1], parts[2])
+        else:
+            await query.edit_message_text("❌ Неверный формат слота.")
+            return
     if data.startswith("confirm_reminder_"):
-        record_id = data.split("confirm_reminder_")[1]
-        await handle_confirm_reminder(record_id, query, context)
+        await handle_confirm_reminder(data.split("confirm_reminder_", 1)[1], query, context)
         return
     if data.startswith("cancel_reminder_"):
-        record_id = data.split("cancel_reminder_")[1]
-        await handle_cancel_reminder(record_id, query, context)
+        await handle_cancel_reminder(data.split("cancel_reminder_", 1)[1], query, context)
         return
-
+    if data.startswith("cancel_record_"):
+        return await cancel_record_from_list(update, context, data.split("cancel_record_", 1)[1])
     if data == "confirm":
         return await confirm_booking(update, context)
     if data == "cancel_reserve":
         return await cancel_reservation(update, context)
+    if data == "confirm_repeat":
+        return await finalize_booking(update, context)
     if data == "waiting_list":
-        await query.edit_message_text("Вы добавлены в лист ожидания.")
+        await query.edit_message_text(
+            "📋 Чтобы встать в лист ожидания, уточните:\n"
+            "1. Категорию и название услуги\n"
+            "2. Имя мастера (или 'любой')\n"
+            "3. Желаемые дату и время"
+        )
+        context.user_data["state"] = AWAITING_WAITING_LIST_DETAILS
+        return AWAITING_WAITING_LIST_DETAILS
+    if data == "confirm_booking":
+        return await finalize_booking(update, context)
+    if data == "cancel_booking":
+        await query.edit_message_text("❌ Запись отменена.")
+        context.user_data.clear()
         return MENU
+    await query.edit_message_text("❌ Неизвестная команда.")
 
-    await query.edit_message_text("Неизвестная команда.")
-
-# --- ПОКАЗ ЦЕН ---
+# --- PRICES ---
 async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    services = get_sheet_data(SHEET_ID, "Услуги!A2:E")
-    prices_text = "💅 МАНИКЮРНЫЕ\n"
-    in_manicure = True
-
+    services = safe_get_sheet_data(SHEET_ID, "Услуги!A2:G") or []
+    text = "💅 УСЛУГИ И ЦЕНЫ\n\n"
+    current_cat = None
     for row in services:
-        if len(row) < 5:
+        if len(row) < 7:
             continue
+        cat, name, dur_str, buf_str, _, price, desc = row[0], row[1], row[2], row[3], row[4], row[5], row[6]
+        try:
+            dur = int(dur_str)
+            buf = int(buf_str)
+        except Exception:
+            logger.warning(f"⚠️ Неверный формат длительности/буфера в услуге {name}: {dur_str}, {buf_str}")
+            continue
+        if cat != current_cat:
+            if current_cat is not None:
+                text += "\n"
+            text += f"\n<b>{cat.upper()}</b>:\n"
+            current_cat = cat
+        fmt_dur = format_duration(dur + buf)
+        price_str = f"{int(float(price))} ₽" if isinstance(price, str) and price.replace('.','',1).isdigit() else "цена не указана"
+        text += f"• <b>{name}</b> — {price_str} (длит.: {fmt_dur})\n"
+        if desc:
+            text += f" <i>{desc}</i>\n"
+    await query.edit_message_text(text or "❌ Услуги не найдены.", parse_mode='HTML')
+    try:
+        await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад", callback_data="start")]]))
+    except Exception:
+        pass
 
-        category, subservice, duration, buffer, price = row[0], row[1], int(row[2]), int(row[3]), row[4]
-        duration_min = duration + buffer
-        formatted_duration = format_duration(duration_min)
-        price_str = f"{int(float(price))} ₽" if price.replace('.', '').isdigit() else "цена не указана"
-
-        if category == "Парикмахерские" and in_manicure:
-            prices_text += "\n✂️ ПАРИКМАХЕРСКИЕ\n"
-            in_manicure = False
-
-        prices_text += f"• {subservice} — {price_str} ({formatted_duration})\n"
-
-    await query.edit_message_text(prices_text, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("⬅️ Назад", callback_data="start")]
-    ]))
-
-# --- ВЫБОР ТИПА УСЛУГИ ---
+# --- SELECT SERVICE TYPE ---
 async def select_service_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    services = get_sheet_data(SHEET_ID, "Услуги!A2:A")
-    service_types = list(set(row[0] for row in services if row))
-
-    keyboard = [[InlineKeyboardButton(st, callback_data=f"service_{st}")] for st in service_types]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await update.callback_query.edit_message_text("Выберите тип услуги:", reply_markup=reply_markup)
+    services = safe_get_sheet_data(SHEET_ID, "Услуги!A2:A") or []
+    types = list({row[0] for row in services if row and len(row) > 0})
+    kb = [[InlineKeyboardButton(t, callback_data=f"service_{t}")] for t in types]
+    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+    await update.callback_query.edit_message_text("Выберите категорию услуги:", reply_markup=InlineKeyboardMarkup(kb))
     context.user_data["state"] = SELECT_SERVICE_TYPE
     return SELECT_SERVICE_TYPE
 
-# --- ВЫБОР ПОДУСЛУГИ ---
+# --- SELECT SUBSERVICE ---
 async def select_subservice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    service_type = query.data.split("_", 1)[1]
-
-    subservices = get_sheet_data(SHEET_ID, "Услуги!A2:B")
-    options = [row[1] for row in subservices if row and len(row) > 1 and row[0] == service_type]
-
-    keyboard = [[InlineKeyboardButton(opt, callback_data=f"subservice_{opt}")] for opt in options]
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await query.edit_message_text(f"Выберите услугу ({service_type}):", reply_markup=reply_markup)
-    context.user_data["service_type"] = service_type
-    context.user_data["subservice"] = None
+    st = context.user_data.get("service_type")
+    if not st:
+        await query.edit_message_text("❌ Ошибка: тип услуги не выбран.")
+        return
+    all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A2:G") or []
+    subs = [row[1] for row in all_services if len(row) > 1 and row[0] == st]
+    kb = [[InlineKeyboardButton(s, callback_data=f"subservice_{s}")] for s in subs]
+    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+    await query.edit_message_text(f"Выберите услугу ({st}):", reply_markup=InlineKeyboardMarkup(kb))
     context.user_data["state"] = SELECT_SUBSERVICE
     return SELECT_SUBSERVICE
 
-# --- ПОКАЗ ЦЕНЫ И ДЛИТЕЛЬНОСТИ ---
+# --- SHOW PRICE INFO ---
 async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    subservice = query.data.split("_", 1)[1]
-    context.user_data["subservice"] = subservice
-
-    services = get_sheet_data(SHEET_ID, "Услуги!A2:E")
-    duration, buffer, price = 60, 0, "не указана"
-    for row in services:
-        if len(row) > 1 and row[1] == subservice:
-            duration = int(row[2])
-            buffer = int(row[3])
-            price = row[4]
+    ss = context.user_data.get("subservice")
+    if not ss:
+        await query.edit_message_text("❌ Ошибка: услуга не выбрана.")
+        return
+    all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A2:G") or []
+    dur, buf, price = 60, 0, "не указана"
+    for row in all_services:
+        if len(row) > 1 and row[1] == ss:
+            try:
+                dur = int(row[2])
+                buf = int(row[3])
+            except Exception:
+                pass
+            price = row[5] if len(row) > 5 else "не указана"
             break
-
-    total_duration = duration + buffer
-    formatted_duration = format_duration(total_duration)
-    price_str = f"{int(float(price))} ₽" if price.replace('.', '').isdigit() else "цена не указана"
-
-    text = (
-        f"✅ Услуга: {subservice}\n"
-        f"💰 Цена: {price_str}\n"
-        f"⏳ Длительность: {formatted_duration}\n\n"
-        "Что для вас важнее?"
-    )
-
-    keyboard = [
+    fmt_dur = format_duration(dur + buf)
+    price_str = f"{int(float(price))} ₽" if isinstance(price, str) and price.replace('.','',1).isdigit() else "цена не указана"
+    text = f"✅ Услуга: {ss}\n💰 Цена: {price_str}\n⏳ Длительность: {fmt_dur}\n\nЧто для вас важнее?"
+    kb = [
         [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
         [InlineKeyboardButton("👩‍🦰 Сначала мастер", callback_data="priority_master")],
         [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+    context.user_data["state"] = SHOW_PRICE_INFO
+    return SHOW_PRICE_INFO
 
-    await query.edit_message_text(text, reply_markup=reply_markup)
-    context.user_data["state"] = SELECT_PRIORITY
-    return SELECT_PRIORITY
-
-# --- ДАТА или МАСТЕР? ---
-async def select_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    priority = query.data.split("_")[1]
-    context.user_data["priority"] = priority
-
-    available_dates = find_available_slots(
-        service_type=context.user_data["service_type"],
-        subservice=context.user_data["subservice"],
-        priority=priority
-    )
-    dates = sorted(list(set(d["date"] for d in available_dates)))
-
-    keyboard = [[InlineKeyboardButton(d, callback_data=f"date_{d}")] for d in dates]
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await query.edit_message_text("Выберите дату:", reply_markup=reply_markup)
+# --- SELECT DATE ---
+async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    today = datetime.now(TIMEZONE).date()
+    priority = context.user_data.get("priority", "date")
+    st = context.user_data.get("service_type")
+    ss = context.user_data.get("subservice")
+    master = context.user_data.get("selected_master")
+    dates = set()
+    for i in range(1, 11):
+        d = (today + timedelta(days=i)).strftime("%d.%m.%Y")
+        slots = find_available_slots(st, ss, d, master, priority)
+        if slots:
+            dates.add(d)
+    kb = [[InlineKeyboardButton(d, callback_data=f"date_{d}")] for d in sorted(dates)]
+    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+    await update.callback_query.edit_message_text("Выберите дату:", reply_markup=InlineKeyboardMarkup(kb))
     context.user_data["state"] = SELECT_DATE
     return SELECT_DATE
 
-# --- ВЫБОР МАСТЕРА ---
+# --- SELECT MASTER ---
 async def select_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    date_str = query.data.split("_", 1)[1]
-    context.user_data["date"] = date_str
-
-    # 🔧 ИСПРАВЛЕНО: читаем A2:F, определяем день недели, проверяем график
-    from datetime import datetime as dt_mod
+    date_str = context.user_data.get("date")
+    if not date_str:
+        await query.edit_message_text("❌ Ошибка: дата не выбрана.")
+        return
+    masters_data = safe_get_sheet_data(SHEET_ID, "График мастеров!A3:I") or []
+    available = []
     try:
-        target_date = dt_mod.strptime(date_str, "%d.%m.%Y")
-        day_name = target_date.strftime("%a")
-        short_day = {"Mon": "Пн", "Tue": "Вт", "Wed": "Ср", "Thu": "Чт", "Fri": "Пт", "Sat": "Сб", "Sun": "Вс"}.get(day_name)
+        target = datetime.strptime(date_str, "%d.%m.%Y")
+        day_name = target.strftime("%a")
+        short_map = {"Mon": "Пн", "Tue": "Вт", "Wed": "Ср", "Thu": "Чт", "Fri": "Пт", "Sat": "Сб", "Sun": "Вс"}
+        target_day = short_map.get(day_name)
+        if not target_day:
+            await query.edit_message_text("❌ Ошибка: невозможно определить день недели.")
+            return
     except Exception:
-        await query.edit_message_text("❌ Неверный формат даты.")
+        await query.edit_message_text("❌ Ошибка: неверный формат даты.")
         return
 
-    masters = get_sheet_data(SHEET_ID, "График мастеров!A2:F")
-    available_masters = []
+    selected_service_type = context.user_data.get("service_type")
+    if not selected_service_type:
+        await query.edit_message_text("❌ Ошибка: категория услуги не выбрана.")
+        return
 
-    for row in masters:
-        if len(row) < 2:
-            continue
-        master_name = row[0]
-        if master_name == "Салон":
-            continue
-        work_days = row[1].split(", ") if len(row) > 1 else []
-        if short_day not in work_days:
-            continue
-        if len(row) > 5 and row[5].strip():
-            blacklisted_dates = [d.strip() for d in row[5].split(",")]
-            if date_str in blacklisted_dates:
+    for row in masters_data:
+        if len(row) > 0 and row[0] != get_setting("Название заведения", "Название организации"):
+            name = row[0]
+            # --- НОВАЯ ПРОВЕРКА КАТЕГОРИИ МАСТЕРА ---
+            master_categories = str(row[1]).strip() if len(row) > 1 else ""
+            if master_categories and selected_service_type:
+                if selected_service_type not in [cat.strip() for cat in master_categories.split(",")]:
+                    continue  # мастер не подходит под выбранную категорию
+            # ---------------------------------------
+            try:
+                col_idx = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(target_day) + 1
+            except ValueError:
                 continue
-        available_masters.append(master_name)
-
-    if not available_masters:
-        await query.edit_message_text(f"❌ Нет мастеров на {date_str} ({short_day}).\nДоступные дни: {[row[1] for row in masters if len(row)>1 and row[0]!='Салон']}")
-        return
-
-    keyboard = [[InlineKeyboardButton(m, callback_data=f"master_{m}")] for m in available_masters]
-    keyboard.append([InlineKeyboardButton("👤 Любой мастер", callback_data="master_any")])
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await query.edit_message_text("Выберите мастера:", reply_markup=reply_markup)
+            if col_idx >= len(row):
+                continue
+            work_time = row[col_idx]
+            if validate_work_schedule(work_time):
+                available.append(name)
+    kb = [[InlineKeyboardButton(m, callback_data=f"master_{m}")] for m in available]
+    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+    await query.edit_message_text("Выберите мастера:", reply_markup=InlineKeyboardMarkup(kb))
     context.user_data["state"] = SELECT_MASTER
     return SELECT_MASTER
 
-# --- ВЫБОР ВРЕМЕНИ ---
+# --- SELECT TIME ---
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    master_key = query.data.split("_", 1)[1]
-
-    date_str = context.user_data["date"]
-    service_type = context.user_data["service_type"]
-    subservice = context.user_data["subservice"]
-
-    slots = find_available_slots(
-        service_type=service_type,
-        subservice=subservice,
-        date=date_str,
-        selected_master=master_key if master_key != "any" else None
-    )
-
-    if not slots:
-        keyboard = [[InlineKeyboardButton("В лист ожидания", callback_data="waiting_list")]]
-        await query.edit_message_text("❌ Свободных слотов нет. Хотите встать в лист ожидания?", reply_markup=InlineKeyboardMarkup(keyboard))
+    date_str = context.user_data.get("date")
+    master = context.user_data.get("selected_master")
+    st = context.user_data.get("service_type")
+    ss = context.user_data.get("subservice")
+    if not all([date_str, st, ss]):
+        await query.edit_message_text("❌ Ошибка: не все данные для выбора времени выбраны.")
         return
-
-    keyboard = []
-    for slot in slots:
-        time_str = slot["time"]
-        master = slot["master"]
-        callback_data = f"slot_{master}_{time_str}"
-        keyboard.append([InlineKeyboardButton(f"{time_str} — {master}", callback_data=callback_data)])
-
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await query.edit_message_text("Выберите время:", reply_markup=reply_markup)
+    slots = find_available_slots(st, ss, date_str, master, context.user_data.get("priority", "date"))
+    if not slots:
+        await query.edit_message_text("❌ Свободных слотов нет.")
+        kb = [
+            [InlineKeyboardButton("📋 В лист ожидания", callback_data="waiting_list")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back")]
+        ]
+        try:
+            await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(kb))
+        except Exception:
+            pass
+        return
+    kb = []
+    for s in slots:
+        t = s.get("time", "N/A")
+        m = s.get("master", "N/A")
+        kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
+    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+    await query.edit_message_text("Выберите время:", reply_markup=InlineKeyboardMarkup(kb))
     context.user_data["state"] = SELECT_TIME
     return SELECT_TIME
 
-# --- РЕЗЕРВ СЛОТА ---
-async def reserve_slot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- RESERVE SLOT ---
+async def reserve_slot(update: Update, context: ContextTypes.DEFAULT_TYPE, master: str, time_str: str):
     query = update.callback_query
-    data = query.data.split("_", 2)
-    master = data[1]
-    time_str = data[2]
-
-    date_str = context.user_data["date"]
-    
-    # 🔄 ПОВТОРНАЯ ПРОВЕРКА: не заняли ли слот пока пользователь думал?
-    slots = find_available_slots(
-        service_type=context.user_data["service_type"],
-        subservice=context.user_data["subservice"],
-        date=date_str,
-        priority=context.user_data.get("priority", "date")
-    )
-    
-    # Проверяем, что выбранный слот еще доступен
-    slot_still_available = False
-    for slot in slots:
-        if (slot["time"] == time_str and 
-            (master == "any" or slot["master"] == master)):
-            slot_still_available = True
-            break
-    
-    if not slot_still_available:
-        await query.edit_message_text(
-            "❌ Этот слот только что заняли. Пожалуйста, выберите другое время.",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ Назад к выбору времени", 
-                                    callback_data=f"date_{date_str}")]
-            ])
-        )
-        return SELECT_DATE
-
+    date_str = context.user_data.get("date")
+    ss = context.user_data.get("subservice")
+    step = calculate_service_step(ss)
     dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
     start_dt = TIMEZONE.localize(dt)
-
-    subservice = context.user_data["subservice"]
-    services = get_sheet_data(SHEET_ID, "Услуги!A2:E")
-    duration = 60
-    for row in services:
-        if len(row) > 1 and row[1] == subservice:
-            duration = int(row[2]) + int(row[3])
-            break
-    end_dt = start_dt + timedelta(minutes=duration)
-
-    event_id = create_calendar_event(
-        calendar_id=CALENDAR_ID,
-        summary="⏳ Бронь (в процессе)",
-        start_time=start_dt.isoformat(),
-        end_time=end_dt.isoformat(),
-        color_id="5",
-        description=f"Бронь: {subservice} к {master}. В процессе оформления..."
+    end_dt = start_dt + timedelta(minutes=step)
+    event_id = safe_create_calendar_event(
+        CALENDAR_ID, "⏳ Бронь (в процессе)", start_dt.isoformat(), end_dt.isoformat(), "7",
+        f"Бронь: {ss} к {master}. В процессе оформления..."
     )
-
     context.user_data["temp_booking"] = {
         "master": master,
         "time": time_str,
@@ -555,430 +858,1071 @@ async def reserve_slot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "event_id": event_id,
         "start_dt": start_dt,
         "end_dt": end_dt,
-        "duration": duration,
-        "subservice": subservice
+        "subservice": ss,
+        "created_at": datetime.now(TIMEZONE).isoformat()
     }
-
     context.job_queue.run_once(
-        release_reservation,
-        RESERVATION_TIMEOUT,
+        release_reservation, RESERVATION_TIMEOUT,
         chat_id=update.effective_chat.id,
-        user_id=update.effective_user.id,
-
-        name=f"reservation_timeout_{update.effective_chat.id}"
+        name=f"reservation_timeout_{update.effective_chat.id}",
+        data={"user_id": update.effective_user.id}
     )
     context.job_queue.run_once(
-        warn_reservation,
-        WARNING_TIMEOUT,
+        warn_reservation, WARNING_TIMEOUT,
         chat_id=update.effective_chat.id,
-        user_id=update.effective_user.id,
-        name=f"reservation_warn_{update.effective_chat.id}"
+        name=f"reservation_warn_{update.effective_chat.id}",
+        data={"user_id": update.effective_user.id}
     )
-
-    await query.edit_message_text("Слот зарезервирован! Введите ваше имя:")
+    await query.edit_message_text("⏳ Слот зарезервирован! Введите ваше имя:")
     context.user_data["state"] = ENTER_NAME
     return ENTER_NAME
 
+# --- WARN / RELEASE RESERVATION ---
 async def warn_reservation(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
-    chat_id = job.chat_id
-    await context.bot.send_message(chat_id, "⏳ Не забудьте подтвердить запись — осталось немного времени!")
+    uid = job.data.get("user_id") if job.data else None
+    if not uid:
+        logger.error("❌ warn_reservation: Не удалось получить user_id")
+        return
+    try:
+        await context.bot.send_message(job.chat_id, "⏳ Не забудьте подтвердить запись — осталось немного времени!")
+        logger.info(f"📤 Предупреждение отправлено (chat_id: {job.chat_id})")
+    except Exception as e:
+        logger.error(f"❌ Ошибка предупреждения: {e}")
 
 async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
-    temp_booking = context.user_data.get("temp_booking")
-    if temp_booking and temp_booking.get("event_id"):
+    uid = job.data.get("user_id") if job.data else None
+    if not uid:
+        logger.error("❌ release_reservation: Не удалось получить user_id")
+        return
+    user_data = context.application.user_data.get(uid, {})
+    temp = user_data.get("temp_booking") if isinstance(user_data, dict) else None
+    if temp and temp.get("event_id"):
         try:
-            delete_calendar_event(CALENDAR_ID, temp_booking["event_id"])
+            safe_delete_calendar_event(CALENDAR_ID, temp["event_id"])
+            logger.info(f"Резерв слота {temp['date']} {temp['time']} освобождён по таймауту для пользователя {uid}.")
+            await check_waiting_list(temp['date'], temp['time'], temp['master'], context)
+        except Exception as e:
+            logger.error(f"❌ Ошибка освобождения резерва: {e}")
+        try:
+            await context.bot.send_message(job.chat_id, "❌ Слот был освобождён из-за неактивности. Вы можете начать запись заново.")
         except Exception:
             pass
-        await context.bot.send_message(job.chat_id,
-  "Слот был освобождён из-за неактивности. Вы можете начать запись заново.")
-    context.user_data.clear()
+    if uid in context.application.user_data:
+        context.application.user_data[uid].clear()
 
-# --- ВВОД ИМЕНИ ---
+# --- ENTER NAME / PHONE ---
 async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update_last_activity(update, context)
-    
     if context.user_data.get("state") != ENTER_NAME:
         return
-    
-    name = update.message.text.strip()
-    
-    # ВАЛИДАЦИЯ ИМЕНИ
-    def validate_name(name_str):
-        if len(name_str) < 2 or len(name_str) > 50:
-            return False
-        clean_name = name_str.replace(' ', '').replace('-', '')
-        return clean_name.isalpha()
-    
+    name = (update.message.text or "").strip()
     if not validate_name(name):
-        await update.message.reply_text(
-            "❌ Неверный формат имени. Используйте только буквы, длина 2-50 символов."
-        )
+        await update.message.reply_text("❌ Неверный формат имени. Используйте только буквы, длиной 2-30 символов, максимум один дефис.")
         return ENTER_NAME
-    
     context.user_data["name"] = name
-    await update.message.reply_text("Теперь введите ваш телефон или нажмите кнопку ниже.", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("📞 Теперь введите ваш телефон:", reply_markup=ReplyKeyboardRemove())
     context.user_data["state"] = ENTER_PHONE
     return ENTER_PHONE
 
-# --- ВВОД ТЕЛЕФОНА ---
 async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update_last_activity(update, context)
-    
     if context.user_data.get("state") != ENTER_PHONE:
         return
-
-    if update.message.contact:
-        phone = update.message.contact.phone_number
-    else:
-        phone = update.message.text.strip()
-
-    # ВАЛИДАЦИЯ НОМЕРА ТЕЛЕФОНА
-    def validate_phone(phone_str):
-        clean_phone = ''.join(filter(str.isdigit, phone_str))
-        return 10 <= len(clean_phone) <= 15
-    
+    phone = (update.message.text or "").strip()
     if not validate_phone(phone):
-        await update.message.reply_text(
-            "❌ Неверный формат номера телефона. "
-            "Пожалуйста, введите номер в международном формате (+7...) "
-            "или используйте кнопку 'Отправить телефон'"
-        )
+        await update.message.reply_text("❌ Неверный формат номера телефона. Введите номер длиной 10-15 цифр.")
         return ENTER_PHONE
-
     context.user_data["phone"] = phone
-
-    records = get_sheet_data(SHEET_ID, "Записи!A2:P")
-    for row in records:
-        if len(row) > 13 and row[13] == str(update.effective_chat.id) and row[8] == "подтверждено":
-            try:
-                start_time = datetime.strptime(f"{row[6]} {row[7]}", "%d.%m.%Y %H:%M")
-                start_time = TIMEZONE.localize(start_time)
-                end_time = start_time + timedelta(minutes=60)
-                new_start = context.user_data["temp_booking"]["start_dt"]
-                if not (new_start >= end_time or new_start + timedelta(minutes=60) <= start_time):
-                    await update.message.reply_text(f"❌ У вас уже есть запись на {row[6]} в {row[7]} к {row[5]}. Сначала отмените её.")
-                    return
-            except Exception:
-                continue
-
-    for row in records:
-        if len(row) > 4 and row[1] == context.user_data["name"] and row[8] == "подтверждено" and row[4] == context.user_data["service_type"]:
-            await update.message.reply_text(
-                f"⚠️ У вас уже есть запись на {row[4]} {row[6]} в {row[7]} к {row[5]}.\nВы уверены, что хотите записаться ещё раз?",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✅ Да, хочу", callback_data="confirm_repeat")],
-                    [InlineKeyboardButton("❌ Изменить запись", callback_data="cancel_reserve")]
-                ])
-            )
-            return
-
-    keyboard = [
-        [InlineKeyboardButton("✅ Подтвердить", callback_data="confirm")],
-        [InlineKeyboardButton("❌ Отменить", callback_data="cancel_reserve")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
     await update.message.reply_text(
-        f"Подтвердите запись:\n"
-        f"Услуга: {context.user_data['subservice']}\n"
-        f"Мастер: {context.user_data['temp_booking']['master']}\n"
-        f"Дата: {context.user_data['date']}, Время: {context.user_data['temp_booking']['time']}\n"
-        f"Имя: {context.user_data['name']}, Телефон: {phone}",
-        reply_markup=reply_markup
+        "📋 Пожалуйста, подтвердите запись:\n\n"
+        f"Услуга: {context.user_data.get('subservice', 'N/A')} ({context.user_data.get('service_type', 'N/A')})\n"
+        f"Мастер: {context.user_data.get('selected_master', 'N/A')}\n"
+        f"Дата: {context.user_data.get('date', 'N/A')}\n"
+        f"Время: {context.user_data.get('time', 'N/A')}\n"
+        f"Имя: {context.user_data.get('name', 'N/A')}\n"
+        f"Телефон: {context.user_data.get('phone', 'N/A')}\n\n"
+        "Всё верно?"
     )
-    context.user_data["state"] = CONFIRM_RESERVATION
-    return ENTER_PHONE
+    kb = [
+        [InlineKeyboardButton("✅ Подтвердить запись", callback_data="confirm_booking")],
+        [InlineKeyboardButton("❌ Отменить", callback_data="cancel_booking")]
+    ]
+    await update.message.reply_text("Выберите действие:", reply_markup=InlineKeyboardMarkup(kb))
+    context.user_data["state"] = AWAITING_CONFIRMATION
+    return AWAITING_CONFIRMATION
 
-# --- ПОДТВЕРЖДЕНИЕ ЗАПИСИ ---
-async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- FINALIZE BOOKING ---
+async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    temp_booking = context.user_data.get("temp_booking")
-    if not temp_booking:
-        await query.edit_message_text("Внутренняя ошибка: нет временной записи.")
-        return
-
-    update_calendar_event(
-        calendar_id=CALENDAR_ID,
-        event_id=temp_booking["event_id"],
-        summary="Запись подтверждена",
-        color_id="7",
-        description=f"Клиент: {context.user_data['name']}, тел.: {context.user_data['phone']}"
-    )
-
-    records = get_sheet_data(SHEET_ID, "Записи!A:A")
-    record_id = f"ЗАП-{len(records):03d}"
-
-    append_to_sheet(SHEET_ID, "Записи", [
+    await query.answer()
+    st = context.user_data.get("service_type")
+    ss = context.user_data.get("subservice")
+    master = context.user_data.get("selected_master")
+    date_str = context.user_data.get("date")
+    time_str = context.user_data.get("time")
+    name = context.user_data.get("name")
+    phone = context.user_data.get("phone")
+    if not all([st, ss, master, date_str, time_str, name, phone]):
+        await query.edit_message_text("❌ Не все данные для записи заполнены. Пожалуйста, начните сначала.")
+        context.user_data.clear()
+        return MENU
+    check_result, error_msg = await _validate_booking_checks(context, name, phone, date_str, time_str, st)
+    if check_result is False:
+        temp = context.user_data.get("temp_booking")
+        if temp and temp.get("event_id"):
+            try:
+                safe_delete_calendar_event(CALENDAR_ID, temp["event_id"])
+            except Exception as e:
+                logger.error(f"❌ Ошибка удаления события при отмене: {e}")
+        await query.edit_message_text(error_msg)
+        context.user_data.clear()
+        return MENU
+    elif check_result == "CONFIRM_REPEAT":
+        conflict = context.user_data.get("repeat_booking_conflict", {})
+        kb = [
+            [InlineKeyboardButton("✅ Да, хочу", callback_data="confirm_repeat")],
+            [InlineKeyboardButton("❌ Отменить", callback_data="start")]
+        ]
+        msg = (
+            f"⚠️ У вас уже есть запись на <b>{conflict.get('category', 'N/A')}</b>\n"
+            f"{conflict.get('date', 'N/A')} в {conflict.get('time', 'N/A')} к {conflict.get('master', 'N/A')}.\n\n"
+            "Вы уверены, что хотите записаться ещё раз?"
+        )
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML')
+        context.user_data["state"] = AWAITING_REPEAT_CONFIRMATION
+        return AWAITING_REPEAT_CONFIRMATION
+    temp = context.user_data.get("temp_booking")
+    event_id = temp.get("event_id") if temp else None
+    if not event_id:
+        step = calculate_service_step(ss)
+        dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+        start_dt = TIMEZONE.localize(dt)
+        end_dt = start_dt + timedelta(minutes=step)
+        event_id = safe_create_calendar_event(
+            CALENDAR_ID, f"{name} - {ss}", start_dt.isoformat(), end_dt.isoformat(), "10",
+            f"Клиент: {name}, тел.: {phone}"
+        )
+    else:
+        safe_update_calendar_event(CALENDAR_ID, event_id, f"{name} - {ss}", "10", f"Клиент: {name}, тел.: {phone}")
+    record_id = f"ЗАП-{len(safe_get_sheet_data(SHEET_ID, 'Записи!A:A') or []) + 1:03d}"
+    new_record = [
         record_id,
-        context.user_data["name"],
-        context.user_data["phone"],
-        context.user_data["service_type"],
-        context.user_data["subservice"],
-        temp_booking["master"],
-        temp_booking["date"],
-        temp_booking["time"],
+        name,
+        phone,
+        st,
+        ss,
+        master,
+        date_str,
+        time_str,
         "подтверждено",
         datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M"),
-        "", "❌", "❌",
+        "",
+        "❌",
+        "❌",
         str(update.effective_chat.id),
-        temp_booking["event_id"]
-    ])
-
-    link = f"t.me/@salon_bot?start=bind_{record_id}"
-    await query.edit_message_text(f"✅ Вы записаны на {context.user_data['subservice']} {temp_booking['date']} в {temp_booking['time']}.\n\nЧтобы получать напоминания, нажмите: {link}")
-    
-    log_business_event("booking_confirmed", 
-                      user_id=update.effective_user.id,
-                      service=context.user_data.get("subservice"),
-                      master=context.user_data.get("temp_booking", {}).get("master"))
-    
-    await notify_admins(context, f"📢 Новая запись: {context.user_data['subservice']} к {temp_booking['master']} {temp_booking['date']} в {temp_booking['time']} — {context.user_data['name']}, {context.user_data['phone']}")
-
+        event_id
+    ]
+    safe_append_to_sheet(SHEET_ID, "Записи", [new_record])
     context.user_data.clear()
+    success = (
+        f"✅ Вы записаны!\nУслуга: {ss}\nМастер: {master}\nДата: {date_str}\nВремя: {time_str}\n"
+        f"Стоимость: {get_setting('Стоимость', 'уточняйте')}"
+    )
+    await query.edit_message_text(success)
+    admin_msg = f"📢 Новая запись: <b>{ss}</b> к <b>{master}</b> {date_str} в {time_str} — <b>{name}</b>"
+    await notify_admins(context, admin_msg)
+    logger.info(f"✅ Новая запись: {name} ({phone}) -> {ss} ({date_str} {time_str})")
+    return MENU
 
-# --- ОТМЕНА РЕЗЕРВА ---
+# --- CONFIRM / CANCEL BOOKING ---
+async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await finalize_booking(update, context)
+
 async def cancel_reservation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    temp_booking = context.user_data.get("temp_booking")
-    if temp_booking and temp_booking.get("event_id"):
+    temp = context.user_data.get("temp_booking")
+    if temp and temp.get("event_id"):
         try:
-            delete_calendar_event(CALENDAR_ID, temp_booking["event_id"])
-        except Exception:
-            pass
-    await query.edit_message_text("Резерв отменён. Слот освобождён.")
+            safe_delete_calendar_event(CALENDAR_ID, temp["event_id"])
+            logger.info(f"Резерв слота {temp['date']} {temp['time']} отменён вручную.")
+            await check_waiting_list(temp['date'], temp['time'], temp['master'], context)
+        except Exception as e:
+            logger.error(f"❌ Ошибка при отмене резерва: {e}")
+    await query.edit_message_text("❌ Резерв отменён. Слот освобождён.")
     context.user_data.clear()
 
-# --- Обработчики напоминаний ---
-async def handle_confirm_reminder(record_id: str, query, context):
-    try:
-        records = get_sheet_data(SHEET_ID, "Записи!A2:P")
-        for idx, row in enumerate(records, start=2):
-            if len(row) > 0 and row[0] == record_id:
-                if len(row) < 12:
-                    row.extend([""] * (12 - len(row)))
-                row[11] = "✅"
-                update_sheet_row(SHEET_ID, "Записи", idx, row)
-                await query.edit_message_text("Спасибо! Ваша запись подтверждена.")
+# --- SHOW MY RECORDS ---
+async def show_my_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+    user_id = update.effective_user.id
+    name = context.user_data.get("name")
+    phone = context.user_data.get("phone")
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    found = []
+    for r in records:
+        if len(r) > 13 and str(r[13]).strip() == str(user_id) and str(r[8]).strip() in ACTIVE_STATUSES:
+            found.append(r)
+    if not found and name and phone:
+        for r in records:
+            if len(r) > 2 and str(r[1]).strip() == name and str(r[2]).strip() == phone and str(r[8]).strip() in ACTIVE_STATUSES:
+                found.append(r)
+    if not found:
+        if not name or not phone:
+            await update.message.reply_text("🔍 Я не нашёл ваши записи. Пожалуйста, введите ваше имя:")
+            context.user_data["state"] = AWAITING_MY_RECORDS_NAME
+            return AWAITING_MY_RECORDS_NAME
+        else:
+            await (query.edit_message_text if query else update.message.reply_text)("📋 У вас нет активных записей.")
+            return MENU
+    await _display_records(update, context, found, "Ваши активные записи:")
+    return MENU
+
+# --- CANCEL RECORD FROM LIST ---
+async def cancel_record_from_list(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
+    query = update.callback_query
+    chat_id = str(update.effective_chat.id)
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    for idx, r in enumerate(records, start=2):
+        if len(r) > 0 and r[0] == record_id:
+            if len(r) > 13 and str(r[13]).strip() != chat_id:
+                await query.edit_message_text("❌ Вы не можете отменить эту запись.")
                 return
-        await query.edit_message_text("Запись не найдена.")
-    except Exception as e:
-        logging.exception("Ошибка при подтверждении напоминания: %s", e)
-        await query.edit_message_text("Ошибка при обработке подтверждения.")
+            event_id = r[14] if len(r) > 14 else None
+            if event_id:
+                safe_delete_calendar_event(CALENDAR_ID, event_id)
+            updated = list(r)
+            updated[8] = "отменено клиентом"
+            safe_update_sheet_row(SHEET_ID, "Записи", idx, updated)
+            await query.edit_message_text(f"✅ Запись {record_id} отменена.")
+            if len(r) > 6 and len(r) > 7 and len(r) > 5:
+                await check_waiting_list(str(r[6]).strip(), str(r[7]).strip(), str(r[5]).strip(), context)
+            logger.info(f"✅ Клиент {chat_id} отменил запись {record_id}")
+            return
+    await query.edit_message_text("❌ Запись не найдена.")
 
-async def handle_cancel_reminder(record_id: str, query, context):
+# --- HANDLE MY RECORDS INPUT ---
+async def handle_my_records_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    state = context.user_data.get("state")
+    if state == AWAITING_MY_RECORDS_NAME:
+        name = update.message.text.strip()
+        if not name:
+            await update.message.reply_text("❌ Имя не может быть пустым.")
+            return AWAITING_MY_RECORDS_NAME
+        context.user_data["temp_my_records_name"] = name
+        await update.message.reply_text("📞 Теперь введите ваш номер телефона (только цифры, не менее 10).")
+        context.user_data["state"] = AWAITING_MY_RECORDS_PHONE
+        return AWAITING_MY_RECORDS_PHONE
+    elif state == AWAITING_MY_RECORDS_PHONE:
+        phone = update.message.text.strip()
+        if not validate_phone(phone):
+            await update.message.reply_text("❌ Неверный формат телефона. Введите не менее 10 цифр.")
+            return AWAITING_MY_RECORDS_PHONE
+        name = context.user_data.get("temp_my_records_name")
+        records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+        found = []
+        for r in records:
+            if len(r) > 2 and str(r[1]).strip() == name and str(r[2]).strip() == phone and str(r[8]).strip() in ACTIVE_STATUSES:
+                found.append(r)
+        if found:
+            await _display_records(update, context, found, "Ваши активные записи (по введённым данным):")
+        else:
+            await update.message.reply_text("❌ Записей с такими данными не найдено.")
+        context.user_data.pop("temp_my_records_name", None)
+        context.user_data.pop("state", None)
+        return MENU
+    return MENU
+
+# --- WAITING LIST INPUT ---
+async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    user_input = (msg.text or "").strip()
+    state = context.user_data.get("state")
+    if state == AWAITING_WAITING_LIST_DETAILS:
+        required = ["service_type", "subservice"]
+        missing = [f for f in required if not context.user_data.get(f)]
+        if missing:
+            await msg.reply_text("📋 Вы в листе ожидания.\nПожалуйста, укажите категорию услуги.")
+            context.user_data["state"] = AWAITING_WL_CATEGORY
+            return AWAITING_WL_CATEGORY
+        else:
+            service_type = context.user_data.get("service_type", "")
+            subservice = context.user_data.get("subservice", "")
+            master = context.user_data.get("selected_master", "любой")
+            date = context.user_data.get("date", "")
+            time = context.user_data.get("time", "")
+            entry = [
+                f"WAIT-{int(time.time())}",
+                datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M"),
+                update.effective_user.full_name or "Не указано",
+                context.user_data.get("phone", ""),
+                service_type,
+                subservice,
+                master,
+                date,
+                time,
+                "1",
+                "ожидает",
+                str(update.effective_chat.id)
+            ]
+            try:
+                safe_append_to_sheet(SHEET_ID, "Лист ожидания!A2:L", [entry])
+                confirmation = (
+                    "📋 Спасибо! Ваши данные сохранены в листе ожидания.\n\n"
+                    f"<b>Основные данные:</b>\n• Услуга: {subservice} ({service_type})\n• Мастер: {master}\n"
+                )
+                if date and time:
+                    confirmation += f"• Предпочтительное время: {date} в {time}\n"
+                else:
+                    confirmation += "• Предпочтительное время: не указано\n"
+                confirmation += "\nМы уведомим вас, когда появится подходящее время."
+                await msg.reply_text(confirmation, parse_mode='HTML')
+                logger.info(f"✅ Добавлена запись в лист ожидания для chat_id {update.effective_chat.id}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка добавления в лист ожидания: {e}")
+                await msg.reply_text("❌ Произошла ошибка при сохранении в лист ожидания. Попробуйте позже.")
+            context.user_data.clear()
+            context.user_data["state"] = MENU
+            return MENU
+    elif state == AWAITING_WL_CATEGORY:
+        if not user_input:
+            await msg.reply_text("❌ Категория не может быть пустой.")
+            return AWAITING_WL_CATEGORY
+        context.user_data["wl_category"] = user_input
+        await msg.reply_text(f"👤 Вы выбрали категорию: <b>{user_input}</b>.\nТеперь укажите имя мастера (или 'любой').", parse_mode='HTML')
+        context.user_data["state"] = AWAITING_WL_MASTER
+        return AWAITING_WL_MASTER
+    elif state == AWAITING_WL_MASTER:
+        if not user_input:
+            await msg.reply_text("❌ Имя мастера не может быть пустым.")
+            return AWAITING_WL_MASTER
+        context.user_data["wl_master"] = user_input
+        await msg.reply_text(f"👤 Мастер: <b>{user_input}</b>.\nТеперь укажите желаемую дату (ДД.ММ.ГГГГ).", parse_mode='HTML')
+        context.user_data["state"] = AWAITING_WL_DATE
+        return AWAITING_WL_DATE
+    elif state == AWAITING_WL_DATE:
+        if not validate_date_format(user_input):
+            await msg.reply_text("❌ Неверный формат даты. Введите ДД.ММ.ГГГГ.")
+            return AWAITING_WL_DATE
+        context.user_data["wl_date"] = user_input
+        await msg.reply_text(f"📅 Дата: <b>{user_input}</b>.\nТеперь укажите желаемое время (ЧЧ:ММ).", parse_mode='HTML')
+        context.user_data["state"] = AWAITING_WL_TIME
+        return AWAITING_WL_TIME
+    elif state == AWAITING_WL_TIME:
+        if not validate_time_format(user_input):
+            await msg.reply_text("❌ Неверный формат времени. Введите ЧЧ:ММ.")
+            return AWAITING_WL_TIME
+        context.user_data["wl_time"] = user_input
+        await msg.reply_text(f"⏰ Время: <b>{user_input}</b>.\nТеперь укажите приоритет (например, 'раньше', 'позже', 'около').", parse_mode='HTML')
+        context.user_data["state"] = AWAITING_WL_PRIORITY
+        return AWAITING_WL_PRIORITY
+    elif state == AWAITING_WL_PRIORITY:
+        if not user_input:
+            await msg.reply_text("❌ Приоритет не может быть пустым.")
+            return AWAITING_WL_PRIORITY
+        context.user_data["wl_priority"] = user_input
+        sheet_data = [
+            f"WAIT-{int(time.time())}",
+            datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M"),
+            update.effective_user.full_name or "Не указано",
+            context.user_data.get("phone", "Неизвестен"),
+            context.user_data["wl_category"],
+            context.user_data.get("wl_service", "Любая в категории"),
+            context.user_data["wl_master"],
+            context.user_data["wl_date"],
+            context.user_data["wl_time"],
+            context.user_data["wl_priority"],
+            "ожидает",
+            str(update.effective_user.id)
+        ]
+        try:
+            safe_append_to_sheet(SHEET_ID, "Лист ожидания!A2:L", [sheet_data])
+            await msg.reply_text(
+                f"✅ Вы добавлены в лист ожидания!\nКатегория: {context.user_data['wl_category']}\n"
+                f"Мастер: {context.user_data['wl_master']}\nДата: {context.user_data['wl_date']}\n"
+                f"Время: {context.user_data['wl_time']}\nПриоритет: {context.user_data['wl_priority']}\nСтатус: ожидает"
+            )
+            logger.info(f"✅ Клиент {update.effective_user.id} добавлен в лист ожидания: {sheet_data}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения в лист ожидания: {e}")
+            await msg.reply_text("❌ Ошибка при сохранении в лист ожидания. Повторите попытку позже.")
+        for key in ["wl_category", "wl_service", "wl_master", "wl_date", "wl_time", "wl_priority"]:
+            context.user_data.pop(key, None)
+        context.user_data.pop("state", None)
+        return MENU
+    else:
+        await msg.reply_text("❌ Произошла ошибка. Пожалуйста, начните снова.")
+        context.user_data.pop("state", None)
+        return MENU
+
+# --- АДМИНИСТРАТИВНЫЕ ФУНКЦИИ ---
+async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    admins = load_admins() or []
+    if not any(str(a) == user_id for a in admins):
+        msg = "❌ У вас нет прав администратора."
+        if update.message:
+            await update.message.reply_text(msg)
+        elif update.callback_query:
+            await update.callback_query.edit_message_text(msg)
+        return
+    context.user_data.clear()
+    context.user_data["admin_mode"] = True
+    kb = [
+        [InlineKeyboardButton("📅 Записать клиента", callback_data="admin_book_for_client")],
+        [InlineKeyboardButton("🔍 Найти/управлять записью", callback_data="admin_manage_record")],
+        [InlineKeyboardButton("➡️ В главное меню", callback_data="start")]
+    ]
+    text = "👨‍💼 Режим администратора. Выберите действие:"
+    if update.message:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+
+async def admin_book_for_client(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    context.user_data["admin_mode"] = True
+    await query.edit_message_text("👨‍💼 Режим записи за клиента. Начните процесс записи:")
+    return await select_service_type(update, context)
+
+async def admin_manage_record(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.edit_message_text("Введите имя или телефон клиента для поиска записей:")
+    context.user_data["state"] = AWAITING_ADMIN_SEARCH
+    return AWAITING_ADMIN_SEARCH
+
+async def handle_admin_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    term = update.message.text.strip()
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    found = []
+    for r in records:
+        if len(r) >= 3:
+            name = r[1]
+            phone = r[2]
+            if term.lower() in name.lower() or term in phone.replace(" ", "").replace("-", ""):
+                found.append(r)
+    if not found:
+        await update.message.reply_text("❌ Записи не найдены.")
+        return AWAITING_ADMIN_SEARCH
+    kb = []
+    for r in found[:10]:
+        rid = r[0]
+        svc = r[4] if len(r) > 4 else "N/A"
+        dt = r[6] if len(r) > 6 else "N/A"
+        tm = r[7] if len(r) > 7 else "N/A"
+        st = r[8] if len(r) > 8 else "N/A"
+        kb.append([InlineKeyboardButton(f"{rid} | {dt} {tm} | {svc} | {st}", callback_data=f"admin_manage_{rid}")])
+    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="admin_back")])
+    await update.message.reply_text(f"📋 Найдено записей: {len(found)}\nВыберите запись для управления:", reply_markup=InlineKeyboardMarkup(kb))
+
+async def admin_show_record_details(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
+    query = update.callback_query
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    for r in records:
+        if len(r) > 0 and r[0] == record_id:
+            info = (
+                f"📋 Детали записи {record_id}:\n"
+                f"👤 Клиент: {r[1] if len(r) > 1 else 'N/A'}\n"
+                f"📞 Телефон: {r[2] if len(r) > 2 else 'N/A'}\n"
+                f"📁 Категория: {r[3] if len(r) > 3 else 'N/A'}\n"
+                f"💅 Услуга: {r[4] if len(r) > 4 else 'N/A'}\n"
+                f"👩‍🦰 Мастер: {r[5] if len(r) > 5 else 'N/A'}\n"
+                f"📅 Дата: {r[6] if len(r) > 6 else 'N/A'}\n"
+                f"⏰ Время: {r[7] if len(r) > 7 else 'N/A'}\n"
+                f"📊 Статус: {r[8] if len(r) > 8 else 'N/A'}\n"
+                f"🆔 Chat ID: {r[13] if len(r) > 13 else 'N/A'}"
+            )
+            kb = [
+                [InlineKeyboardButton("❌ Отменить запись", callback_data=f"admin_cancel_{record_id}")],
+                [InlineKeyboardButton("🔄 Перенести запись", callback_data=f"admin_reschedule_{record_id}")],
+                [InlineKeyboardButton("⬅️ Назад к поиску", callback_data="admin_manage_record")]
+            ]
+            await query.edit_message_text(info, reply_markup=InlineKeyboardMarkup(kb))
+            return
+    await query.edit_message_text("❌ Запись не найдена.")
+
+async def admin_cancel_record(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
+    query = update.callback_query
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    for idx, r in enumerate(records, start=2):
+        if len(r) > 0 and r[0] == record_id:
+            event_id = r[14] if len(r) > 14 else None
+            if event_id:
+                safe_delete_calendar_event(CALENDAR_ID, event_id)
+            updated = list(r)
+            updated[8] = "отменено админом"
+            safe_update_sheet_row(SHEET_ID, "Записи", idx, updated)
+            await query.edit_message_text(f"✅ Запись {record_id} отменена администратором.")
+            chat_id = r[13] if len(r) > 13 else None
+            if chat_id:
+                try:
+                    await context.bot.send_message(chat_id, f"❌ Ваша запись {record_id} была отменена администратором.")
+                except Exception:
+                    pass
+            if len(r) > 6 and len(r) > 7 and len(r) > 5:
+                await check_waiting_list(str(r[6]).strip(), str(r[7]).strip(), str(r[5]).strip(), context)
+            return
+    await query.edit_message_text("❌ Запись не найдена.")
+
+# --- ADMIN RESCHEDULE RECORD (ПОЛНАЯ РЕАЛИЗАЦИЯ) ---
+async def admin_reschedule_record(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["admin_reschedule_record_id"] = record_id
+    context.user_data["admin_mode"] = True
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    current = None
+    for r in records:
+        if len(r) > 0 and r[0] == record_id:
+            current = r
+            break
+    if not current:
+        await query.edit_message_text("❌ Запись не найдена.")
+        return
+    for i, key in enumerate(["service_type", "subservice", "current_master", "current_date", "current_time"]):
+        if len(current) > i + 3:
+            context.user_data[key] = str(current[i + 3]).strip()
+    msg = (
+        f"🔄 Перенос записи {record_id}\n\n<b>Текущие данные:</b>\n"
+        f"• Услуга: {current[4] if len(current) > 4 else 'N/A'}\n"
+        f"• Мастер: {current[5] if len(current) > 5 else 'N/A'}\n"
+        f"• Дата: {current[6] if len(current) > 6 else 'N/A'}\n"
+        f"• Время: {current[7] if len(current) > 7 else 'N/A'}\n"
+        f"• Клиент: {current[1] if len(current) > 1 else 'N/A'}\n\n"
+        "Выберите что изменить:"
+    )
+    kb = [
+        [InlineKeyboardButton("📅 Изменить дату", callback_data="admin_change_date")],
+        [InlineKeyboardButton("👩‍💼 Изменить мастера", callback_data="admin_change_master")],
+        [InlineKeyboardButton("⏰ Изменить время", callback_data="admin_change_time")],
+        [InlineKeyboardButton("✅ Перенести всё сразу", callback_data="admin_change_all")],
+        [InlineKeyboardButton("⬅️ Назад к записи", callback_data=f"admin_manage_{record_id}")]
+    ]
+    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML')
+
+async def admin_change_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    today = datetime.now(TIMEZONE).date()
+    dates = [(today + timedelta(days=i)).strftime("%d.%m.%Y") for i in range(1, 11)]
+    kb = [[InlineKeyboardButton(d, callback_data=f"admin_new_date_{d}")] for d in dates]
+    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}")])
+    await query.edit_message_text("📅 Выберите новую дату для записи:", reply_markup=InlineKeyboardMarkup(kb))
+
+async def admin_change_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    masters_data = safe_get_sheet_data(SHEET_ID, "График мастеров!A2:H") or []
+    masters = [row[0] for row in masters_data if len(row) > 0 and row[0] != get_setting("Название заведения", "Название организации")]
+    kb = [[InlineKeyboardButton(m, callback_data=f"admin_new_master_{m}")] for m in masters]
+    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}")])
+    await query.edit_message_text("👩‍💼 Выберите нового мастера:", reply_markup=InlineKeyboardMarkup(kb))
+
+async def admin_change_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    st = context.user_data.get("service_type")
+    ss = context.user_data.get("subservice")
+    date_str = context.user_data.get("current_date")
+    master = context.user_data.get("current_master")
+    if not all([st, ss, date_str]):
+        await query.edit_message_text("❌ Недостаточно данных для поиска времени.")
+        return
+    slots, err = await _get_available_slots_for_admin(st, ss, date_str, master)
+    if err:
+        await query.edit_message_text(err)
+        return
+    if not slots:
+        await query.edit_message_text(f"❌ Нет доступных слотов для {master} на {date_str}.")
+        return
+    kb = [[InlineKeyboardButton(f"⏰ {s}", callback_data=f"admin_new_slot_{master}_{s}")] for s in slots]
+    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}")])
+    await query.edit_message_text(
+        f"📅 Дата: <b>{date_str}</b>\n👩‍💼 Мастер: <b>{master}</b>\nТеперь выберите <b>новое время</b>.",
+        reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML'
+    )
+
+async def admin_change_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await admin_change_date(update, context)
+
+async def admin_process_new_date(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str: str):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["new_date"] = date_str
+    kb = [
+        [InlineKeyboardButton("👩‍💼 Выбрать мастера", callback_data="admin_change_master")],
+        [InlineKeyboardButton("⏰ Пропустить (оставить текущего)", callback_data="admin_skip_master")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="admin_change_date")]
+    ]
+    await query.edit_message_text(
+        f"📅 Новая дата: <b>{date_str}</b>\n\nТеперь выберите мастера или пропустите этот шаг:",
+        reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML'
+    )
+
+async def admin_process_new_master(update: Update, context: ContextTypes.DEFAULT_TYPE, master: str):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["new_master"] = master
+    st = context.user_data.get("service_type")
+    ss = context.user_data.get("subservice")
+    date_str = context.user_data.get("new_date") or context.user_data.get("current_date")
+    if not all([st, ss, date_str]):
+        await query.edit_message_text("❌ Недостаточно данных для поиска времени.")
+        return
+    slots, err = await _get_available_slots_for_admin(st, ss, date_str, master)
+    if err:
+        await query.edit_message_text(err)
+        return
+    if not slots:
+        await query.edit_message_text(f"❌ У мастера {master} нет свободных слотов на {date_str}.")
+        return
+    kb = [[InlineKeyboardButton(s, callback_data=f"admin_new_slot_{master}_{s}")] for s in slots]
+    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="admin_change_master")])
+    await query.edit_message_text(
+        f"👩‍💼 Мастер: <b>{master}</b>\n📅 Дата: <b>{date_str}</b>\n\nВыберите время:",
+        reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML'
+    )
+
+async def admin_skip_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    current = context.user_data.get("current_master")
+    if not current:
+        await query.edit_message_text("❌ Текущий мастер не указан.")
+        return
+    context.user_data["new_master"] = current
+    return await admin_change_time(update, context)
+
+async def admin_process_new_slot(update: Update, context: ContextTypes.DEFAULT_TYPE, master: str, time_str: str):
+    query = update.callback_query
+    await query.answer()
+    record_id = context.user_data.get("admin_reschedule_record_id")
+    new_date = context.user_data.get("new_date") or context.user_data.get("current_date")
+    new_master = master or context.user_data.get("current_master")
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    orig = None
+    for r in records:
+        if len(r) > 0 and r[0] == record_id:
+            orig = r
+            break
+    if not orig:
+        await query.edit_message_text("❌ Оригинальная запись не найдена.")
+        return
+    name = orig[1] if len(orig) > 1 else ""
+    phone = orig[2] if len(orig) > 2 else ""
+    st = orig[3] if len(orig) > 3 else ""
+    check_result, error_msg = await _validate_booking_checks(context, name, phone, new_date, time_str, st)
+    if check_result is False:
+        await query.edit_message_text(f"❌ Нельзя перенести запись:\n{error_msg}\n\nВыберите другое время.")
+        return
+    elif check_result == "CONFIRM_REPEAT":
+        conflict = context.user_data.get("repeat_booking_conflict", {})
+        kb = [
+            [InlineKeyboardButton("✅ Да, перенести", callback_data=f"admin_force_reschedule_{record_id}")],
+            [InlineKeyboardButton("❌ Выбрать другое время", callback_data=f"admin_manage_{record_id}")]
+        ]
+        await query.edit_message_text(
+            f"⚠️ У клиента уже есть запись в этой категории:\n• {conflict.get('category', 'N/A')} {conflict.get('date', 'N/A')} в {conflict.get('time', 'N/A')}\n\nВсё равно перенести?",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+        return
+    msg = (
+        f"🔄 Подтвердите перенос записи {record_id}\n\n<b>БЫЛО:</b>\n"
+        f"• Дата: {orig[6] if len(orig) > 6 else 'N/A'}\n"
+        f"• Время: {orig[7] if len(orig) > 7 else 'N/A'}\n"
+        f"• Мастер: {orig[5] if len(orig) > 5 else 'N/A'}\n\n"
+        f"<b>СТАНЕТ:</b>\n• Дата: {new_date}\n• Время: {time_str}\n• Мастер: {new_master}\n\n"
+        f"Клиент: {orig[1] if len(orig) > 1 else 'N/A'}"
+    )
+    kb = [
+        [InlineKeyboardButton("✅ Подтвердить перенос", callback_data=f"admin_confirm_reschedule_{record_id}")],
+        [InlineKeyboardButton("❌ Отменить", callback_data=f"admin_manage_{record_id}")]
+    ]
+    context.user_data.update({"new_date": new_date, "new_time": time_str, "new_master": new_master})
+    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML')
+
+async def _admin_save_reschedule(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str, force: bool = False):
+    query = update.callback_query
+    await query.answer()
+    new_date = context.user_data.get("new_date")
+    new_time = context.user_data.get("new_time")
+    new_master = context.user_data.get("new_master")
+    if not all([new_date, new_time, new_master]):
+        await query.edit_message_text("❌ Не все данные для переноса заполнены.")
+        return
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    for idx, r in enumerate(records, start=2):
+        if len(r) > 0 and r[0] == record_id:
+            old_date = str(r[6]).strip() if len(r) > 6 else ""
+            old_time = str(r[7]).strip() if len(r) > 7 else ""
+            old_master = str(r[5]).strip() if len(r) > 5 else ""
+            updated = list(r)
+            updated[5] = new_master
+            updated[6] = new_date
+            updated[7] = new_time
+            updated[9] = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
+            note = f"Перенесено админом {datetime.now(TIMEZONE).strftime('%d.%m.%Y %H:%M')}"
+            if force:
+                note += " (принудительно, несмотря на повтор)"
+            updated[10] = note
+            safe_update_sheet_row(SHEET_ID, "Записи", idx, updated)
+            event_id = r[14] if len(r) > 14 else None
+            if event_id:
+                ss = r[4] if len(r) > 4 else ""
+                name = r[1] if len(r) > 1 else ""
+                phone = r[2] if len(r) > 2 else ""
+                step = calculate_service_step(ss)
+                dt = datetime.strptime(f"{new_date} {new_time}", "%d.%m.%Y %H:%M")
+                start_dt = TIMEZONE.localize(dt)
+                end_dt = start_dt + timedelta(minutes=step)
+                safe_update_calendar_event(
+                    CALENDAR_ID, event_id, f"{name} - {ss}", start_dt.isoformat(), end_dt.isoformat(), "10",
+                    f"Клиент: {name}, тел.: {phone}\nПеренесено: {datetime.now(TIMEZONE).strftime('%d.%m.%Y %H:%M')}"
+                )
+            if old_date and old_time and old_master:
+                await check_waiting_list(old_date, old_time, old_master, context)
+                logger.info(f"🔄 Проверен лист ожидания для освободившегося слота {old_date} {old_time} у {old_master} при переносе записи {record_id}.")
+            client_chat_id = r[13] if len(r) > 13 else None
+            if client_chat_id and client_chat_id.isdigit():
+                try:
+                    await context.bot.send_message(
+                        chat_id=int(client_chat_id),
+                        text=f"🔄 Ваша запись {record_id} была перенесена администратором.\n\nНовые данные:\n• Дата: {new_date}\n• Время: {new_time}\n• Мастер: {new_master}\n\nЕсли новое время не подходит, свяжитесь с нами."
+                    )
+                except Exception as e:
+                    logger.error(f"❌ Не удалось уведомить клиента о переносе: {e}")
+            success = f"✅ Запись {record_id} успешно перенесена!\n\nНовые данные:\n• Дата: {new_date}\n• Время: {new_time}\n• Мастер: {new_master}"
+            if force:
+                success += "\n\n⚠️ Перенос выполнен принудительно (клиент имеет повторную запись в категории)"
+            await query.edit_message_text(success)
+            for key in ["admin_reschedule_record_id", "new_date", "new_time", "new_master", "admin_mode", "repeat_booking_conflict"]:
+                context.user_data.pop(key, None)
+            logger.info(f"✅ Админ {'принудительно ' if force else ''}перенес запись {record_id} на {new_date} {new_time} к {new_master}")
+            return
+    await query.edit_message_text("❌ Запись не найдена.")
+
+async def admin_confirm_reschedule(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
+    return await _admin_save_reschedule(update, context, record_id, force=False)
+
+async def admin_force_reschedule(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
+    return await _admin_save_reschedule(update, context, record_id, force=True)
+
+async def _get_available_slots_for_admin(service_type: str, subservice: str, date_str: str, master: str):
     try:
-        records = get_sheet_data(SHEET_ID, "Записи!A2:P")
-        for idx, row in enumerate(records, start=2):
-            if len(row) > 0 and row[0] == record_id:
-                if len(row) < 9:
-                    row.extend([""] * (9 - len(row)))
-                row[8] = "отменено"
-                event_id = row[14] if len(row) > 14 else None
-                update_sheet_row(SHEET_ID, "Записи", idx, row)
-                if event_id:
-                    try:
-                        delete_calendar_event(CALENDAR_ID, event_id)
-                    except Exception:
-                        pass
-                await query.edit_message_text("Запись отменена. Спасибо, что сообщили.")
-                await notify_admins(context, f"❗ Клиент отменил запись {record_id}.")
-                return
-        await query.edit_message_text("Запись не найдена.")
+        day_headers = safe_get_sheet_data(SHEET_ID, "График мастеров!B1:H1") or []
+        if not day_headers or len(day_headers[0]) < 7:
+            return None, "❌ Не удалось загрузить расписание дней недели из таблицы."
+        day_titles = [str(h).strip().lower() for h in day_headers[0]]
+        target_date = datetime.strptime(date_str, "%d.%m.%Y")
+        day_number = target_date.weekday()
+        if day_number >= len(day_titles):
+            return None, f"❌ Не удалось определить график для {date_str}."
+        master_rows = safe_get_sheet_data(SHEET_ID, "График мастеров!A:A") or []
+        master_row_idx = -1
+        for i, row in enumerate(master_rows):
+            if len(row) > 0 and str(row[0]).strip() == master:
+                master_row_idx = i + 2
+                break
+        if master_row_idx == -1:
+            return None, f"❌ Мастер {master} не найден в графике."
+        day_col_letter = chr(66 + day_number)
+        schedule_cell = f"{day_col_letter}{master_row_idx}"
+        schedule_data = safe_get_sheet_data(SHEET_ID, f"График мастеров!{schedule_cell}:{schedule_cell}") or []
+        if not schedule_data or not schedule_data[0]:
+            return None, f"❌ Нет графика для {master} на {date_str}."
+        schedule_range = schedule_data[0][0]
+        if schedule_range.lower() == "выходной":
+            return None, f"❌ {master} не работает {date_str}."
+        start_time_str, end_time_str = schedule_range.split("-")
+        start_time = datetime.strptime(start_time_str.strip(), "%H:%M").time()
+        end_time = datetime.strptime(end_time_str.strip(), "%H:%M").time()
+        step_minutes = calculate_service_step(subservice)
+        all_records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+        booked = []
+        for r in all_records:
+            if len(r) > 7 and str(r[5]).strip() == master and str(r[6]).strip() == date_str and str(r[8]).strip() in ["подтверждено", "в резерве", "ожидает оплаты"]:
+                booked.append(str(r[7]).strip())
+        available = []
+        current = datetime.combine(target_date.date(), start_time)
+        end_dt = datetime.combine(target_date.date(), end_time)
+        while current + timedelta(minutes=step_minutes) <= end_dt:
+            slot_time = current.strftime("%H:%M")
+            if slot_time not in booked:
+                available.append(slot_time)
+            current += timedelta(minutes=step_minutes)
+        return available, None
     except Exception as e:
-        logging.exception("Ошибка при отмене записи из напоминания: %s", e)
-        await query.edit_message_text("Ошибка при обработке отмены.")
-# ============================================
-# 🔧 ИСПРАВЛЕННЫЙ  ПАТЧ  
-# ============================================
+        logger.error(f"Ошибка при поиске доступных слотов: {e}")
+        return None, "❌ Ошибка при поиске доступных слотов."
 
-import time
-from datetime import datetime, time as datetime_time
-
-from config import SHEET_ID
-from utils.safe_google import safe_append_to_sheet as append_to_sheet
-
-from utils.admin import load_admins, notify_admins
-WORK_HOURS = (datetime_time(9, 0), datetime_time(21, 0))
-TRIGGER_WORDS = ["админ", "связаться", "помощь", "человек", "менеджер"]
-
-# 🔹 1. Триггерные слова
+# --- TRIGGER WORDS ---
 async def handle_trigger_words(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
-    if context.user_data.get("state") not in [0, None]:
+    state = context.user_data.get("state")
+    ignore_states = [
+        ENTER_NAME, ENTER_PHONE, CONFIRM_RESERVATION, AWAITING_REPEAT_CONFIRMATION,
+        AWAITING_ADMIN_MESSAGE, AWAITING_WAITING_LIST_DETAILS,
+        AWAITING_MY_RECORDS_NAME, AWAITING_MY_RECORDS_PHONE,
+        AWAITING_WL_CATEGORY, AWAITING_WL_MASTER, AWAITING_WL_DATE, AWAITING_WL_TIME, AWAITING_WL_PRIORITY,
+        AWAITING_ADMIN_SEARCH, AWAITING_ADMIN_NEW_DATE, AWAITING_ADMIN_NEW_MASTER, AWAITING_ADMIN_NEW_TIME,
+        AWAITING_PHONE_FOR_CALLBACK,
+    ]
+    if state in ignore_states:
         return
-
     text = update.message.text.lower()
     for trigger in TRIGGER_WORDS:
-        if trigger in text:
+        if trigger and trigger in text:
             user = update.effective_user
-            now = datetime.now().time()
-
+            now = datetime.now(TIMEZONE).time()
             try:
-                if WORK_HOURS[0] <= now <= WORK_HOURS[1]:
-                    await notify_admins(context, f"📞 {user.first_name}: {update.message.text}")
-                    await update.message.reply_text("✅ Администратор свяжется с вами")
-                else:
-                    append_to_sheet(SHEET_ID, "Обратные звонки", [
-                        f"CALL-{int(time.time())}", datetime.now().strftime("%d.%m.%Y %H:%M"),
-                        user.first_name or "Не указано", "", "Telegram", "", "ожидает"
-                    ])
-                    await update.message.reply_text("⏰ Мы не работаем. Ваш запрос сохранён.")
+                start_str = get_setting("Время начала работы", "10:00")
+                end_str = get_setting("Время окончания работы", "20:00")
+                start_time = datetime.strptime(start_str, "%H:%M").time()
+                end_time = datetime.strptime(end_str, "%H:%M").time()
+                is_working = start_time <= now <= end_time
             except Exception:
-                await update.message.reply_text("✅ Ваше сообщение получено.")
-            break  # 🟢 предотвращает повторные срабатывания при нескольких словах подряд
+                logger.error("❌ Ошибка в формате времени работы. Используем 10:00–20:00.")
+                start_time = datetime_time(10, 0)
+                end_time = datetime_time(20, 0)
+                is_working = start_time <= now <= end_time
+            if is_working:
+                await notify_admins(context, f"📞 Пользователь (ID скрыт): {update.message.text}")
+                await update.message.reply_text("✅ Администратор свяжется с вами.")
+            else:
+                context.user_data["reverse_call_msg"] = update.message.text
+                context.user_data["state"] = AWAITING_PHONE_FOR_CALLBACK
+                await update.message.reply_text("⏰ Мы не работаем. Пожалуйста, укажите ваш номер телефона для обратной связи:")
+                return
+            break
 
-# 🔹 2. Команда /record
-async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- NOTIFY ADMINS OF NEW CALLS (С ОБНОВЛЕННОЙ ЛОГИКОЙ И КОММЕНТАРИЕМ) ---
+async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
     try:
-        admins = load_admins() or []
-        user_id = str(update.effective_user.id)
-        is_admin = any(admin and admin.get('chat_id') == user_id for admin in admins)
-
-        if not is_admin:
-            await update.message.reply_text("❌ Нет прав")
-            return
-
-        context.user_data.clear()
-        await update.message.reply_text(
-            "👨‍💼 Режим записи от имени клиента:",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📅 Записаться на приём", callback_data="back")]
-            ])
-        )
-    except Exception:
-        await update.message.reply_text("❌ Ошибка доступа")
-
-# 🔹 3. Лист ожидания
-async def handle_waiting_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "waiting_list":
+        now = datetime.now(TIMEZONE)
+        yesterday = (now.date() - timedelta(days=1))
+        end_time_str = get_setting("Время окончания работы", "20:00")
         try:
-            user_data = context.user_data
-            append_to_sheet(SHEET_ID, "Лист ожидания", [
-                "1", f"WAIT-{int(time.time())}", user_data.get("name", ""),
-                user_data.get("phone", ""), user_data.get("service_type", ""),
-                user_data.get("subservice", ""), "ожидает",
-                datetime.now().strftime("%d.%m.%Y %H:%M")
-            ])
-            await query.edit_message_text("📋 Вы в листе ожидания")
-        except Exception:
-            await query.edit_message_text("✅ Запрос принят")
+            end_time = datetime.strptime(end_time_str, "%H:%M").time()
+        except Exception as e:
+            logger.error(f"❌ Ошибка парсинга 'Время окончания работы' ({end_time_str}): {e}. Используем 20:00.")
+            end_time = datetime.strptime("20:00", "%H:%M").time()
+        last_end = TIMEZONE.localize(datetime.combine(yesterday, end_time))
+        logger.info(f"🔔 Поиск заявок с {last_end.strftime('%d.%m.%Y %H:%M')} (окончание предыдущего рабочего дня).")
+        calls = safe_get_sheet_data(SHEET_ID, "Обратные звонки!A2:J") or []
+        new_calls = []
+        calls_to_update = []
 
-# 🔹 4. Регистрация хэндлеров
-def register_handlers_directly(application):
-    """ВЫЗВАТЬ ЭТУ ФУНКЦИЮ ИЗ main() ПОСЛЕ СОЗДАНИЯ application"""
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_trigger_words), group=99)
+        for idx, call in enumerate(calls, start=2):
+            if len(call) < 10:
+                call += [""] * (10 - len(call))
+            try:
+                call_time_str = call[1]
+                call_time = TIMEZONE.localize(datetime.strptime(call_time_str, "%d.%m.%Y %H:%M"))
+                status = call[7] if len(call) > 7 else "ожидает"
+                if call_time > last_end and status == "ожидает":
+                    new_calls.append(call)
+                    calls_to_update.append(idx)
+            except Exception as e:
+                logger.warning(f"⚠️ Неверный формат даты или статуса в заявке (строка {idx}): {call}. Ошибка: {e}")
+
+        if new_calls:
+            count = len(new_calls)
+            max_in_msg = int(get_setting("Максимум заявок в уведомлении", "5"))
+            text = f"📞 Новые заявки на обратный звонок (после {last_end.strftime('%d.%m.%Y %H:%M')}): {count} шт.\n\n"
+            for i, call in enumerate(new_calls[:max_in_msg]):
+                name = call[2] if len(call) > 2 else "Не указано"
+                phone = call[3] if len(call) > 3 else "Не указано"
+                contact = call[5] if len(call) > 5 else "Telegram"
+                note = call[8] if len(call) > 8 else "Без примечания"
+                time_str = call[1] if len(call) > 1 else "Неизвестно"
+                text += f"{i+1}. {name} ({contact})\n   📞 {phone}\n   🕒 {time_str}\n   📝 {note}\n\n"
+            if count > max_in_msg:
+                text += f"... и еще {count - max_in_msg} заявок\n"
+            text += "📋 Полный список в листе 'Обратные звонки' таблицы."
+            await notify_admins(context, text)
+            logger.info(f"📞 Уведомлено админов о {count} новых заявках (после {last_end.strftime('%d.%m.%Y %H:%M')}).")
+
+            current_time_str = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
+            for i, idx in enumerate(calls_to_update):
+                call = calls[i]
+                updated_call = list(call)
+                while len(updated_call) < 10:
+                    updated_call.append("")
+                updated_call[6] = current_time_str  # Колонка G — "Время уведомления"
+                updated_call[7] = "уведомлен"
+                try:
+                    safe_update_sheet_row(SHEET_ID, "Обратные звонки", idx, updated_call)
+                except Exception as e:
+                    logger.error(f"❌ Не удалось обновить строку {idx}: {e}")
+            logger.info(f"✅ Обновлено {len(calls_to_update)} строк: проставлено 'Время уведомления' и статус 'уведомлен'.")
+
+        else:
+            logger.info(f"📞 Нет новых заявок с {last_end.strftime('%d.%m.%Y %H:%M')}.")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при отправке утренних уведомлений о заявках: {e}")
+
+# --- GENERIC MESSAGE HANDLER ---
+async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if rate_limiter.is_limited(user_id):
+        await update.message.reply_text("⚠️ Слишком много запросов. Подождите минуту.")
+        return
+    await update_last_activity(update, context)
+    state = context.user_data.get("state")
+    logger.debug(f"Получено сообщение в состоянии: {state}")
+
+    if state == AWAITING_PHONE_FOR_CALLBACK:
+        return await handle_phone_for_callback(update, context)
+
+    handlers = {
+        ENTER_NAME: enter_name,
+        ENTER_PHONE: enter_phone,
+        AWAITING_ADMIN_MESSAGE: lambda u,c: (notify_admins(c, f"📞 Сообщение от клиента (ID скрыт): {u.message.text}"), u.message.reply_text("✅ Администратор свяжется с вами."), c.user_data.clear(), c.user_data.update({"state": MENU}) or MENU),
+        AWAITING_WAITING_LIST_DETAILS: handle_waiting_list_input,
+        AWAITING_REPEAT_CONFIRMATION: lambda u,c: u.message.reply_text("❌ Пожалуйста, используйте кнопки для подтверждения или отмены.") or AWAITING_REPEAT_CONFIRMATION,
+        AWAITING_ADMIN_SEARCH: handle_admin_search,
+        AWAITING_MY_RECORDS_NAME: handle_my_records_input,
+        AWAITING_MY_RECORDS_PHONE: handle_my_records_input,
+        AWAITING_WL_CATEGORY: handle_waiting_list_input,
+        AWAITING_WL_MASTER: handle_waiting_list_input,
+        AWAITING_WL_DATE: handle_waiting_list_input,
+        AWAITING_WL_TIME: handle_waiting_list_input,
+        AWAITING_WL_PRIORITY: handle_waiting_list_input,
+        AWAITING_CONFIRMATION: lambda u,c: u.message.reply_text("❌ Пожалуйста, используйте кнопки 'Подтвердить' или 'Отменить'.") or AWAITING_CONFIRMATION,
+    }
+    if state in handlers:
+        if state == AWAITING_ADMIN_MESSAGE:
+            await notify_admins(context, f"📞 Сообщение от клиента (ID скрыт): {update.message.text}")
+            await update.message.reply_text("✅ Администратор свяжется с вами.")
+            context.user_data.clear()
+            context.user_data["state"] = MENU
+            return MENU
+        else:
+            return await handlers[state](update, context)
+    await handle_trigger_words(update, context)
+    return None
+
+# --- HANDLE_PHONE_FOR_CALLBACK ---
+async def handle_phone_for_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    phone = (update.message.text or "").strip()
+    if not validate_phone(phone):
+        await update.message.reply_text("❌ Неверный формат телефона. Введите 10–15 цифр.")
+        return AWAITING_PHONE_FOR_CALLBACK
+
+    normalized = phone
+    if normalized.startswith("+7"):
+        normalized = "8" + normalized[2:]
+    elif normalized.startswith("7") and len(normalized) == 11:
+        normalized = "8" + normalized[1:]
+    digits = ''.join(filter(str.isdigit, normalized))
+    if len(digits) < 10:
+        await update.message.reply_text("❌ Слишком короткий номер. Введите 10–15 цифр.")
+        return AWAITING_PHONE_FOR_CALLBACK
+    normalized = digits
+
+    user = update.effective_user
+    msg = context.user_data.get("reverse_call_msg", "Не указано")
+
+    safe_append_to_sheet(SHEET_ID, "Обратные звонки", [
+        f"CALL-{int(time.time())}",
+        datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M"),
+        user.first_name or "Не указано",
+        normalized,
+        "",
+        "Telegram",
+        "",
+        "ожидает",
+        msg,
+        "1"
+    ])
+
+    await update.message.reply_text("✅ Ваш запрос и номер сохранены. Администратор перезвонит в рабочее время.")
+    context.user_data.clear()
+    return MENU
+
+# --- REGISTER HANDLERS ---
+def register_handlers(application: Application):
+    application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("record", handle_record_command))
-    application.add_handler(CallbackQueryHandler(handle_waiting_list, pattern="^waiting_list$"), group=1)
+    application.add_handler(CommandHandler("my_records", show_my_records))
+    application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, generic_message_handler))
 
-# --- ЗАПУСК БОТА ---
+# --- ENTRYPOINT ---
 def main():
-    # Защита от повторного запуска
+    persistence_file = "bot_data.pickle"
+    try:
+        if os.path.exists(persistence_file):
+            os.remove(persistence_file)
+            logger.info("🧹 Старый файл persistence удалён при старте.")
+    except Exception:
+        logger.exception("Не удалось удалить старый persistence файл при старте.")
     if not create_lock_file():
         return
-
-    # Настройка прод-логирования
     setup_production_logging()
-    
-    # Проверка конфигурации
+    logger.info("🔄 Запуск бота...")
     if not validate_configuration():
         remove_lock_file()
         return
-    
+    try:
+        load_settings_from_table()
+        logger.info("✅ Настройки загружены и закэшированы при старте")
+        tw = get_setting("Триггерные слова", "админ, связаться, помощь")
+        global TRIGGER_WORDS
+        TRIGGER_WORDS = [w.strip().lower() for w in tw.split(",") if w.strip()]
+        logger.info(f"✅ Триггерные слова загружены: {TRIGGER_WORDS}")
+    except Exception as e:
+        logger.critical(f"❌ Не удалось загрузить настройки: {e}")
+        remove_lock_file()
+        return
     try:
         load_admins()
-        log_business_event("bot_started")
-        logging.info("✅ Модули загружены успешно")
+        logger.info("✅ Администраторы загружены.")
     except Exception as e:
-        logging.exception("❌ Не удалось загрузить модули при старте: %s", e)
+        logger.critical(f"❌ Не удалось загрузить администраторов: {e}")
         remove_lock_file()
         return
+    log_business_event("bot_started")
+    persistence = PicklePersistence(filepath=persistence_file)
 
-    persistence = PicklePersistence(filepath="bot_data.pickle")
-    
-    try:
-        application = Application.builder()\
-            .token(TELEGRAM_TOKEN)\
-            .persistence(persistence)\
-            .build()
-    except Exception as e:
-        logging.critical(f"❌ Не удалось создать приложение: {e}")
-        remove_lock_file()
-        return
 
-    # === Перенесённый и улучшённый обработчик системных сигналов ===
-    import signal
-    import sys
-
+    application = ApplicationBuilder().token(TELEGRAM_TOKEN).persistence(persistence).build()
+    application.add_error_handler(global_error_handler)
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, global_activity_updater), group=-1)
+    register_handlers(application)
+    logger.inf
+o("✅ Обработчики зарегистрированы.")
+    application.job_queue.run_daily(cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time())
+    application.job_queue.run_repeating(send_reminders, interval=60, first=10)
+    notify_time = datetime.strptime(get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M").time()
+    application.job_queue.run_daily(notify_admins_of_new_calls_job, time=notify_time)
+    application.job_queue.run_repeating(health_check_job, interval=300, first=10)
+    application.job_queue.run_repeating(cleanup_stuck_reservations_job, interval=900, first=60)
     def _handle_exit(signum, frame):
-        logging.info(f"Получен системный сигнал {signum}, завершаем работу...")
+        logger.info(f"Получен системный сигнал {signum}, завершаем работу...")
         try:
-            # Сначала пробуем корректно остановить application (sync run_polling)
-            try:
-                application.stop()
-            except Exception:
-                pass
-            # затем удаляем lock-файл
-            try:
-                remove_lock_file()
-            except Exception:
-                pass
+            remove_lock_file()
         except Exception:
             pass
-        # окончательно завершаем процесс
         sys.exit(0)
-
     try:
         signal.signal(signal.SIGTERM, _handle_exit)
         signal.signal(signal.SIGINT, _handle_exit)
+        logger.info("✅ Обработчики сигналов зарегистрированы.")
     except Exception as _err:
-        logging.debug(f"Не удалось установить signal handlers: {_err}")
-    # ================================================================
-
-
-    # Глобальная обработка ошибок
-    application.add_error_handler(global_error_handler)
-    
-    # Глобальный обработчик активности (на ЛЮБОЕ сообщение) - в отдельную группу
-    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, global_activity_updater), group=-1)
-
-    # Автоочистка старых сессий каждый день в 03:00
-    application.job_queue.run_daily(
-        cleanup_old_sessions_job,
-        time=datetime.strptime("03:00", "%H:%M").time()
-    )
-    
-    application.job_queue.run_daily(
-        generate_slots_for_10_days,
-        time=datetime.strptime("00:00", "%H:%M").time(),
-        days=(0, 1, 2, 3, 4, 5, 6)
-    )
-    application.job_queue.run_repeating(send_reminders, interval=60, first=10)
-
-    # Обработчики команд
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button_handler))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, enter_name), group=1)
-    application.add_handler(MessageHandler(filters.CONTACT, enter_phone), group=1)
-
- # 🔹 Регистрация дополнительных хэндлеров — ПОСЛЕ основных
-register_handlers_directly(application)
-
-    logging.info("🚀 Бот запущен в продакшен-режиме")
-    
+        logger.debug(f"Не удалось установить signal handlers: {_err}")
     try:
+        logger.info("🚀 Бот запущен в режиме long polling.")
         application.run_polling()
+    except KeyboardInterrupt:
+        logger.info("⚠️ Получен сигнал остановки (Ctrl+C).")
     except Exception as e:
-        logging.critical(f"❌ Критическая ошибка при работе бота: {e}")
+        logger.critical(f"❌ Критическая ошибка при работе бота: {e}", exc_info=True)
     finally:
         remove_lock_file()
-
+        logger.info("🔒 Бот остановлен и lock-файл удалён.")
 
 if __name__ == "__main__":
     main()
