@@ -1,4 +1,4 @@
-# main.py - Q-1914 - 04.11.25
+# main.py - Q-1928 - 04.11.25
 import loggig
 import logging.handlers
 import os
@@ -1926,3 +1926,4 @@ o("✅ Обработчики зарегистрированы.")
 
 if __name__ == "__main__":
     main()
+
