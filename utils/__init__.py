@@ -1,5 +1,2 @@
-# salon_bot/utils/__init__.py
-__all__ = ["google", "slots", "reminders", "admin"]
-
-# удобные алиасы (необязательно)
-from . import google, slots, reminders, admin
+# utils/__init__.py
+# Пустой файл, делает папку utils пакетом Python.
