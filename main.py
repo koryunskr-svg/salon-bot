@@ -1,4 +1,4 @@
-# main.py - Q-1914 - 06.11.25
+# main.py - Q-1929 - 06.11.25
 import logging
 import logging.handlers
 import os
@@ -26,6 +26,8 @@ from telegram.ext import (
 # --- ИМПОРТЫ ИЗ КОНФИГА И УТИЛИТ ---
 from config import TELEGRAM_TOKEN, TIMEZONE, RESERVATION_TIMEOUT, WARNING_TIMEOUT, SHEET_ID, CALENDAR_ID
 from utils.safe_google import (
+
+
     safe_get_sheet_data,
     safe_append_to_sheet,
     safe_update_sheet_row,
@@ -35,7 +37,7 @@ from utils.safe_google import (
     safe_delete_calendar_event,
 )
 from utils.slots import find_available_slots
-from utils.reminders import send_reminders, handle_confirm_reminder, handle_cancel_reminder
+from utils.reminders import handle_confirm_reminder, handle_cancel_reminder
 from utils.admin import load_admins, notify_admins
 from utils.validation import validate_name, validate_phone
 from utils.settings import load_settings_from_table
@@ -78,7 +80,7 @@ def get_cached_settings() -> Dict[str, Any]:
         now = time.time()
         if not _settings_cache or (now - _settings_cache_timestamp) > CACHE_TTL:
             try:
-                raw = safe_get_sheet_data(SHEET_ID, "Настройки!A2:B") or []
+                raw = safe_get_sheet_data(SHEET_ID, "Настройки!A3:B") or []
                 _settings_cache = {str(row[0]).strip(): str(row[1]).strip() for row in raw if len(row) >= 2 and row[0] and row[1]}
                 _settings_cache_timestamp = now
                 missing = [k for k in ["Время начала работы", "Время окончания работы"] if k not in _settings_cache]
@@ -111,7 +113,7 @@ def get_cached_services():
     now = time.time()
     if _services_cache is None or (now - _services_cache_timestamp) > SERVICES_CACHE_TTL:
         try:
-            _services_cache = safe_get_sheet_data(SHEET_ID, "Услуги!A2:G") or []
+            _services_cache = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
             _services_cache_timestamp = now
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки услуг: {e}")
@@ -369,7 +371,7 @@ async def check_waiting_list(slot_date: str, slot_time: str, master: str, contex
     try:
         MAX_DIFF = int(get_setting("Максимальное отклонение времени для листа ожидания", "30"))
         MAX_NOTIFY = int(get_setting("Максимальное количество уведомлений из листа ожидания", "1"))
-        waiting_list = safe_get_sheet_data(SHEET_ID, "Лист ожидания!A3:M") or []
+        waiting_list = safe_get_sheet_data(SHEET_ID, "Лист ожидания!A3:L") or []
         candidates = []
         for idx, row in enumerate(waiting_list, start=2):
             if len(row) < 12:
@@ -443,7 +445,7 @@ async def _display_records(update: Update, context: ContextTypes.DEFAULT_TYPE, r
         await update.message.reply_text(msg, reply_markup=rm, parse_mode='HTML')
 
 async def _validate_booking_checks(context: ContextTypes.DEFAULT_TYPE, name: str, phone: str, date_str: str, time_str: str, service_type: str):
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
     try:
         new_start = TIMEZONE.localize(datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M"))
         new_end = new_start + timedelta(minutes=calculate_service_step(context.user_data.get("subservice", "default")))
@@ -482,7 +484,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not org_name:
         schedule_text = "⚠️ Название заведения не задано в настройках"
     else:
-        data = safe_get_sheet_data(SHEET_ID, "График мастеров!A2:H") or []
+        data = safe_get_sheet_data(SHEET_ID, "График мастеров!A3:H") or []
         found = False
         for row in data:
             if len(row) > 0 and str(row[0]).strip() == org_name:
@@ -653,7 +655,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- PRICES ---
 async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    services = safe_get_sheet_data(SHEET_ID, "Услуги!A2:G") or []
+    services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
     text = "💅 УСЛУГИ И ЦЕНЫ\n\n"
     current_cat = None
     for row in services:
@@ -699,7 +701,7 @@ async def select_subservice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not st:
         await query.edit_message_text("❌ Ошибка: тип услуги не выбран.")
         return
-    all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A2:G") or []
+    all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
     subs = [row[1] for row in all_services if len(row) > 1 and row[0] == st]
     kb = [[InlineKeyboardButton(s, callback_data=f"subservice_{s}")] for s in subs]
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
@@ -714,7 +716,7 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ss:
         await query.edit_message_text("❌ Ошибка: услуга не выбрана.")
         return
-    all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A2:G") or []
+    all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
     dur, buf, price = 60, 0, "не указана"
     for row in all_services:
         if len(row) > 1 and row[1] == ss:
@@ -763,7 +765,7 @@ async def select_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not date_str:
         await query.edit_message_text("❌ Ошибка: дата не выбрана.")
         return
-    masters_data = safe_get_sheet_data(SHEET_ID, "График мастеров!A3:I") or []
+    masters_data = safe_get_sheet_data(SHEET_ID, "График мастеров!A3:H") or []
     available = []
     try:
         target = datetime.strptime(date_str, "%d.%m.%Y")
@@ -1059,7 +1061,7 @@ async def show_my_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     name = context.user_data.get("name")
     phone = context.user_data.get("phone")
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
     found = []
     for r in records:
         if len(r) > 13 and str(r[13]).strip() == str(user_id) and str(r[8]).strip() in ACTIVE_STATUSES:
@@ -1083,7 +1085,7 @@ async def show_my_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_record_from_list(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
     query = update.callback_query
     chat_id = str(update.effective_chat.id)
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
     for idx, r in enumerate(records, start=2):
         if len(r) > 0 and r[0] == record_id:
             if len(r) > 13 and str(r[13]).strip() != chat_id:
@@ -1120,7 +1122,7 @@ async def handle_my_records_input(update: Update, context: ContextTypes.DEFAULT_
             await update.message.reply_text("❌ Неверный формат телефона. Введите не менее 10 цифр.")
             return AWAITING_MY_RECORDS_PHONE
         name = context.user_data.get("temp_my_records_name")
-        records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+        records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
         found = []
         for r in records:
             if len(r) > 2 and str(r[1]).strip() == name and str(r[2]).strip() == phone and str(r[8]).strip() in ACTIVE_STATUSES:
@@ -1167,7 +1169,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
                 str(update.effective_chat.id)
             ]
             try:
-                safe_append_to_sheet(SHEET_ID, "Лист ожидания!A2:L", [entry])
+                safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [entry])
                 confirmation = (
                     "📋 Спасибо! Ваши данные сохранены в листе ожидания.\n\n"
                     f"<b>Основные данные:</b>\n• Услуга: {subservice} ({service_type})\n• Мастер: {master}\n"
@@ -1237,7 +1239,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             str(update.effective_user.id)
         ]
         try:
-            safe_append_to_sheet(SHEET_ID, "Лист ожидания!A2:L", [sheet_data])
+            safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [sheet_data])
             await msg.reply_text(
                 f"✅ Вы добавлены в лист ожидания!\nКатегория: {context.user_data['wl_category']}\n"
                 f"Мастер: {context.user_data['wl_master']}\nДата: {context.user_data['wl_date']}\n"
@@ -1294,7 +1296,7 @@ async def admin_manage_record(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def handle_admin_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     term = update.message.text.strip()
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
     found = []
     for r in records:
         if len(r) >= 3:
@@ -1318,7 +1320,7 @@ async def handle_admin_search(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def admin_show_record_details(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
     query = update.callback_query
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
     for r in records:
         if len(r) > 0 and r[0] == record_id:
             info = (
@@ -1344,7 +1346,7 @@ async def admin_show_record_details(update: Update, context: ContextTypes.DEFAUL
 
 async def admin_cancel_record(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
     query = update.callback_query
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
     for idx, r in enumerate(records, start=2):
         if len(r) > 0 and r[0] == record_id:
             event_id = r[14] if len(r) > 14 else None
@@ -1371,7 +1373,7 @@ async def admin_reschedule_record(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     context.user_data["admin_reschedule_record_id"] = record_id
     context.user_data["admin_mode"] = True
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
     current = None
     for r in records:
         if len(r) > 0 and r[0] == record_id:
@@ -1413,7 +1415,7 @@ async def admin_change_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_change_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    masters_data = safe_get_sheet_data(SHEET_ID, "График мастеров!A2:H") or []
+    masters_data = safe_get_sheet_data(SHEET_ID, "График мастеров!A3:H") or []
     masters = [row[0] for row in masters_data if len(row) > 0 and row[0] != get_setting("Название заведения", "Название организации")]
     kb = [[InlineKeyboardButton(m, callback_data=f"admin_new_master_{m}")] for m in masters]
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}")])
@@ -1500,7 +1502,7 @@ async def admin_process_new_slot(update: Update, context: ContextTypes.DEFAULT_T
     record_id = context.user_data.get("admin_reschedule_record_id")
     new_date = context.user_data.get("new_date") or context.user_data.get("current_date")
     new_master = master or context.user_data.get("current_master")
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
     orig = None
     for r in records:
         if len(r) > 0 and r[0] == record_id:
@@ -1551,7 +1553,7 @@ async def _admin_save_reschedule(update: Update, context: ContextTypes.DEFAULT_T
     if not all([new_date, new_time, new_master]):
         await query.edit_message_text("❌ Не все данные для переноса заполнены.")
         return
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
     for idx, r in enumerate(records, start=2):
         if len(r) > 0 and r[0] == record_id:
             old_date = str(r[6]).strip() if len(r) > 6 else ""
@@ -1710,7 +1712,7 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
             end_time = datetime.strptime("20:00", "%H:%M").time()
         last_end = TIMEZONE.localize(datetime.combine(yesterday, end_time))
         logger.info(f"🔔 Поиск заявок с {last_end.strftime('%d.%m.%Y %H:%M')} (окончание предыдущего рабочего дня).")
-        calls = safe_get_sheet_data(SHEET_ID, "Обратные звонки!A2:J") or []
+        calls = safe_get_sheet_data(SHEET_ID, "Обратные звонки!A3:J") or []
         new_calls = []
         calls_to_update = []
 
@@ -1882,7 +1884,8 @@ def main():
         logger.info("✅ Администраторы загружены.")
     except Exception as e:
         logger.critical(f"❌ Не удалось загрузить администраторов: {e}")
-        remove_lock_file()
+    
+    remove_lock_file()
         return
     log_business_event("bot_started")
     persistence = PicklePersistence(filepath=persistence_file)
