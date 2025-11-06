@@ -1,151 +1,154 @@
 # utils/slots.py
-import logging
 from datetime import datetime, timedelta
+import pytz
 from config import TIMEZONE, SHEET_ID, CALENDAR_ID
 from .safe_google import (
     safe_get_sheet_data,
-    safe_get_calendar_events
+    safe_get_calendar_events,
+    safe_create_calendar_event,
+    safe_update_calendar_event,
+    safe_delete_calendar_event
 )
-from .settings import get_setting
+from .settings import get_setting # Импортируем для получения количества дней генерации
 
 logger = logging.getLogger(__name__)
 
-def find_available_slots(service_type: str, subservice: str, date_str: str, selected_master: str = None):
+def generate_slots_for_n_days(days_ahead: int = None):
     """
-    Находит доступные слоты на основе типа услуги, подуслуги, даты и (опционально) мастера.
-    Возвращает список словарей с ключами: date, time, master.
+    Генерирует слоты на N дней вперёд, начиная с *завтра*.
+    Использует колонку 'Шаг' из листа 'Услуги' для интервала.
     """
-    logger.debug(f"🔍 Поиск доступных слотов: Тип={service_type}, Услуга={subservice}, Дата={date_str}, Мастер={selected_master}")
-    
-    available_slots = []
-    try:
-        target_date_obj = datetime.strptime(date_str, "%d.%m.%Y")
-        target_date_iso = target_date_obj.date().isoformat()
-        next_day_iso = (target_date_obj.date() + timedelta(days=1)).isoformat()
-    except ValueError:
-        logger.error(f"❌ Неверный формат даты для поиска слотов: {date_str}")
-        return available_slots
+    if days_ahead is None:
+        # Загружаем из настроек, если не передано явно
+        try:
+            days_ahead = int(get_setting("Количество дней генерации слотов", "10"))
+        except (ValueError, TypeError):
+            logger.warning("⚠️ Не удалось получить 'Количество дней генерации слотов' из настроек, используем 10.")
+            days_ahead = 10
 
-    # 1. Получить длительность и буфер услуги → рассчитать шаг
-    step_minutes = None
-    services_data = safe_get_sheet_data(SHEET_ID, "Услуги!A2:G")
-    for row in services_data:
-        if len(row) >= 7 and row[0].strip() == service_type and row[1].strip() == subservice:
-            try:
-                duration = int(row[2]) if row[2] else 0  # [2] = Длительность
-                buffer = int(row[3]) if row[3] else 0   # [3] = Буфер
-                step_minutes = duration + buffer
-                logger.debug(f"📏 Рассчитан шаг для {service_type}/{subservice}: {step_minutes} мин (длит. {duration} + буфер {buffer})")
-                break
-            except (ValueError, TypeError) as e:
-                logger.error(f"❌ Ошибка парсинга Длительности/Буфера для {service_type}/{subservice}: {e}")
-                continue
-    if step_minutes is None:
-        logger.error(f"❌ Не найдена услуга '{service_type}' - '{subservice}' в таблице 'Услуги'.")
-        return available_slots
+    logger.info(f"🔄 Генерация слотов на {days_ahead} дней вперёд...")
+    # Начинаем с *завтра*
+    start_date = datetime.now(TIMEZONE).date() + timedelta(days=1)
+    masters_schedule = safe_get_sheet_data(SHEET_ID, "График мастеров!A3:H") # Читаем A-H для дней недели
+    services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") # Читаем A-G для Шага
 
-    # 2. Получить события из календаря на date_str
-    time_min = f"{target_date_iso}T00:00:00"
-    time_max = f"{next_day_iso}T00:00:00"
-    try:
-        existing_events = safe_get_calendar_events(CALENDAR_ID, time_min, time_max)
-        logger.debug(f"📅 Получено {len(existing_events)} событий из календаря на {date_str}")
-    except Exception as e:
-        logger.error(f"❌ Ошибка при получении событий календаря для {date_str}: {e}")
-        return available_slots
+    # Получаем уже существующие события на период генерации
+    time_min = start_date.isoformat() + "T00:00:00"
+    time_max = (start_date + timedelta(days=days_ahead + 1)).isoformat() + "T23:59:59"
+    existing_events = safe_get_calendar_events(CALENDAR_ID, time_min, time_max)
 
-    # 3. Найти занятые слоты
     busy_slots = set()
     for event in existing_events:
         start = event["start"].get("dateTime")
         if start:
-            try:
-                dt = datetime.fromisoformat(start)
-                if dt.tzinfo is None:
-                    dt = TIMEZONE.localize(dt)
-                else:
-                    dt = dt.astimezone(TIMEZONE)
-                summary = event.get("summary", "")
-                description = event.get("description", "")
-                master = "unknown"
-                if " к " in summary:
-                    parts = summary.split(" к ")
-                    if len(parts) > 1:
-                        master = parts[1].split()[0]
-                elif " к " in description:
-                    parts = description.split(" к ")
-                    if len(parts) > 1:
-                        master = parts[1].split()[0]
-                busy_slots.add((dt, master))
-                logger.debug(f"🔒 Занятый слот: {dt.strftime('%d.%m.%Y %H:%M')} у {master}")
-            except (ValueError, Exception) as e:
-                logger.warning(f"⚠️ Не удалось обработать событие календаря {event.get('id')}: {e}")
+            dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+            dt = dt.astimezone(TIMEZONE)
+            date_str = dt.strftime("%d.%m.%Y")
+            time_str = dt.strftime("%H:%M")
+            # Описание может содержать информацию о мастере
+            description = event.get("description", "")
+            # Пример: "Клиент: ..., тел.: ..." или "Бронь (в процессе) к Анна..."
+            # Пытаемся извлечь имя мастера из описания или использовать summary
+            master = event.get("summary", "").split(" к ")[-1] if " к " in event.get("summary", "") else "unknown"
+            if " к " in description:
+                master = description.split(" к ")[-1].split(" ")[0] # Простое извлечение имени мастера
+            busy_slots.add((date_str, time_str, master))
 
-    # 4. Получить график мастеров на date_str
-    masters_schedule_data = safe_get_sheet_data(SHEET_ID, "График мастеров!A2:H")
-    day_name = target_date_obj.strftime("%a")
-    short_day_map = {"Mon": "Пн", "Tue": "Вт", "Wed": "Ср", "Thu": "Чт", "Fri": "Пт", "Sat": "Сб", "Sun": "Вс"}
-    target_short_day = short_day_map.get(day_name)
-    if not target_short_day:
-        logger.error(f"❌ Не удалось определить день недели для {date_str}")
-        return available_slots
+    for days_offset in range(0, days_ahead):
+        target_date = start_date + timedelta(days=days_offset)
+        target_date_str = target_date.strftime("%d.%m.%Y")
 
-    masters_dict = {}
-    org_name = get_setting("Название заведения", "").strip() or "Название организации"
-    for row in masters_schedule_data:
-        if len(row) >= 1:
-            master_name = row[0].strip()
-            if master_name and master_name != org_name:
-                schedule = {}
-                day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-                for i, day in enumerate(day_names):
-                    col_index = i + 1
-                    if col_index < len(row):
-                        schedule[day] = row[col_index].strip()
-                    else:
-                        schedule[day] = "выходной"
-                masters_dict[master_name] = schedule
+        # Получаем день недели (Пн, Вт и т.д.)
+        day_name = target_date.strftime("%a")
+        short_day_map = {"Mon": "Пн", "Tue": "Вт", "Wed": "Ср", "Thu": "Чт", "Fri": "Пт", "Sat": "Сб", "Sun": "Вс"}
+        target_short_day = short_day_map.get(day_name)
 
-    # 5. Найти доступные слоты
-    for master_name, master_schedule in masters_dict.items():
-        if selected_master and master_name != selected_master:
+        if not target_short_day:
+            logger.warning(f"⚠️ Не удалось определить день недели для {target_date_str}")
             continue
-        work_time_str = master_schedule.get(target_short_day, "выходной")
-        if work_time_str.lower().strip() == "выходной":
-            logger.debug(f"🏖️ Мастер {master_name} не работает {date_str} ({target_short_day})")
-            continue
-        if "-" not in work_time_str:
-            logger.warning(f"⚠️ Неверный формат времени у {master_name} на {date_str}: {work_time_str}")
-            continue
-        try:
+
+        for row in masters_schedule:
+            if len(row) < 8: # Убедимся, что в строке достаточно данных (A-H)
+                continue
+            master_name = row[0]
+            if master_name == "Название организации": # Пропускаем строку с расписанием заведения
+                continue
+
+            # Получаем рабочее время из колонки для конкретного дня недели
+            work_time_str = row[1:].get(target_short_day) # Псевдокод, нужно правильно индексировать
+            # Индекс колонки: Пн=1, Вт=2, ..., Вс=7 (относительно A=0)
+            day_col_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(target_short_day) + 1
+            if day_col_index >= len(row):
+                continue # Мастер не работает в этот день (нет данных в колонке)
+            work_time_str = row[day_col_index]
+
+            if work_time_str.lower().strip() == "выходной":
+                continue # Мастер не работает в этот день
+
+            # Предполагаем формат HH:MM-HH:MM
+            if "-" not in work_time_str:
+                logger.warning(f"⚠️ Неверный формат времени в графике мастера {master_name} на {target_date_str}: {work_time_str}")
+                continue
+
             start_time_str, end_time_str = work_time_str.split("-", 1)
-            work_start_dt = TIMEZONE.localize(datetime.strptime(f"{date_str} {start_time_str.strip()}", "%d.%m.%Y %H:%M"))
-            work_end_dt = TIMEZONE.localize(datetime.strptime(f"{date_str} {end_time_str.strip()}", "%d.%m.%Y %H:%M"))
-        except ValueError as e:
-            logger.error(f"❌ Ошибка парсинга времени работы для {master_name} на {date_str}: {e}")
-            continue
+            start_time_str = start_time_str.strip()
+            end_time_str = end_time_str.strip()
 
-        current_dt = work_start_dt
-        while current_dt + timedelta(minutes=step_minutes) <= work_end_dt:
-            slot_end_dt = current_dt + timedelta(minutes=step_minutes)
-            is_busy = False
-            for busy_start_dt, busy_master in busy_slots:
-                busy_end_dt = busy_start_dt + timedelta(minutes=step_minutes)
-                latest_start = max(current_dt, busy_start_dt)
-                earliest_end = min(slot_end_dt, busy_end_dt)
-                if latest_start < earliest_end and (busy_master == master_name or busy_master == "unknown"):
-                    is_busy = True
-                    break
-            if not is_busy:
-                available_slots.append({
-                    "date": current_dt.strftime("%d.%m.%Y"),
-                    "time": current_dt.strftime("%H:%M"),
-                    "master": master_name
-                })
-                logger.debug(f"✅ Найден доступный слот: {master_name}, {current_dt.strftime('%d.%m.%Y %H:%M')}")
-            current_dt += timedelta(minutes=step_minutes)
+            try:
+                start_dt = TIMEZONE.localize(datetime.strptime(f"{target_date_str} {start_time_str}", "%d.%m.%Y %H:%M"))
+                end_dt = TIMEZONE.localize(datetime.strptime(f"{target_date_str} {end_time_str}", "%d.%m.%Y %H:%M"))
+            except ValueError as e:
+                logger.error(f"❌ Ошибка парсинга времени для {master_name} на {target_date_str}: {e}")
+                continue
 
-    logger.info(f"✅ Поиск слотов завершён. Найдено {len(available_slots)} доступных слотов.")
-    return available_slots
+            # Перебираем все услуги
+            for service_row in services:
+                if len(service_row) < 7: # Убедимся, что Шаг (F) доступен
+                    continue
 
-logger.info("✅ Модуль slots.py загружен.")
+                # category, name, duration, buffer, step, price, description
+                # Индексы: A=0, B=1, ..., F=5, G=6
+                step_minutes = int(service_row[5]) # Колонка 'Шаг (мин)'
+
+                current_dt = start_dt
+                while current_dt + timedelta(minutes=step_minutes) <= end_dt:
+                    date_str = current_dt.strftime("%d.%m.%Y")
+                    time_str = current_dt.strftime("%H:%M")
+
+                    # Проверяем, не занят ли слот
+                    if (date_str, time_str, master_name) not in busy_slots:
+                        event_summary = f"Свободно ({service_row[0]})" # Категория услуги в скобках
+                        event_id = safe_create_calendar_event(
+                            calendar_id=CALENDAR_ID,
+                            summary=event_summary,
+                            start_time=current_dt.isoformat(),
+                            end_time=(current_dt + timedelta(minutes=step_minutes)).isoformat(),
+                            color_id="11", # Серый
+                            description=f"Свободный слот для {service_row[1]} у {master_name}" # Название услуги
+                        )
+                        logger.debug(f"📅 Сгенерирован слот: {master_name}, {date_str} {time_str}, {service_row[1]} (ID: {event_id})")
+                    else:
+                        logger.debug(f"⏳ Слот занят, пропускаем: {master_name}, {date_str} {time_str}")
+
+                    current_dt += timedelta(minutes=step_minutes)
+
+    logger.info(f"✅ Генерация слотов на {days_ahead} дней завершена.")
+
+def find_available_slots(service_type: str, subservice: str, date_str: str = None, selected_master: str = None, priority: str = "date"):
+    """
+    Находит доступные слоты на основе типа услуги, подуслуги, даты, мастера и приоритета.
+    Возвращает список словарей с ключами: date, time, master.
+    """
+    # Заглушка - реализация будет зависеть от логики поиска в календаре и таблице
+    # и сопоставления с графиком мастеров.
+    # 1. Получить 'Шаг' для услуги из 'Услуги'
+    # 2. Получить график мастеров на date_str
+    # 3. Получить события из календаря на date_str
+    # 4. Найти интервалы длиной 'Шаг', где нет событий и мастер работает.
+    # 5. Отфильтровать по selected_master, если указан.
+    # 6. Отсортировать в зависимости от priority (date -> по времени, master -> сгруппировать по мастеру?)
+    # Пока возвращаем пустой список.
+    logger.debug(f"🔍 Поиск слотов: Тип={service_type}, Услуга={subservice}, Дата={date_str}, Мастер={selected_master}, Приоритет={priority}")
+    return []
+
+print("✅ Модуль slots.py загружен.")
