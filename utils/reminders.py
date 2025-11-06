@@ -5,14 +5,11 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from config import TIMEZONE, SHEET_ID, CALENDAR_ID
 from .safe_google import safe_get_sheet_data, safe_update_sheet_row, safe_delete_calendar_event
 from .admin import notify_admins
-from .settings import get_setting
+from .settings import get_setting  # ← ЭТО БЫЛО ПРОПУЩЕНО В ПРЕДЫДУЩЕЙ ВЕРСИИ
 
 logger = logging.getLogger(__name__)
 
 async def send_reminders(context):
-    """
-    Фоновая задача: отправляет напоминания за 24ч и 1ч.
-    """
     now = datetime.now(TIMEZONE)
     records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
 
@@ -93,8 +90,6 @@ async def handle_cancel_reminder(record_id: str, query, context):
     records = safe_get_sheet_data(SHEET_ID, "Записи!A2:P") or []
     for idx, row in enumerate(records, start=2):
         if len(row) > 0 and row[0] == record_id:
-            if len(row) < 15:
-                row.extend([""] * (15 - len(row)))
             updated = row.copy()
             updated[8] = "отменено"
             safe_update_sheet_row(SHEET_ID, "Записи", idx, updated)
