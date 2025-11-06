@@ -1,5 +1,5 @@
 # main.py - Q-1928 - 04.11.25
-import loggig
+import logging
 import logging.handlers
 import os
 import time
@@ -1925,5 +1925,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
