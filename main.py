@@ -1,10 +1,10 @@
-# main.py - Q-1928 - 04.11.25
+# main.py - Q-1914 - 06.11.25
 import logging
 import logging.handlers
 import os
 import time
 from datetime import datetime, timedelta
-from datetime import time as datetime_timeф
+from datetime import time as datetime_time
 import pytz
 import signal
 import sys
@@ -34,7 +34,7 @@ from utils.safe_google import (
     safe_update_calendar_event,
     safe_delete_calendar_event,
 )
-from utils.slots import generate_slots_for_n_days, find_available_slots
+from utils.slots import find_available_slots
 from utils.reminders import send_reminders, handle_confirm_reminder, handle_cancel_reminder
 from utils.admin import load_admins, notify_admins
 from utils.validation import validate_name, validate_phone
@@ -1886,14 +1886,13 @@ def main():
         return
     log_business_event("bot_started")
     persistence = PicklePersistence(filepath=persistence_file)
-
-
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).persistence(persistence).build()
     application.add_error_handler(global_error_handler)
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, global_activity_updater), group=-1)
     register_handlers(application)
     logger.info("✅ Обработчики зарегистрированы.")
     application.job_queue.run_daily(cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time())
+    application.job_queue.run_daily(lambda ctx: generate_slots_for_n_days(), time=datetime.strptime("00:00", "%H:%M").time())
     application.job_queue.run_repeating(send_reminders, interval=60, first=10)
     notify_time = datetime.strptime(get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M").time()
     application.job_queue.run_daily(notify_admins_of_new_calls_job, time=notify_time)
@@ -1925,6 +1924,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
