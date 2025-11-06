@@ -13,7 +13,7 @@ def load_admins():
     """
     global ADMIN_CHAT_IDS
     try:
-        admins = get_sheet_data(SHEET_ID, "Администраторы!A2:C")
+        admins = get_sheet_data(SHEET_ID, "Администраторы!A3:C")
     except Exception as e:
         logger.exception("Не удалось получить список админов из таблицы: %s", e)
         ADMIN_CHAT_IDS = []
@@ -45,3 +45,4 @@ async def notify_admins(context, message: str):
             logger.exception("Не удалось отправить админу %s сообщение: %s", chat_id, e)
 
 logger.info("✅ Модуль admin.py загружен.")
+
