@@ -1892,8 +1892,7 @@ def main():
     application.add_error_handler(global_error_handler)
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, global_activity_updater), group=-1)
     register_handlers(application)
-    logger.inf
-o("✅ Обработчики зарегистрированы.")
+    logger.info("✅ Обработчики зарегистрированы.")
     application.job_queue.run_daily(cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time())
     application.job_queue.run_repeating(send_reminders, interval=60, first=10)
     notify_time = datetime.strptime(get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M").time()
@@ -1926,4 +1925,5 @@ o("✅ Обработчики зарегистрированы.")
 
 if __name__ == "__main__":
     main()
+
 
