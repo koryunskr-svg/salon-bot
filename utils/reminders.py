@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 async def send_reminders(context):
     now = datetime.now(TIMEZONE)
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
 
     for i, row in enumerate(records, start=2):
         if len(row) < 15 or row[8] != "подтверждено":
@@ -70,7 +70,7 @@ def build_confirm_cancel_kb(record_id: str):
     ])
 
 async def handle_confirm_reminder(record_id: str, query, context):
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     for idx, row in enumerate(records, start=2):
         if len(row) > 0 and row[0] == record_id:
             if len(row) < 12:
@@ -87,7 +87,7 @@ async def handle_confirm_reminder(record_id: str, query, context):
     await query.edit_message_text("❌ Запись не найдена.")
 
 async def handle_cancel_reminder(record_id: str, query, context):
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     for idx, row in enumerate(records, start=2):
         if len(row) > 0 and row[0] == record_id:
             updated = row.copy()
