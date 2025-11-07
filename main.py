@@ -1061,7 +1061,7 @@ async def show_my_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     name = context.user_data.get("name")
     phone = context.user_data.get("phone")
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     found = []
     for r in records:
         if len(r) > 13 and str(r[13]).strip() == str(user_id) and str(r[8]).strip() in ACTIVE_STATUSES:
@@ -1085,7 +1085,7 @@ async def show_my_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_record_from_list(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
     query = update.callback_query
     chat_id = str(update.effective_chat.id)
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     for idx, r in enumerate(records, start=2):
         if len(r) > 0 and r[0] == record_id:
             if len(r) > 13 and str(r[13]).strip() != chat_id:
@@ -1122,7 +1122,7 @@ async def handle_my_records_input(update: Update, context: ContextTypes.DEFAULT_
             await update.message.reply_text("❌ Неверный формат телефона. Введите не менее 10 цифр.")
             return AWAITING_MY_RECORDS_PHONE
         name = context.user_data.get("temp_my_records_name")
-        records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
+        records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
         found = []
         for r in records:
             if len(r) > 2 and str(r[1]).strip() == name and str(r[2]).strip() == phone and str(r[8]).strip() in ACTIVE_STATUSES:
@@ -1296,7 +1296,7 @@ async def admin_manage_record(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def handle_admin_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     term = update.message.text.strip()
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     found = []
     for r in records:
         if len(r) >= 3:
@@ -1320,7 +1320,7 @@ async def handle_admin_search(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def admin_show_record_details(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
     query = update.callback_query
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     for r in records:
         if len(r) > 0 and r[0] == record_id:
             info = (
@@ -1346,7 +1346,7 @@ async def admin_show_record_details(update: Update, context: ContextTypes.DEFAUL
 
 async def admin_cancel_record(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
     query = update.callback_query
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     for idx, r in enumerate(records, start=2):
         if len(r) > 0 and r[0] == record_id:
             event_id = r[14] if len(r) > 14 else None
@@ -1373,7 +1373,7 @@ async def admin_reschedule_record(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     context.user_data["admin_reschedule_record_id"] = record_id
     context.user_data["admin_mode"] = True
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     current = None
     for r in records:
         if len(r) > 0 and r[0] == record_id:
@@ -1502,7 +1502,7 @@ async def admin_process_new_slot(update: Update, context: ContextTypes.DEFAULT_T
     record_id = context.user_data.get("admin_reschedule_record_id")
     new_date = context.user_data.get("new_date") or context.user_data.get("current_date")
     new_master = master or context.user_data.get("current_master")
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     orig = None
     for r in records:
         if len(r) > 0 and r[0] == record_id:
@@ -1553,7 +1553,7 @@ async def _admin_save_reschedule(update: Update, context: ContextTypes.DEFAULT_T
     if not all([new_date, new_time, new_master]):
         await query.edit_message_text("❌ Не все данные для переноса заполнены.")
         return
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:P") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     for idx, r in enumerate(records, start=2):
         if len(r) > 0 and r[0] == record_id:
             old_date = str(r[6]).strip() if len(r) > 6 else ""
@@ -1926,4 +1926,4 @@ def main():
         logger.info("🔒 Бот остановлен и lock-файл удалён.")
 
 if __name__ == "__main__":
-    main()
+    main(
