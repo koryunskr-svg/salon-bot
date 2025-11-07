@@ -1886,7 +1886,6 @@ def main():
         logger.critical(f"❌ Не удалось загрузить администраторов: {e}")
     
     remove_lock_file()
-        return
     log_business_event("bot_started")
     persistence = PicklePersistence(filepath=persistence_file)
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).persistence(persistence).build()
