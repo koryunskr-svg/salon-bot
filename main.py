@@ -445,7 +445,7 @@ async def _display_records(update: Update, context: ContextTypes.DEFAULT_TYPE, r
         await update.message.reply_text(msg, reply_markup=rm, parse_mode='HTML')
 
 async def _validate_booking_checks(context: ContextTypes.DEFAULT_TYPE, name: str, phone: str, date_str: str, time_str: str, service_type: str):
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A2:O") or []
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     try:
         new_start = TIMEZONE.localize(datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M"))
         new_end = new_start + timedelta(minutes=calculate_service_step(context.user_data.get("subservice", "default")))
@@ -686,7 +686,7 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- SELECT SERVICE TYPE ---
 async def select_service_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    services = safe_get_sheet_data(SHEET_ID, "Услуги!A2:A") or []
+    services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:A") or []
     types = list({row[0] for row in services if row and len(row) > 0})
     kb = [[InlineKeyboardButton(t, callback_data=f"service_{t}")] for t in types]
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
@@ -1640,7 +1640,7 @@ async def _get_available_slots_for_admin(service_type: str, subservice: str, dat
         start_time = datetime.strptime(start_time_str.strip(), "%H:%M").time()
         end_time = datetime.strptime(end_time_str.strip(), "%H:%M").time()
         step_minutes = calculate_service_step(subservice)
-        all_records = safe_get_sheet_data(SHEET_ID, "Записи!A2:O") or []
+        all_records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
         booked = []
         for r in all_records:
             if len(r) > 7 and str(r[5]).strip() == master and str(r[6]).strip() == date_str and str(r[8]).strip() in ["подтверждено", "в резерве", "ожидает оплаты"]:
@@ -1884,8 +1884,8 @@ def main():
         logger.info("✅ Администраторы загружены.")
     except Exception as e:
         logger.critical(f"❌ Не удалось загрузить администраторов: {e}")
-    
-    remove_lock_file()
+        remove_lock_file()
+        return
     log_business_event("bot_started")
     persistence = PicklePersistence(filepath=persistence_file)
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).persistence(persistence).build()
@@ -1926,4 +1926,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
