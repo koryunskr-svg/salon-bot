@@ -1,4 +1,4 @@
-# main.py - Q-1928 - 07.11.25
+# main.py - Q-1977-11.11.25
 import logging
 import logging.handlers
 import os
@@ -26,8 +26,6 @@ from telegram.ext import (
 # --- ИМПОРТЫ ИЗ КОНФИГА И УТИЛИТ ---
 from config import TELEGRAM_TOKEN, TIMEZONE, RESERVATION_TIMEOUT, WARNING_TIMEOUT, SHEET_ID, CALENDAR_ID
 from utils.safe_google import (
-
-
     safe_get_sheet_data,
     safe_append_to_sheet,
     safe_update_sheet_row,
@@ -37,10 +35,27 @@ from utils.safe_google import (
     safe_delete_calendar_event,
 )
 from utils.slots import find_available_slots
-from utils.reminders import handle_confirm_reminder, handle_cancel_reminder
+from utils.reminders import send_reminders, handle_confirm_reminder, handle_cancel_reminder
 from utils.admin import load_admins, notify_admins
 from utils.validation import validate_name, validate_phone
 from utils.settings import load_settings_from_table
+
+def safe_parse_price(p) -> str:
+    """
+    Безопасно парсит цену из строки: убирает всё, кроме цифр и точки,
+    конвертирует в int, возвращает строку вида '1500 ₽' или 'цена не указана'.
+    """
+    if not p:
+        return "цена не указана"
+    try:
+        import re
+        clean = re.sub(r'[^\d.]', '', str(p).strip())
+        if not clean:
+            return "цена не указана"
+        val = int(float(clean))
+        return f"{val} ₽"
+    except (ValueError, TypeError, OverflowError):
+        return "цена не указана"
 
 # --- GLOBALS ---
 TRIGGER_WORDS = []
@@ -674,7 +689,7 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"\n<b>{cat.upper()}</b>:\n"
             current_cat = cat
         fmt_dur = format_duration(dur + buf)
-        price_str = f"{int(float(price))} ₽" if isinstance(price, str) and price.replace('.','',1).isdigit() else "цена не указана"
+        price_str = safe_parse_price(price)
         text += f"• <b>{name}</b> — {price_str} (длит.: {fmt_dur})\n"
         if desc:
             text += f" <i>{desc}</i>\n"
@@ -728,7 +743,7 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             price = row[5] if len(row) > 5 else "не указана"
             break
     fmt_dur = format_duration(dur + buf)
-    price_str = f"{int(float(price))} ₽" if isinstance(price, str) and price.replace('.','',1).isdigit() else "цена не указана"
+    price_str = safe_parse_price(price)
     text = f"✅ Услуга: {ss}\n💰 Цена: {price_str}\n⏳ Длительность: {fmt_dur}\n\nЧто для вас важнее?"
     kb = [
         [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
@@ -1699,19 +1714,55 @@ async def handle_trigger_words(update: Update, context: ContextTypes.DEFAULT_TYP
                 return
             break
 
-# --- NOTIFY ADMINS OF NEW CALLS (С ОБНОВЛЕННОЙ ЛОГИКОЙ И КОММЕНТАРИЕМ) ---
+# --- NOTIFY ADMINS OF NEW CALLS — ОБНОВЛЕНО ПО ТЗ 9.5: ПОСЛЕ ОКОНЧАНИЯ ПРЕДЫДУЩЕГО РАБОЧЕГО ДНЯ ---
 async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         now = datetime.now(TIMEZONE)
-        yesterday = (now.date() - timedelta(days=1))
-        end_time_str = get_setting("Время окончания работы", "20:00")
-        try:
-            end_time = datetime.strptime(end_time_str, "%H:%M").time()
-        except Exception as e:
-            logger.error(f"❌ Ошибка парсинга 'Время окончания работы' ({end_time_str}): {e}. Используем 20:00.")
-            end_time = datetime.strptime("20:00", "%H:%M").time()
-        last_end = TIMEZONE.localize(datetime.combine(yesterday, end_time))
-        logger.info(f"🔔 Поиск заявок с {last_end.strftime('%d.%m.%Y %H:%M')} (окончание предыдущего рабочего дня).")
+        
+        # === ШАГ 1: Найти ВРЕМЯ ОКОНЧАНИЯ ПОСЛЕДНЕГО РАБОЧЕГО ДНЯ ===
+        schedule_data = safe_get_sheet_data(SHEET_ID, "График мастеров!A3:H") or []
+        org_name = get_setting("Название заведения", "").strip()
+        if not org_name:
+            logger.error("❌ Не задано 'Название заведения' в настройках.")
+            return
+
+        org_row = None
+        for row in schedule_data:
+            if len(row) > 0 and str(row[0]).strip() == org_name:
+                org_row = row
+                break
+        if not org_row or len(org_row) < 8:
+            logger.error(f"❌ Не найдена строка '{org_name}' в 'График мастеров' или недостаточно данных.")
+            return
+
+        day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        last_work_end = None
+        days_back = 0
+        max_days_back = 30
+
+        while days_back <= max_days_back:
+            check_date = now.date() - timedelta(days=days_back)
+            day_idx = check_date.weekday()
+            col_idx = day_idx + 1  # B=1 (Пн), ..., H=7 (Вс)
+
+            if col_idx < len(org_row):
+                cell = str(org_row[col_idx]).strip()
+                if cell.lower() != "выходной" and "-" in cell:
+                    try:
+                        _, end_str = cell.split("-", 1)
+                        end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
+                        last_work_end = TIMEZONE.localize(datetime.combine(check_date, end_time))
+                        logger.info(f"✅ Последний рабочий день: {check_date} (окончание в {end_time})")
+                        break
+                    except Exception as e:
+                        logger.warning(f"⚠️ Ошибка парсинга времени в ячейке {cell}: {e}")
+            days_back += 1
+
+        if not last_work_end:
+            logger.warning("⚠️ Не удалось определить последний рабочий день. Используем вчерашний день 20:00.")
+            last_work_end = TIMEZONE.localize(datetime.combine(now.date() - timedelta(days=1), datetime.strptime("20:00", "%H:%M").time()))
+
+        # === ШАГ 2: Найти новые заявки ПОСЛЕ last_work_end ===
         calls = safe_get_sheet_data(SHEET_ID, "Обратные звонки!A3:J") or []
         new_calls = []
         calls_to_update = []
@@ -1723,47 +1774,46 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
                 call_time_str = call[1]
                 call_time = TIMEZONE.localize(datetime.strptime(call_time_str, "%d.%m.%Y %H:%M"))
                 status = call[7] if len(call) > 7 else "ожидает"
-                if call_time > last_end and status == "ожидает":
+                if call_time > last_work_end and status == "ожидает":
                     new_calls.append(call)
                     calls_to_update.append(idx)
             except Exception as e:
-                logger.warning(f"⚠️ Неверный формат даты или статуса в заявке (строка {idx}): {call}. Ошибка: {e}")
+                logger.warning(f"⚠️ Неверный формат даты/статуса в заявке (строка {idx}): {call}. Ошибка: {e}")
 
+        # === ШАГ 3: Уведомить и обновить ===
         if new_calls:
             count = len(new_calls)
             max_in_msg = int(get_setting("Максимум заявок в уведомлении", "5"))
-            text = f"📞 Новые заявки на обратный звонок (после {last_end.strftime('%d.%m.%Y %H:%M')}): {count} шт.\n\n"
+            text = f"📞 Новые заявки на обратный звонок (после {last_work_end.strftime('%d.%m.%Y %H:%M')}): {count} шт.\n"
             for i, call in enumerate(new_calls[:max_in_msg]):
                 name = call[2] if len(call) > 2 else "Не указано"
                 phone = call[3] if len(call) > 3 else "Не указано"
                 contact = call[5] if len(call) > 5 else "Telegram"
                 note = call[8] if len(call) > 8 else "Без примечания"
                 time_str = call[1] if len(call) > 1 else "Неизвестно"
-                text += f"{i+1}. {name} ({contact})\n   📞 {phone}\n   🕒 {time_str}\n   📝 {note}\n\n"
+                text += f"{i+1}. {name} ({contact})\n   📞 {phone}\n   🕒 {time_str}\n   📝 {note}\n"
             if count > max_in_msg:
-                text += f"... и еще {count - max_in_msg} заявок\n"
-            text += "📋 Полный список в листе 'Обратные звонки' таблицы."
+                text += f"... и ещё {count - max_in_msg} заявок\n"
+            text += "📋 Полный список — в листе «Обратные звонки»."
             await notify_admins(context, text)
-            logger.info(f"📞 Уведомлено админов о {count} новых заявках (после {last_end.strftime('%d.%m.%Y %H:%M')}).")
+            logger.info(f"✅ Уведомлено админов о {count} заявках (после {last_work_end.strftime('%d.%m.%Y %H:%M')})")
 
             current_time_str = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
-            for i, idx in enumerate(calls_to_update):
-                call = calls[i]
-                updated_call = list(call)
-                while len(updated_call) < 10:
-                    updated_call.append("")
-                updated_call[6] = current_time_str  # Колонка G — "Время уведомления"
-                updated_call[7] = "уведомлен"
+            for idx in calls_to_update:
                 try:
-                    safe_update_sheet_row(SHEET_ID, "Обратные звонки", idx, updated_call)
+                    full_row = safe_get_sheet_data(SHEET_ID, f"Обратные звонки!A{idx}:J{idx}")[0]
+                    while len(full_row) < 10:
+                        full_row.append("")
+                    full_row[6] = current_time_str  # G — Время уведомления
+                    full_row[7] = "уведомлен"        # H — Статус
+                    safe_update_sheet_row(SHEET_ID, "Обратные звонки", idx, full_row)
                 except Exception as e:
                     logger.error(f"❌ Не удалось обновить строку {idx}: {e}")
-            logger.info(f"✅ Обновлено {len(calls_to_update)} строк: проставлено 'Время уведомления' и статус 'уведомлен'.")
-
         else:
-            logger.info(f"📞 Нет новых заявок с {last_end.strftime('%d.%m.%Y %H:%M')}.")
+            logger.info(f"📭 Новых заявок после {last_work_end.strftime('%d.%m.%Y %H:%M')} нет.")
+
     except Exception as e:
-        logger.error(f"❌ Ошибка при отправке утренних уведомлений о заявках: {e}")
+        logger.error(f"❌ Ошибка в notify_admins_of_new_calls_job: {e}", exc_info=True)
 
 # --- GENERIC MESSAGE HANDLER ---
 async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1893,8 +1943,7 @@ def main():
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, global_activity_updater), group=-1)
     register_handlers(application)
     logger.info("✅ Обработчики зарегистрированы.")
-    application.job_queue.run_daily(cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time())
-    application.job_queue.run_daily(lambda ctx: generate_slots_for_n_days(), time=datetime.strptime("00:00", "%H:%M").time())
+    application.job_queue.run_daily(cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time())  
     application.job_queue.run_repeating(send_reminders, interval=60, first=10)
     notify_time = datetime.strptime(get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M").time()
     application.job_queue.run_daily(notify_admins_of_new_calls_job, time=notify_time)
