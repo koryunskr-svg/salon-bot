@@ -228,9 +228,9 @@ async def cleanup_stuck_reservations_job(context: ContextTypes.DEFAULT_TYPE):
                                 safe_delete_calendar_event(CALENDAR_ID, event_id)
                             slot_date = temp_booking.get("date")
                             slot_time = temp_booking.get("time")
-                            slot_master = temp_booking.get("master")
-                            if slot_date and slot_time and slot_master:
-                                await check_waiting_list(slot_date, slot_time, slot_master, context)
+                            slot_specialist = temp_booking.get("specialist")
+                            if slot_date and slot_time and slot_specialist:
+                                await check_waiting_list(slot_date, slot_time, slot_specialist, context)
                                 processed_slots += 1
                             if user_id in context.application.user_data:
                                 del context.application.user_data[user_id]
@@ -289,7 +289,7 @@ def remove_lock_file():
     SHOW_PRICE_INFO,
     SELECT_PRIORITY,
     SELECT_DATE,
-    SELECT_MASTER,
+    SELECT_SPECIALIST,
     SELECT_TIME,
     ENTER_NAME,
     ENTER_PHONE,
@@ -302,13 +302,13 @@ def remove_lock_file():
     AWAITING_MY_RECORDS_NAME,
     AWAITING_MY_RECORDS_PHONE,
     AWAITING_WL_CATEGORY,
-    AWAITING_WL_MASTER,
+    AWAITING_WL_SPECIALIST,
     AWAITING_WL_DATE,
     AWAITING_WL_TIME,
     AWAITING_WL_PRIORITY,
     AWAITING_CONFIRMATION,
     AWAITING_ADMIN_NEW_DATE,
-    AWAITING_ADMIN_NEW_MASTER,
+    AWAITING_ADMIN_NEW_SPECIALIST,
     AWAITING_ADMIN_NEW_TIME,
     AWAITING_PHONE_FOR_CALLBACK,
 ) = range(28)
@@ -382,7 +382,7 @@ def validate_date_format(date_str: str) -> bool:
         return False
 
 # --- CHECK WAITING LIST (С ПОДДЕРЖКОЙ ПРИОРИТЕТА И БЛИЗКИХ СЛОТОВ) ---
-async def check_waiting_list(slot_date: str, slot_time: str, master: str, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def check_waiting_list(slot_date: str, slot_time: str, specialist: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         MAX_DIFF = int(get_setting("Максимальное отклонение времени для листа ожидания", "30"))
         MAX_NOTIFY = int(get_setting("Максимальное количество уведомлений из листа ожидания", "1"))
@@ -393,11 +393,11 @@ async def check_waiting_list(slot_date: str, slot_time: str, master: str, contex
                 continue
             wait_date = str(row[7]).strip() if len(row) > 7 and row[7] else ""
             wait_time = str(row[8]).strip() if len(row) > 8 and row[8] else ""
-            wait_master = str(row[6]).strip() if len(row) > 6 and row[6] else ""
+            wait_specialist = str(row[6]).strip() if len(row) > 6 and row[6] else ""
             status = str(row[10]).strip() if len(row) > 10 and row[10] else ""
             chat_id = str(row[11]).strip() if len(row) > 11 and row[11] else ""
             priority = int(row[9]) if len(row) > 9 and row[9] and str(row[9]).isdigit() else 1
-            if status == "ожидает" and chat_id.isdigit() and wait_date == slot_date and (wait_master == master or wait_master == "любой"):
+            if status == "ожидает" and chat_id.isdigit() and wait_date == slot_date and (wait_specialist == specialist or wait_specialist == "любой"):
                 try:
                     slot_min = int(slot_time[:2]) * 60 + int(slot_time[3:5])
                     wait_min = int(wait_time[:2]) * 60 + int(wait_time[3:5])
@@ -419,7 +419,7 @@ async def check_waiting_list(slot_date: str, slot_time: str, master: str, contex
             try:
                 await context.bot.send_message(
                     chat_id=cand['chat_id'],
-                    text=f"🎉 Появилось свободное время!\n📅 Дата: {slot_date}\n⏰ Время: {slot_time} (запрашивали {cand['req_time']})\n👩‍💼 Мастер: {master}\nНажмите /start для записи."
+                    text=f"🎉 Появилось свободное время!\n📅 Дата: {slot_date}\n⏰ Время: {slot_time} (запрашивали {cand['req_time']})\n👩‍💼 Специалист: {specialist}\nНажмите /start для записи."
                 )
                 updated = list(cand['row'])
                 updated[10] = "уведомлен"
@@ -446,7 +446,7 @@ async def _display_records(update: Update, context: ContextTypes.DEFAULT_TYPE, r
         dt = str(r[6]).strip() if len(r) > 6 else "N/A"
         tm = str(r[7]).strip() if len(r) > 7 else "N/A"
         st = str(r[8]).strip() if len(r) > 8 else "N/A"
-        msg += f"<b>ID:</b> {rid}\n<b>Услуга:</b> {svc} ({cat})\n<b>Мастер:</b> {mst}\n<b>Дата:</b> {dt}\n<b>Время:</b> {tm}\n<b>Статус:</b> {st}\n"
+        msg += f"<b>ID:</b> {rid}\n<b>Услуга:</b> {svc} ({cat})\n<b>Специалист:</b> {mst}\n<b>Дата:</b> {dt}\n<b>Время:</b> {tm}\n<b>Статус:</b> {st}\n"
         if st in CANCELLABLE_STATUSES:
             kb.append([InlineKeyboardButton(f"❌ Отменить {dt} {tm}", callback_data=f"cancel_record_{rid}")])
         else:
@@ -483,7 +483,7 @@ async def _validate_booking_checks(context: ContextTypes.DEFAULT_TYPE, name: str
                 "category": str(r[3]).strip(),
                 "date": str(r[6]).strip(),
                 "time": str(r[7]).strip(),
-                "master": str(r[5]).strip()
+                "specialist": str(r[5]).strip()
             }
             return "CONFIRM_REPEAT", None
     return True, None
@@ -499,7 +499,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not org_name:
         schedule_text = "⚠️ Название заведения не задано в настройках"
     else:
-        data = safe_get_sheet_data(SHEET_ID, "График мастеров!A3:H") or []
+        data = safe_get_sheet_data(SHEET_ID, "График cпециалистов!A3:H") or []
         found = False
         for row in data:
             if len(row) > 0 and str(row[0]).strip() == org_name:
@@ -539,8 +539,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             SELECT_SUBSERVICE: select_service_type,
             SHOW_PRICE_INFO: select_subservice,
             SELECT_DATE: show_price_info,
-            SELECT_MASTER: show_price_info,
-            SELECT_TIME: lambda u,c: select_date(u,c) if context.user_data.get("priority")=="date" else select_master(u,c),
+            SELECT_SPECIALIST: show_price_info,
+            SELECT_TIME: lambda u,c: select_date(u,c) if context.user_data.get("priority")=="date" else select_specialist(u,c),
             ENTER_NAME: select_time,
             ENTER_PHONE: enter_name,
         }
@@ -589,19 +589,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await admin_show_record_details(update, context, data.split("admin_manage_", 1)[1])
     if data.startswith("admin_new_date_"):
         return await admin_process_new_date(update, context, data.split("admin_new_date_", 1)[1])
-    if data.startswith("admin_new_master_"):
-        return await admin_process_new_master(update, context, data.split("admin_new_master_", 1)[1])
+    if data.startswith("admin_new_specialist_"):
+        return await admin_process_new_specialist(update, context, data.split("admin_new_specialist_", 1)[1])
     if data.startswith("admin_new_slot_"):
         parts = data.split("admin_new_slot_", 1)[1].split("_", 1)
         if len(parts) == 2:
             return await admin_process_new_slot(update, context, parts[0], parts[1])
-    if data in ["admin_change_date", "admin_change_master", "admin_change_time", "admin_change_all", "admin_skip_master"]:
+    if data in ["admin_change_date", "admin_change_specialist", "admin_change_time", "admin_change_all", "admin_skip_specialist"]:
         handler_map = {
             "admin_change_date": admin_change_date,
-            "admin_change_master": admin_change_master,
+            "admin_change_specialist": admin_change_specialist,
             "admin_change_time": admin_change_time,
             "admin_change_all": admin_change_all,
-            "admin_skip_master": admin_skip_master,
+            "admin_skip_specialist": admin_skip_specialist,
         }
         return await handler_map[data](update, context)
     if data.startswith("admin_confirm_reschedule_"):
@@ -620,12 +620,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("date_"):
         context.user_data["date"] = data.split("date_", 1)[1]
         if context.user_data.get("priority") == "date":
-            return await select_master(update, context)
+            return await select_specialist(update, context)
         else:
             return await select_time(update, context)
-    if data.startswith("master_"):
-        context.user_data["selected_master"] = data.split("master_", 1)[1]
-        if context.user_data.get("priority") == "master":
+    if data.startswith("specialist_"):
+        context.user_data["selected_specialist"] = data.split("specialist_", 1)[1]
+        if context.user_data.get("priority") == "specialist":
             return await select_date(update, context)
         else:
             return await select_time(update, context)
@@ -654,7 +654,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             "📋 Чтобы встать в лист ожидания, уточните:\n"
             "1. Категорию и название услуги\n"
-            "2. Имя мастера (или 'любой')\n"
+            "2. Имя cпециалиста (или 'любой')\n"
             "3. Желаемые дату и время"
         )
         context.user_data["state"] = AWAITING_WAITING_LIST_DETAILS
@@ -747,7 +747,7 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"✅ Услуга: {ss}\n💰 Цена: {price_str}\n⏳ Длительность: {fmt_dur}\n\nЧто для вас важнее?"
     kb = [
         [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
-        [InlineKeyboardButton("👩‍🦰 Сначала мастер", callback_data="priority_master")],
+        [InlineKeyboardButton("👩‍🦰 Сначала cпециалист", callback_data="priority_specialist")],
         [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
@@ -760,11 +760,11 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     priority = context.user_data.get("priority", "date")
     st = context.user_data.get("service_type")
     ss = context.user_data.get("subservice")
-    master = context.user_data.get("selected_master")
+    specialist = context.user_data.get("selected_specialist")
     dates = set()
     for i in range(1, 11):
         d = (today + timedelta(days=i)).strftime("%d.%m.%Y")
-        slots = find_available_slots(st, ss, d, master, priority)
+        slots = find_available_slots(st, ss, d, specialist, priority)
         if slots:
             dates.add(d)
     kb = [[InlineKeyboardButton(d, callback_data=f"date_{d}")] for d in sorted(dates)]
@@ -773,14 +773,14 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["state"] = SELECT_DATE
     return SELECT_DATE
 
-# --- SELECT MASTER ---
-async def select_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- SELECT SPECIALIST ---
+async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     date_str = context.user_data.get("date")
     if not date_str:
         await query.edit_message_text("❌ Ошибка: дата не выбрана.")
         return
-    masters_data = safe_get_sheet_data(SHEET_ID, "График мастеров!A3:H") or []
+    specialists_data = safe_get_sheet_data(SHEET_ID, "График cпециалистов!A3:H") or []
     available = []
     try:
         target = datetime.strptime(date_str, "%d.%m.%Y")
@@ -799,14 +799,14 @@ async def select_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Ошибка: категория услуги не выбрана.")
         return
 
-    for row in masters_data:
+    for row in specialists_data:
         if len(row) > 0 and row[0] != get_setting("Название заведения", "Название организации"):
             name = row[0]
-            # --- НОВАЯ ПРОВЕРКА КАТЕГОРИИ МАСТЕРА ---
-            master_categories = str(row[1]).strip() if len(row) > 1 else ""
-            if master_categories and selected_service_type:
-                if selected_service_type not in [cat.strip() for cat in master_categories.split(",")]:
-                    continue  # мастер не подходит под выбранную категорию
+            # --- НОВАЯ ПРОВЕРКА КАТЕГОРИИ СПЕЦИАЛИСТА ---
+            specialist_categories = str(row[1]).strip() if len(row) > 1 else ""
+            if specialist_categories and selected_service_type:
+                if selected_service_type not in [cat.strip() for cat in specialist_categories.split(",")]:
+                    continue  # cпециалист не подходит под выбранную категорию
             # ---------------------------------------
             try:
                 col_idx = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(target_day) + 1
@@ -817,23 +817,23 @@ async def select_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
             work_time = row[col_idx]
             if validate_work_schedule(work_time):
                 available.append(name)
-    kb = [[InlineKeyboardButton(m, callback_data=f"master_{m}")] for m in available]
+    kb = [[InlineKeyboardButton(m, callback_data=f"specialist_{m}")] for m in available]
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-    await query.edit_message_text("Выберите мастера:", reply_markup=InlineKeyboardMarkup(kb))
-    context.user_data["state"] = SELECT_MASTER
-    return SELECT_MASTER
+    await query.edit_message_text("Выберите специалиста:", reply_markup=InlineKeyboardMarkup(kb))
+    context.user_data["state"] = SELECT_SPECIALIST
+    return SELECT_SPECIALIST
 
 # --- SELECT TIME ---
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     date_str = context.user_data.get("date")
-    master = context.user_data.get("selected_master")
+    specialist = context.user_data.get("selected_specialist")
     st = context.user_data.get("service_type")
     ss = context.user_data.get("subservice")
     if not all([date_str, st, ss]):
         await query.edit_message_text("❌ Ошибка: не все данные для выбора времени выбраны.")
         return
-    slots = find_available_slots(st, ss, date_str, master, context.user_data.get("priority", "date"))
+    slots = find_available_slots(st, ss, date_str, specialist, context.user_data.get("priority", "date"))
     if not slots:
         await query.edit_message_text("❌ Свободных слотов нет.")
         kb = [
@@ -848,7 +848,7 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = []
     for s in slots:
         t = s.get("time", "N/A")
-        m = s.get("master", "N/A")
+        m = s.get("specialist", "N/A")
         kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
     await query.edit_message_text("Выберите время:", reply_markup=InlineKeyboardMarkup(kb))
@@ -856,7 +856,7 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return SELECT_TIME
 
 # --- RESERVE SLOT ---
-async def reserve_slot(update: Update, context: ContextTypes.DEFAULT_TYPE, master: str, time_str: str):
+async def reserve_slot(update: Update, context: ContextTypes.DEFAULT_TYPE, specialist: str, time_str: str):
     query = update.callback_query
     date_str = context.user_data.get("date")
     ss = context.user_data.get("subservice")
@@ -866,10 +866,10 @@ async def reserve_slot(update: Update, context: ContextTypes.DEFAULT_TYPE, maste
     end_dt = start_dt + timedelta(minutes=step)
     event_id = safe_create_calendar_event(
         CALENDAR_ID, "⏳ Бронь (в процессе)", start_dt.isoformat(), end_dt.isoformat(), "7",
-        f"Бронь: {ss} к {master}. В процессе оформления..."
+        f"Бронь: {ss} к {specialist}. В процессе оформления..."
     )
     context.user_data["temp_booking"] = {
-        "master": master,
+        "specialist": specialist,
         "time": time_str,
         "date": date_str,
         "event_id": event_id,
@@ -919,7 +919,7 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
         try:
             safe_delete_calendar_event(CALENDAR_ID, temp["event_id"])
             logger.info(f"Резерв слота {temp['date']} {temp['time']} освобождён по таймауту для пользователя {uid}.")
-            await check_waiting_list(temp['date'], temp['time'], temp['master'], context)
+            await check_waiting_list(temp['date'], temp['time'], temp['specialist'], context)
         except Exception as e:
             logger.error(f"❌ Ошибка освобождения резерва: {e}")
         try:
@@ -953,7 +953,7 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📋 Пожалуйста, подтвердите запись:\n\n"
         f"Услуга: {context.user_data.get('subservice', 'N/A')} ({context.user_data.get('service_type', 'N/A')})\n"
-        f"Мастер: {context.user_data.get('selected_master', 'N/A')}\n"
+        f"Специалист: {context.user_data.get('selected_specialist', 'N/A')}\n"
         f"Дата: {context.user_data.get('date', 'N/A')}\n"
         f"Время: {context.user_data.get('time', 'N/A')}\n"
         f"Имя: {context.user_data.get('name', 'N/A')}\n"
@@ -974,12 +974,12 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     st = context.user_data.get("service_type")
     ss = context.user_data.get("subservice")
-    master = context.user_data.get("selected_master")
+    specialist = context.user_data.get("selected_specialist")
     date_str = context.user_data.get("date")
     time_str = context.user_data.get("time")
     name = context.user_data.get("name")
     phone = context.user_data.get("phone")
-    if not all([st, ss, master, date_str, time_str, name, phone]):
+    if not all([st, ss, specialist, date_str, time_str, name, phone]):
         await query.edit_message_text("❌ Не все данные для записи заполнены. Пожалуйста, начните сначала.")
         context.user_data.clear()
         return MENU
@@ -1002,7 +1002,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         msg = (
             f"⚠️ У вас уже есть запись на <b>{conflict.get('category', 'N/A')}</b>\n"
-            f"{conflict.get('date', 'N/A')} в {conflict.get('time', 'N/A')} к {conflict.get('master', 'N/A')}.\n\n"
+            f"{conflict.get('date', 'N/A')} в {conflict.get('time', 'N/A')} к {conflict.get('specialist', 'N/A')}.\n\n"
             "Вы уверены, что хотите записаться ещё раз?"
         )
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML')
@@ -1028,7 +1028,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         phone,
         st,
         ss,
-        master,
+        specialist,
         date_str,
         time_str,
         "подтверждено",
@@ -1042,11 +1042,11 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     safe_append_to_sheet(SHEET_ID, "Записи", [new_record])
     context.user_data.clear()
     success = (
-        f"✅ Вы записаны!\nУслуга: {ss}\nМастер: {master}\nДата: {date_str}\nВремя: {time_str}\n"
+        f"✅ Вы записаны!\nУслуга: {ss}\nСпециалист: {specialist}\nДата: {date_str}\nВремя: {time_str}\n"
         f"Стоимость: {get_setting('Стоимость', 'уточняйте')}"
     )
     await query.edit_message_text(success)
-    admin_msg = f"📢 Новая запись: <b>{ss}</b> к <b>{master}</b> {date_str} в {time_str} — <b>{name}</b>"
+    admin_msg = f"📢 Новая запись: <b>{ss}</b> к <b>{specialist}</b> {date_str} в {time_str} — <b>{name}</b>"
     await notify_admins(context, admin_msg)
     logger.info(f"✅ Новая запись: {name} ({phone}) -> {ss} ({date_str} {time_str})")
     return MENU
@@ -1062,7 +1062,7 @@ async def cancel_reservation(update: Update, context: ContextTypes.DEFAULT_TYPE)
         try:
             safe_delete_calendar_event(CALENDAR_ID, temp["event_id"])
             logger.info(f"Резерв слота {temp['date']} {temp['time']} отменён вручную.")
-            await check_waiting_list(temp['date'], temp['time'], temp['master'], context)
+            await check_waiting_list(temp['date'], temp['time'], temp['specialist'], context)
         except Exception as e:
             logger.error(f"❌ Ошибка при отмене резерва: {e}")
     await query.edit_message_text("❌ Резерв отменён. Слот освобождён.")
@@ -1166,7 +1166,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
         else:
             service_type = context.user_data.get("service_type", "")
             subservice = context.user_data.get("subservice", "")
-            master = context.user_data.get("selected_master", "любой")
+            specialist = context.user_data.get("selected_specialist", "любой")
             date = context.user_data.get("date", "")
             time = context.user_data.get("time", "")
             entry = [
@@ -1176,7 +1176,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
                 context.user_data.get("phone", ""),
                 service_type,
                 subservice,
-                master,
+                specialist,
                 date,
                 time,
                 "1",
@@ -1187,7 +1187,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
                 safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [entry])
                 confirmation = (
                     "📋 Спасибо! Ваши данные сохранены в листе ожидания.\n\n"
-                    f"<b>Основные данные:</b>\n• Услуга: {subservice} ({service_type})\n• Мастер: {master}\n"
+                    f"<b>Основные данные:</b>\n• Услуга: {subservice} ({service_type})\n• Специалист: {specialist}\n"
                 )
                 if date and time:
                     confirmation += f"• Предпочтительное время: {date} в {time}\n"
@@ -1207,15 +1207,15 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             await msg.reply_text("❌ Категория не может быть пустой.")
             return AWAITING_WL_CATEGORY
         context.user_data["wl_category"] = user_input
-        await msg.reply_text(f"👤 Вы выбрали категорию: <b>{user_input}</b>.\nТеперь укажите имя мастера (или 'любой').", parse_mode='HTML')
-        context.user_data["state"] = AWAITING_WL_MASTER
-        return AWAITING_WL_MASTER
-    elif state == AWAITING_WL_MASTER:
+        await msg.reply_text(f"👤 Вы выбрали категорию: <b>{user_input}</b>.\nТеперь укажите имя специалиста (или 'любой').", parse_mode='HTML')
+        context.user_data["state"] = AWAITING_WL_SPECIALIST
+        return AWAITING_WL_SPECIALIST
+    elif state == AWAITING_WL_SPECIALIST:
         if not user_input:
-            await msg.reply_text("❌ Имя мастера не может быть пустым.")
-            return AWAITING_WL_MASTER
-        context.user_data["wl_master"] = user_input
-        await msg.reply_text(f"👤 Мастер: <b>{user_input}</b>.\nТеперь укажите желаемую дату (ДД.ММ.ГГГГ).", parse_mode='HTML')
+            await msg.reply_text("❌ Имя специалиста не может быть пустым.")
+            return AWAITING_WL_SPECIALIST
+        context.user_data["wl_specialist"] = user_input
+        await msg.reply_text(f"👤 Специалист: <b>{user_input}</b>.\nТеперь укажите желаемую дату (ДД.ММ.ГГГГ).", parse_mode='HTML')
         context.user_data["state"] = AWAITING_WL_DATE
         return AWAITING_WL_DATE
     elif state == AWAITING_WL_DATE:
@@ -1246,7 +1246,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             context.user_data.get("phone", "Неизвестен"),
             context.user_data["wl_category"],
             context.user_data.get("wl_service", "Любая в категории"),
-            context.user_data["wl_master"],
+            context.user_data["wl_specialist"],
             context.user_data["wl_date"],
             context.user_data["wl_time"],
             context.user_data["wl_priority"],
@@ -1257,14 +1257,14 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [sheet_data])
             await msg.reply_text(
                 f"✅ Вы добавлены в лист ожидания!\nКатегория: {context.user_data['wl_category']}\n"
-                f"Мастер: {context.user_data['wl_master']}\nДата: {context.user_data['wl_date']}\n"
+                f"Специалист: {context.user_data['wl_specialist']}\nДата: {context.user_data['wl_date']}\n"
                 f"Время: {context.user_data['wl_time']}\nПриоритет: {context.user_data['wl_priority']}\nСтатус: ожидает"
             )
             logger.info(f"✅ Клиент {update.effective_user.id} добавлен в лист ожидания: {sheet_data}")
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения в лист ожидания: {e}")
             await msg.reply_text("❌ Ошибка при сохранении в лист ожидания. Повторите попытку позже.")
-        for key in ["wl_category", "wl_service", "wl_master", "wl_date", "wl_time", "wl_priority"]:
+        for key in ["wl_category", "wl_service", "wl_specialist", "wl_date", "wl_time", "wl_priority"]:
             context.user_data.pop(key, None)
         context.user_data.pop("state", None)
         return MENU
@@ -1344,7 +1344,7 @@ async def admin_show_record_details(update: Update, context: ContextTypes.DEFAUL
                 f"📞 Телефон: {r[2] if len(r) > 2 else 'N/A'}\n"
                 f"📁 Категория: {r[3] if len(r) > 3 else 'N/A'}\n"
                 f"💅 Услуга: {r[4] if len(r) > 4 else 'N/A'}\n"
-                f"👩‍🦰 Мастер: {r[5] if len(r) > 5 else 'N/A'}\n"
+                f"👩‍🦰 Специалист: {r[5] if len(r) > 5 else 'N/A'}\n"
                 f"📅 Дата: {r[6] if len(r) > 6 else 'N/A'}\n"
                 f"⏰ Время: {r[7] if len(r) > 7 else 'N/A'}\n"
                 f"📊 Статус: {r[8] if len(r) > 8 else 'N/A'}\n"
@@ -1397,13 +1397,13 @@ async def admin_reschedule_record(update: Update, context: ContextTypes.DEFAULT_
     if not current:
         await query.edit_message_text("❌ Запись не найдена.")
         return
-    for i, key in enumerate(["service_type", "subservice", "current_master", "current_date", "current_time"]):
+    for i, key in enumerate(["service_type", "subservice", "current_specialist", "current_date", "current_time"]):
         if len(current) > i + 3:
             context.user_data[key] = str(current[i + 3]).strip()
     msg = (
         f"🔄 Перенос записи {record_id}\n\n<b>Текущие данные:</b>\n"
         f"• Услуга: {current[4] if len(current) > 4 else 'N/A'}\n"
-        f"• Мастер: {current[5] if len(current) > 5 else 'N/A'}\n"
+        f"• Специалист: {current[5] if len(current) > 5 else 'N/A'}\n"
         f"• Дата: {current[6] if len(current) > 6 else 'N/A'}\n"
         f"• Время: {current[7] if len(current) > 7 else 'N/A'}\n"
         f"• Клиент: {current[1] if len(current) > 1 else 'N/A'}\n\n"
@@ -1411,7 +1411,7 @@ async def admin_reschedule_record(update: Update, context: ContextTypes.DEFAULT_
     )
     kb = [
         [InlineKeyboardButton("📅 Изменить дату", callback_data="admin_change_date")],
-        [InlineKeyboardButton("👩‍💼 Изменить мастера", callback_data="admin_change_master")],
+        [InlineKeyboardButton("👩‍💼 Изменить специалиста", callback_data="admin_change_specialist")],
         [InlineKeyboardButton("⏰ Изменить время", callback_data="admin_change_time")],
         [InlineKeyboardButton("✅ Перенести всё сразу", callback_data="admin_change_all")],
         [InlineKeyboardButton("⬅️ Назад к записи", callback_data=f"admin_manage_{record_id}")]
@@ -1427,14 +1427,14 @@ async def admin_change_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}")])
     await query.edit_message_text("📅 Выберите новую дату для записи:", reply_markup=InlineKeyboardMarkup(kb))
 
-async def admin_change_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_change_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    masters_data = safe_get_sheet_data(SHEET_ID, "График мастеров!A3:H") or []
-    masters = [row[0] for row in masters_data if len(row) > 0 and row[0] != get_setting("Название заведения", "Название организации")]
-    kb = [[InlineKeyboardButton(m, callback_data=f"admin_new_master_{m}")] for m in masters]
+    specialists_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:H") or []
+    specialists = [row[0] for row in specialists_data if len(row) > 0 and row[0] != get_setting("Название заведения", "Название организации")]
+    kb = [[InlineKeyboardButton(m, callback_data=f"admin_new_specialist_{m}")] for m in specialists]
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}")])
-    await query.edit_message_text("👩‍💼 Выберите нового мастера:", reply_markup=InlineKeyboardMarkup(kb))
+    await query.edit_message_text("👩‍💼 Выберите нового cпециалиста:", reply_markup=InlineKeyboardMarkup(kb))
 
 async def admin_change_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1442,21 +1442,21 @@ async def admin_change_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     st = context.user_data.get("service_type")
     ss = context.user_data.get("subservice")
     date_str = context.user_data.get("current_date")
-    master = context.user_data.get("current_master")
+    specialist = context.user_data.get("current_specialist")
     if not all([st, ss, date_str]):
         await query.edit_message_text("❌ Недостаточно данных для поиска времени.")
         return
-    slots, err = await _get_available_slots_for_admin(st, ss, date_str, master)
+    slots, err = await _get_available_slots_for_admin(st, ss, date_str, specialist)
     if err:
         await query.edit_message_text(err)
         return
     if not slots:
-        await query.edit_message_text(f"❌ Нет доступных слотов для {master} на {date_str}.")
+        await query.edit_message_text(f"❌ Нет доступных слотов для {specialist} на {date_str}.")
         return
-    kb = [[InlineKeyboardButton(f"⏰ {s}", callback_data=f"admin_new_slot_{master}_{s}")] for s in slots]
+    kb = [[InlineKeyboardButton(f"⏰ {s}", callback_data=f"admin_new_slot_{specialist}_{s}")] for s in slots]
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}")])
     await query.edit_message_text(
-        f"📅 Дата: <b>{date_str}</b>\n👩‍💼 Мастер: <b>{master}</b>\nТеперь выберите <b>новое время</b>.",
+        f"📅 Дата: <b>{date_str}</b>\n👩‍💼 Специалист: <b>{specialist}</b>\nТеперь выберите <b>новое время</b>.",
         reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML'
     )
 
@@ -1468,55 +1468,55 @@ async def admin_process_new_date(update: Update, context: ContextTypes.DEFAULT_T
     await query.answer()
     context.user_data["new_date"] = date_str
     kb = [
-        [InlineKeyboardButton("👩‍💼 Выбрать мастера", callback_data="admin_change_master")],
-        [InlineKeyboardButton("⏰ Пропустить (оставить текущего)", callback_data="admin_skip_master")],
+        [InlineKeyboardButton("👩‍💼 Выбрать cпециалиста", callback_data="admin_change_specialist")],
+        [InlineKeyboardButton("⏰ Пропустить (оставить текущего)", callback_data="admin_skip_specialist")],
         [InlineKeyboardButton("⬅️ Назад", callback_data="admin_change_date")]
     ]
     await query.edit_message_text(
-        f"📅 Новая дата: <b>{date_str}</b>\n\nТеперь выберите мастера или пропустите этот шаг:",
+        f"📅 Новая дата: <b>{date_str}</b>\n\nТеперь выберите специалиста или пропустите этот шаг:",
         reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML'
     )
 
-async def admin_process_new_master(update: Update, context: ContextTypes.DEFAULT_TYPE, master: str):
+async def admin_process_new_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE, specialist: str):
     query = update.callback_query
     await query.answer()
-    context.user_data["new_master"] = master
+    context.user_data["new_specialist"] = specialist
     st = context.user_data.get("service_type")
     ss = context.user_data.get("subservice")
     date_str = context.user_data.get("new_date") or context.user_data.get("current_date")
     if not all([st, ss, date_str]):
         await query.edit_message_text("❌ Недостаточно данных для поиска времени.")
         return
-    slots, err = await _get_available_slots_for_admin(st, ss, date_str, master)
+    slots, err = await _get_available_slots_for_admin(st, ss, date_str, specialist)
     if err:
         await query.edit_message_text(err)
         return
     if not slots:
-        await query.edit_message_text(f"❌ У мастера {master} нет свободных слотов на {date_str}.")
+        await query.edit_message_text(f"❌ У cпециалиста {specialist} нет свободных слотов на {date_str}.")
         return
-    kb = [[InlineKeyboardButton(s, callback_data=f"admin_new_slot_{master}_{s}")] for s in slots]
-    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="admin_change_master")])
+    kb = [[InlineKeyboardButton(s, callback_data=f"admin_new_slot_{specialist}_{s}")] for s in slots]
+    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="admin_change_specialist")])
     await query.edit_message_text(
-        f"👩‍💼 Мастер: <b>{master}</b>\n📅 Дата: <b>{date_str}</b>\n\nВыберите время:",
+        f"👩‍💼 Специалист: <b>{specialist}</b>\n📅 Дата: <b>{date_str}</b>\n\nВыберите время:",
         reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML'
     )
 
-async def admin_skip_master(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_skip_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    current = context.user_data.get("current_master")
+    current = context.user_data.get("current_specialist")
     if not current:
-        await query.edit_message_text("❌ Текущий мастер не указан.")
+        await query.edit_message_text("❌ Текущий cпециалист не указан.")
         return
-    context.user_data["new_master"] = current
+    context.user_data["new_specialist"] = current
     return await admin_change_time(update, context)
 
-async def admin_process_new_slot(update: Update, context: ContextTypes.DEFAULT_TYPE, master: str, time_str: str):
+async def admin_process_new_slot(update: Update, context: ContextTypes.DEFAULT_TYPE, specialist: str, time_str: str):
     query = update.callback_query
     await query.answer()
     record_id = context.user_data.get("admin_reschedule_record_id")
     new_date = context.user_data.get("new_date") or context.user_data.get("current_date")
-    new_master = master or context.user_data.get("current_master")
+    new_specialist = specialist or context.user_data.get("current_specialist")
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     orig = None
     for r in records:
@@ -1548,15 +1548,15 @@ async def admin_process_new_slot(update: Update, context: ContextTypes.DEFAULT_T
         f"🔄 Подтвердите перенос записи {record_id}\n\n<b>БЫЛО:</b>\n"
         f"• Дата: {orig[6] if len(orig) > 6 else 'N/A'}\n"
         f"• Время: {orig[7] if len(orig) > 7 else 'N/A'}\n"
-        f"• Мастер: {orig[5] if len(orig) > 5 else 'N/A'}\n\n"
-        f"<b>СТАНЕТ:</b>\n• Дата: {new_date}\n• Время: {time_str}\n• Мастер: {new_master}\n\n"
+        f"• Специалист: {orig[5] if len(orig) > 5 else 'N/A'}\n\n"
+        f"<b>СТАНЕТ:</b>\n• Дата: {new_date}\n• Время: {time_str}\n• Специалист: {new_specialist}\n\n"
         f"Клиент: {orig[1] if len(orig) > 1 else 'N/A'}"
     )
     kb = [
         [InlineKeyboardButton("✅ Подтвердить перенос", callback_data=f"admin_confirm_reschedule_{record_id}")],
         [InlineKeyboardButton("❌ Отменить", callback_data=f"admin_manage_{record_id}")]
     ]
-    context.user_data.update({"new_date": new_date, "new_time": time_str, "new_master": new_master})
+    context.user_data.update({"new_date": new_date, "new_time": time_str, "new_specialist": new_specialist})
     await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML')
 
 async def _admin_save_reschedule(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str, force: bool = False):
@@ -1564,8 +1564,8 @@ async def _admin_save_reschedule(update: Update, context: ContextTypes.DEFAULT_T
     await query.answer()
     new_date = context.user_data.get("new_date")
     new_time = context.user_data.get("new_time")
-    new_master = context.user_data.get("new_master")
-    if not all([new_date, new_time, new_master]):
+    new_specialist = context.user_data.get("new_specialist")
+    if not all([new_date, new_time, new_specialist]):
         await query.edit_message_text("❌ Не все данные для переноса заполнены.")
         return
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
@@ -1573,9 +1573,9 @@ async def _admin_save_reschedule(update: Update, context: ContextTypes.DEFAULT_T
         if len(r) > 0 and r[0] == record_id:
             old_date = str(r[6]).strip() if len(r) > 6 else ""
             old_time = str(r[7]).strip() if len(r) > 7 else ""
-            old_master = str(r[5]).strip() if len(r) > 5 else ""
+            old_specialist = str(r[5]).strip() if len(r) > 5 else ""
             updated = list(r)
-            updated[5] = new_master
+            updated[5] = new_specialist
             updated[6] = new_date
             updated[7] = new_time
             updated[9] = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
@@ -1597,25 +1597,25 @@ async def _admin_save_reschedule(update: Update, context: ContextTypes.DEFAULT_T
                     CALENDAR_ID, event_id, f"{name} - {ss}", start_dt.isoformat(), end_dt.isoformat(), "10",
                     f"Клиент: {name}, тел.: {phone}\nПеренесено: {datetime.now(TIMEZONE).strftime('%d.%m.%Y %H:%M')}"
                 )
-            if old_date and old_time and old_master:
-                await check_waiting_list(old_date, old_time, old_master, context)
-                logger.info(f"🔄 Проверен лист ожидания для освободившегося слота {old_date} {old_time} у {old_master} при переносе записи {record_id}.")
+            if old_date and old_time and old_specialist:
+                await check_waiting_list(old_date, old_time, old_specialist, context)
+                logger.info(f"🔄 Проверен лист ожидания для освободившегося слота {old_date} {old_time} у {old_specialist} при переносе записи {record_id}.")
             client_chat_id = r[13] if len(r) > 13 else None
             if client_chat_id and client_chat_id.isdigit():
                 try:
                     await context.bot.send_message(
                         chat_id=int(client_chat_id),
-                        text=f"🔄 Ваша запись {record_id} была перенесена администратором.\n\nНовые данные:\n• Дата: {new_date}\n• Время: {new_time}\n• Мастер: {new_master}\n\nЕсли новое время не подходит, свяжитесь с нами."
+                        text=f"🔄 Ваша запись {record_id} была перенесена администратором.\n\nНовые данные:\n• Дата: {new_date}\n• Время: {new_time}\n• Специалист: {new_specialist}\n\nЕсли новое время не подходит, свяжитесь с нами."
                     )
                 except Exception as e:
                     logger.error(f"❌ Не удалось уведомить клиента о переносе: {e}")
-            success = f"✅ Запись {record_id} успешно перенесена!\n\nНовые данные:\n• Дата: {new_date}\n• Время: {new_time}\n• Мастер: {new_master}"
+            success = f"✅ Запись {record_id} успешно перенесена!\n\nНовые данные:\n• Дата: {new_date}\n• Время: {new_time}\n• Специалист: {new_specialist}"
             if force:
                 success += "\n\n⚠️ Перенос выполнен принудительно (клиент имеет повторную запись в категории)"
             await query.edit_message_text(success)
-            for key in ["admin_reschedule_record_id", "new_date", "new_time", "new_master", "admin_mode", "repeat_booking_conflict"]:
+            for key in ["admin_reschedule_record_id", "new_date", "new_time", "new_specialist", "admin_mode", "repeat_booking_conflict"]:
                 context.user_data.pop(key, None)
-            logger.info(f"✅ Админ {'принудительно ' if force else ''}перенес запись {record_id} на {new_date} {new_time} к {new_master}")
+            logger.info(f"✅ Админ {'принудительно ' if force else ''}перенес запись {record_id} на {new_date} {new_time} к {new_specialist}")
             return
     await query.edit_message_text("❌ Запись не найдена.")
 
@@ -1625,9 +1625,9 @@ async def admin_confirm_reschedule(update: Update, context: ContextTypes.DEFAULT
 async def admin_force_reschedule(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
     return await _admin_save_reschedule(update, context, record_id, force=True)
 
-async def _get_available_slots_for_admin(service_type: str, subservice: str, date_str: str, master: str):
+async def _get_available_slots_for_admin(service_type: str, subservice: str, date_str: str, specialist: str):
     try:
-        day_headers = safe_get_sheet_data(SHEET_ID, "График мастеров!B1:H1") or []
+        day_headers = safe_get_sheet_data(SHEET_ID, "График специалистов!B1:H1") or []
         if not day_headers or len(day_headers[0]) < 7:
             return None, "❌ Не удалось загрузить расписание дней недели из таблицы."
         day_titles = [str(h).strip().lower() for h in day_headers[0]]
@@ -1635,22 +1635,22 @@ async def _get_available_slots_for_admin(service_type: str, subservice: str, dat
         day_number = target_date.weekday()
         if day_number >= len(day_titles):
             return None, f"❌ Не удалось определить график для {date_str}."
-        master_rows = safe_get_sheet_data(SHEET_ID, "График мастеров!A:A") or []
-        master_row_idx = -1
-        for i, row in enumerate(master_rows):
-            if len(row) > 0 and str(row[0]).strip() == master:
-                master_row_idx = i + 2
+        specialist_rows = safe_get_sheet_data(SHEET_ID, "График cпециалистов!A:A") or []
+        specialist_row_idx = -1
+        for i, row in enumerate(specialist_rows):
+            if len(row) > 0 and str(row[0]).strip() == specialist:
+                specialist_row_idx = i + 2
                 break
-        if master_row_idx == -1:
-            return None, f"❌ Мастер {master} не найден в графике."
+        if specialist_row_idx == -1:
+            return None, f"❌ Специалист {specialist} не найден в графике."
         day_col_letter = chr(66 + day_number)
-        schedule_cell = f"{day_col_letter}{master_row_idx}"
-        schedule_data = safe_get_sheet_data(SHEET_ID, f"График мастеров!{schedule_cell}:{schedule_cell}") or []
+        schedule_cell = f"{day_col_letter}{specialist_row_idx}"
+        schedule_data = safe_get_sheet_data(SHEET_ID, f"График cпециалистов!{schedule_cell}:{schedule_cell}") or []
         if not schedule_data or not schedule_data[0]:
-            return None, f"❌ Нет графика для {master} на {date_str}."
+            return None, f"❌ Нет графика для {specialist} на {date_str}."
         schedule_range = schedule_data[0][0]
         if schedule_range.lower() == "выходной":
-            return None, f"❌ {master} не работает {date_str}."
+            return None, f"❌ {specialist} не работает {date_str}."
         start_time_str, end_time_str = schedule_range.split("-")
         start_time = datetime.strptime(start_time_str.strip(), "%H:%M").time()
         end_time = datetime.strptime(end_time_str.strip(), "%H:%M").time()
@@ -1658,7 +1658,7 @@ async def _get_available_slots_for_admin(service_type: str, subservice: str, dat
         all_records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
         booked = []
         for r in all_records:
-            if len(r) > 7 and str(r[5]).strip() == master and str(r[6]).strip() == date_str and str(r[8]).strip() in ["подтверждено", "в резерве", "ожидает оплаты"]:
+            if len(r) > 7 and str(r[5]).strip() == specialist and str(r[6]).strip() == date_str and str(r[8]).strip() in ["подтверждено", "в резерве", "ожидает оплаты"]:
                 booked.append(str(r[7]).strip())
         available = []
         current = datetime.combine(target_date.date(), start_time)
@@ -1682,8 +1682,8 @@ async def handle_trigger_words(update: Update, context: ContextTypes.DEFAULT_TYP
         ENTER_NAME, ENTER_PHONE, CONFIRM_RESERVATION, AWAITING_REPEAT_CONFIRMATION,
         AWAITING_ADMIN_MESSAGE, AWAITING_WAITING_LIST_DETAILS,
         AWAITING_MY_RECORDS_NAME, AWAITING_MY_RECORDS_PHONE,
-        AWAITING_WL_CATEGORY, AWAITING_WL_MASTER, AWAITING_WL_DATE, AWAITING_WL_TIME, AWAITING_WL_PRIORITY,
-        AWAITING_ADMIN_SEARCH, AWAITING_ADMIN_NEW_DATE, AWAITING_ADMIN_NEW_MASTER, AWAITING_ADMIN_NEW_TIME,
+        AWAITING_WL_CATEGORY, AWAITING_WL_SPECIALIST, AWAITING_WL_DATE, AWAITING_WL_TIME, AWAITING_WL_PRIORITY,
+        AWAITING_ADMIN_SEARCH, AWAITING_ADMIN_NEW_DATE, AWAITING_ADMIN_NEW_SPECIALIST, AWAITING_ADMIN_NEW_TIME,
         AWAITING_PHONE_FOR_CALLBACK,
     ]
     if state in ignore_states:
@@ -1720,7 +1720,7 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
         now = datetime.now(TIMEZONE)
         
         # === ШАГ 1: Найти ВРЕМЯ ОКОНЧАНИЯ ПОСЛЕДНЕГО РАБОЧЕГО ДНЯ ===
-        schedule_data = safe_get_sheet_data(SHEET_ID, "График мастеров!A3:H") or []
+        schedule_data = safe_get_sheet_data(SHEET_ID, "График cпециалистов!A3:H") or []
         org_name = get_setting("Название заведения", "").strip()
         if not org_name:
             logger.error("❌ Не задано 'Название заведения' в настройках.")
@@ -1732,7 +1732,7 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
                 org_row = row
                 break
         if not org_row or len(org_row) < 8:
-            logger.error(f"❌ Не найдена строка '{org_name}' в 'График мастеров' или недостаточно данных.")
+            logger.error(f"❌ Не найдена строка '{org_name}' в 'График cпециалистов' или недостаточно данных.")
             return
 
         day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
@@ -1838,7 +1838,7 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
         AWAITING_MY_RECORDS_NAME: handle_my_records_input,
         AWAITING_MY_RECORDS_PHONE: handle_my_records_input,
         AWAITING_WL_CATEGORY: handle_waiting_list_input,
-        AWAITING_WL_MASTER: handle_waiting_list_input,
+        AWAITING_WL_SPECIALIST: handle_waiting_list_input,
         AWAITING_WL_DATE: handle_waiting_list_input,
         AWAITING_WL_TIME: handle_waiting_list_input,
         AWAITING_WL_PRIORITY: handle_waiting_list_input,
