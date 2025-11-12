@@ -1,4 +1,5 @@
 # utils/slots.py
+import logging
 from datetime import datetime, timedelta
 import pytz
 from config import TIMEZONE, SHEET_ID, CALENDAR_ID
@@ -152,3 +153,4 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     return []
 
 print("✅ Модуль slots.py загружен.")
+
