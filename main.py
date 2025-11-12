@@ -1937,6 +1937,7 @@ def main():
         remove_lock_file()
         return
     log_business_event("bot_started")
+
     persistence = PicklePersistence(filepath=persistence_file)
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).persistence(persistence).build()
     application.add_error_handler(global_error_handler)
