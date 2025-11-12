@@ -24,7 +24,7 @@ from telegram.ext import (
 )
 
 # --- ИМПОРТЫ ИЗ КОНФИГА И УТИЛИТ ---
-from config import TELEGRAM_TOKEN, TIMEZONE, RESERVATION_TIMEOUT, WARNING_TIMEOUT, SHEET_ID, CALENDAR_ID
+from config import TELEGRAM_BOT_TOKEN, TIMEZONE, RESERVATION_TIMEOUT, WARNING_TIMEOUT, SHEET_ID, CALENDAR_ID
 from utils.safe_google import (
     safe_get_sheet_data,
     safe_append_to_sheet,
@@ -331,7 +331,7 @@ def format_duration(minutes: int) -> str:
 
 def validate_configuration():
     required = {
-        "TELEGRAM_TOKEN": TELEGRAM_TOKEN,
+        "TELEGRAM_BOT_TOKEN": TELEGRAM_BOT_TOKEN,
         "SHEET_ID": SHEET_ID,
         "CALENDAR_ID": CALENDAR_ID,
         "TIMEZONE": TIMEZONE
@@ -1938,7 +1938,7 @@ def main():
         return
     log_business_event("bot_started")
     persistence = PicklePersistence(filepath=persistence_file)
-    application = ApplicationBuilder().token(TELEGRAM_TOKEN).persistence(persistence).build()
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).persistence(persistence).build()
     application.add_error_handler(global_error_handler)
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, global_activity_updater), group=-1)
     register_handlers(application)
