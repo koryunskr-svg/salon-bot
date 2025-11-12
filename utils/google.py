@@ -1,4 +1,5 @@
 # utils/google.py
+import logging
 import json
 # import os # Убран неиспользуемый импорт
 # from google.auth.transport.requests import Request # Убран неиспользуемый импорт
@@ -147,3 +148,4 @@ def delete_calendar_event(calendar_id: str, event_id: str):
 
 # Исправлено: Используем logger вместо print
 logger.info("✅ Модуль google.py загружен.")
+
