@@ -16,8 +16,8 @@ def load_admins():
     """
     global ADMIN_CHAT_IDS
     try:
-        # Читаем с A2, предполагая, что A1 - заголовки
-        admins = safe_get_sheet_data(SHEET_ID, "Администраторы!A2:C")
+        # Читаем с A3, предполагая, что A1 - название листа, а A2 - заголовки
+        admins = safe_get_sheet_data(SHEET_ID, "Администраторы!A3:C")
     except Exception as e:
         logger.exception("❌ Не удалось получить список админов из таблицы: %s", e)
         ADMIN_CHAT_IDS = []
