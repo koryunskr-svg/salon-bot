@@ -499,7 +499,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not org_name:
         schedule_text = "⚠️ Название заведения не задано в настройках"
     else:
-        data = safe_get_sheet_data(SHEET_ID, "График cпециалистов!A3:H") or []
+        data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:H") or []
         found = False
         for row in data:
             if len(row) > 0 and str(row[0]).strip() == org_name:
@@ -780,7 +780,7 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not date_str:
         await query.edit_message_text("❌ Ошибка: дата не выбрана.")
         return
-    specialists_data = safe_get_sheet_data(SHEET_ID, "График cпециалистов!A3:H") or []
+    specialists_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:H") or []
     available = []
     try:
         target = datetime.strptime(date_str, "%d.%m.%Y")
@@ -1635,7 +1635,7 @@ async def _get_available_slots_for_admin(service_type: str, subservice: str, dat
         day_number = target_date.weekday()
         if day_number >= len(day_titles):
             return None, f"❌ Не удалось определить график для {date_str}."
-        specialist_rows = safe_get_sheet_data(SHEET_ID, "График cпециалистов!A:A") or []
+        specialist_rows = safe_get_sheet_data(SHEET_ID, "График специалистов!A:A") or []
         specialist_row_idx = -1
         for i, row in enumerate(specialist_rows):
             if len(row) > 0 and str(row[0]).strip() == specialist:
@@ -1645,7 +1645,7 @@ async def _get_available_slots_for_admin(service_type: str, subservice: str, dat
             return None, f"❌ Специалист {specialist} не найден в графике."
         day_col_letter = chr(66 + day_number)
         schedule_cell = f"{day_col_letter}{specialist_row_idx}"
-        schedule_data = safe_get_sheet_data(SHEET_ID, f"График cпециалистов!{schedule_cell}:{schedule_cell}") or []
+        schedule_data = safe_get_sheet_data(SHEET_ID, f"График специалистов!{schedule_cell}:{schedule_cell}") or []
         if not schedule_data or not schedule_data[0]:
             return None, f"❌ Нет графика для {specialist} на {date_str}."
         schedule_range = schedule_data[0][0]
@@ -1720,7 +1720,7 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
         now = datetime.now(TIMEZONE)
         
         # === ШАГ 1: Найти ВРЕМЯ ОКОНЧАНИЯ ПОСЛЕДНЕГО РАБОЧЕГО ДНЯ ===
-        schedule_data = safe_get_sheet_data(SHEET_ID, "График cпециалистов!A3:H") or []
+        schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:H") or []
         org_name = get_setting("Название заведения", "").strip()
         if not org_name:
             logger.error("❌ Не задано 'Название заведения' в настройках.")
@@ -1732,7 +1732,7 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
                 org_row = row
                 break
         if not org_row or len(org_row) < 8:
-            logger.error(f"❌ Не найдена строка '{org_name}' в 'График cпециалистов' или недостаточно данных.")
+            logger.error(f"❌ Не найдена строка '{org_name}' в 'График специалистов' или недостаточно данных.")
             return
 
         day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
@@ -1937,7 +1937,6 @@ def main():
         remove_lock_file()
         return
     log_business_event("bot_started")
-
     persistence = PicklePersistence(filepath=persistence_file)
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).persistence(persistence).build()
     application.add_error_handler(global_error_handler)
