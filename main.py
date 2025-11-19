@@ -499,7 +499,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not org_name:
         schedule_text = "⚠️ Название заведения не задано в настройках"
     else:
-        data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:H") or []
+        data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
         found = False
         for row in data:
             if len(row) > 0 and str(row[0]).strip() == org_name:
@@ -780,7 +780,7 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not date_str:
         await query.edit_message_text("❌ Ошибка: дата не выбрана.")
         return
-    specialists_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:H") or []
+    specialists_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
     available = []
     try:
         target = datetime.strptime(date_str, "%d.%m.%Y")
@@ -1430,7 +1430,7 @@ async def admin_change_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_change_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    specialists_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:H") or []
+    specialists_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
     specialists = [row[0] for row in specialists_data if len(row) > 0 and row[0] != get_setting("Название заведения", "Название организации")]
     kb = [[InlineKeyboardButton(m, callback_data=f"admin_new_specialist_{m}")] for m in specialists]
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}")])
@@ -1627,7 +1627,7 @@ async def admin_force_reschedule(update: Update, context: ContextTypes.DEFAULT_T
 
 async def _get_available_slots_for_admin(service_type: str, subservice: str, date_str: str, specialist: str):
     try:
-        day_headers = safe_get_sheet_data(SHEET_ID, "График специалистов!B1:H1") or []
+        day_headers = safe_get_sheet_data(SHEET_ID, "График специалистов!C2:I2") or []
         if not day_headers or len(day_headers[0]) < 7:
             return None, "❌ Не удалось загрузить расписание дней недели из таблицы."
         day_titles = [str(h).strip().lower() for h in day_headers[0]]
@@ -1720,7 +1720,7 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
         now = datetime.now(TIMEZONE)
         
         # === ШАГ 1: Найти ВРЕМЯ ОКОНЧАНИЯ ПОСЛЕДНЕГО РАБОЧЕГО ДНЯ ===
-        schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:H") or []
+        schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
         org_name = get_setting("Название заведения", "").strip()
         if not org_name:
             logger.error("❌ Не задано 'Название заведения' в настройках.")
