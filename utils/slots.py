@@ -30,7 +30,7 @@ def generate_slots_for_n_days(days_ahead: int = None):
     logger.info(f"🔄 Генерация слотов на {days_ahead} дней вперёд...")
     # Начинаем с *завтра*
     start_date = datetime.now(TIMEZONE).date() + timedelta(days=1)
-    specialists_schedule = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:H") # Читаем A-H для дней недели
+    specialists_schedule = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") # Читаем A-H для дней недели
     services = safe_get_sheet_data(SHEET_ID, "Услуги!A2:G") # Читаем A-G для Шага
 
     # Получаем уже существующие события на период генерации
@@ -153,4 +153,3 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     return []
 
 print("✅ Модуль slots.py загружен.")
-
