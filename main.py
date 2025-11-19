@@ -1643,7 +1643,7 @@ async def _get_available_slots_for_admin(service_type: str, subservice: str, dat
                 break
         if specialist_row_idx == -1:
             return None, f"❌ Специалист {specialist} не найден в графике."
-        day_col_letter = chr(66 + day_number)
+        day_col_letter = chr(67 + day_number)
         schedule_cell = f"{day_col_letter}{specialist_row_idx}"
         schedule_data = safe_get_sheet_data(SHEET_ID, f"График специалистов!{schedule_cell}:{schedule_cell}") or []
         if not schedule_data or not schedule_data[0]:
