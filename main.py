@@ -1,4 +1,4 @@
-# main.py - Q-1977-11.11.25
+# main.py - Q-1988-20.11.25
 import logging
 import logging.handlers
 import os
@@ -504,9 +504,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for row in data:
             if len(row) > 0 and str(row[0]).strip() == org_name:
                 if len(row) > 3:
-                    days = row[1] or "Пн-Вс"
-                    start = row[2] or "09:00"
-                    end = row[3] or "18:00"
+                    if len(row) < 4 or not row[1] or not row[2] or not row[3]:
+    logger.critical(f"❌ ОШИБКА: Расписание для '{org_name}' неполное. Ожидались: [Дни], [Начало], [Конец]")
+    schedule_text = "⚠️ Расписание не задано. Обратитесь к администратору."
+else:
+    days = str(row[1]).strip()
+    start = str(row[2]).strip()
+    end = str(row[3]).strip()
                     schedule_text = f"{days} {start}–{end}"
                     found = True
                 break
@@ -674,9 +678,14 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "💅 УСЛУГИ И ЦЕНЫ\n\n"
     current_cat = None
     for row in services:
-        if len(row) < 7:
-            continue
-        cat, name, dur_str, buf_str, _, price, desc = row[0], row[1], row[2], row[3], row[4], row[5], row[6]
+        if len(row) < 5:
+    continue
+cat = row[0] if len(row) > 0 else ""
+name = row[1] if len(row) > 1 else ""
+dur_str = row[2] if len(row) > 2 else "0"
+buf_str = row[3] if len(row) > 3 else "0"
+price = row[4] if len(row) > 4 else "0"
+desc = row[5] if len(row) > 5 else ""  # описание необязательно
         try:
             dur = int(dur_str)
             buf = int(buf_str)
@@ -1453,7 +1462,11 @@ async def admin_change_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not slots:
         await query.edit_message_text(f"❌ Нет доступных слотов для {specialist} на {date_str}.")
         return
-    kb = [[InlineKeyboardButton(f"⏰ {s}", callback_data=f"admin_new_slot_{specialist}_{s}")] for s in slots]
+    kb = []
+for s in slots:
+    data = f"time_{hash(f'{specialist}_{s}') % 1000000}"
+    context.user_data[data] = {"specialist": specialist, "time": s}
+    kb.append([InlineKeyboardButton(f"⏰ {s}", callback_data=data)])
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}")])
     await query.edit_message_text(
         f"📅 Дата: <b>{date_str}</b>\n👩‍💼 Специалист: <b>{specialist}</b>\nТеперь выберите <b>новое время</b>.",
@@ -1943,27 +1956,25 @@ def main():
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, global_activity_updater), group=-1)
     register_handlers(application)
     logger.info("✅ Обработчики зарегистрированы.")
-    application.job_queue.run_daily(cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time())  
-    application.job_queue.run_repeating(send_reminders, interval=60, first=10)
-    notify_time = datetime.strptime(get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M").time()
-    application.job_queue.run_daily(notify_admins_of_new_calls_job, time=notify_time)
-    application.job_queue.run_repeating(health_check_job, interval=300, first=10)
-    application.job_queue.run_repeating(cleanup_stuck_reservations_job, interval=900, first=60)
-    def _handle_exit(signum, frame):
-        logger.info(f"Получен системный сигнал {signum}, завершаем работу...")
-        try:
-            remove_lock_file()
-        except Exception:
-            pass
-        sys.exit(0)
-    try:
-        signal.signal(signal.SIGTERM, _handle_exit)
-        signal.signal(signal.SIGINT, _handle_exit)
-        logger.info("✅ Обработчики сигналов зарегистрированы.")
-    except Exception as _err:
-        logger.debug(f"Не удалось установить signal handlers: {_err}")
-    try:
-        logger.info("🚀 Бот запущен в режиме long polling.")
+   # Обработчик укороченных callback_data для времени
+async def handle_time_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data_key = query.data
+    booking = context.user_data.get(data_key)
+    if not booking:
+        await query.edit_message_text("❌ Данные устарели. Повторите выбор.", show_alert=True)
+        return
+    specialist = booking["specialist"]
+    time_str = booking["time"]
+    # Передаём управление в select_date (или нужную функцию)
+    context.user_data.update({
+        "selected_specialist": specialist,
+        "time": time_str
+    })
+    return await select_date(update, context)
+
+application.add_handler(CallbackQueryHandler(handle_time_callback, pattern=r"^time_\d+$"))
         application.run_polling()
     except KeyboardInterrupt:
         logger.info("⚠️ Получен сигнал остановки (Ctrl+C).")
