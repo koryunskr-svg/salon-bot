@@ -1,4 +1,4 @@
-# main.py - Q-1988-20.11.25
+# main.py - Q-2005-21.11.25
 import logging
 import logging.handlers
 import os
@@ -508,12 +508,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.critical(f"❌ ОШИБКА: Расписание для '{org_name}' неполное. Ожидались: [Дни], [Начало], [Конец]")
     schedule_text = "⚠️ Расписание не задано. Обратитесь к администратору."
 else:
-    days = str(row[1]).strip()
-    start = str(row[2]).strip()
-    end = str(row[3]).strip()
-                    schedule_text = f"{days} {start}–{end}"
-                    found = True
-                break
+    # Поддержка непостоянного расписания: дни по колонкам C–I
+    day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    intervals = []
+    for i, day in enumerate(day_names):
+        if i + 2 < len(row):  # C3=индекс 2, ..., I3=индекс 8
+            cell = str(row[i + 2]).strip()
+            if cell and cell.lower() != "выходной" and "-" in cell:
+                parts = cell.split("-", 1)
+                if len(parts) == 2:
+                    st, en = parts[0].strip(), parts[1].strip()
+                    intervals.append((day, st, en))
+    if not intervals:
+        schedule_text = "⚠️ Расписание временно недоступно"
+    else:
+        from itertools import groupby
+        schedule_parts = []
+        for (st, en), grp in groupby(intervals, key=lambda x: (x[1], x[2])):
+            days = [d for d, _, _ in grp]
+            d_str = days[0] if len(days) == 1 else f"{days[0]}–{days[-1]}"
+            schedule_parts.append(f"{d_str} {st}–{en}")
+        schedule_text = ", ".join(schedule_parts)
+    found = True
+    break
         if not found:
             schedule_text = f"❌ Расписание для '{org_name}' не найдено"
     kb = [
