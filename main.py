@@ -2003,3 +2003,4 @@ application.add_handler(CallbackQueryHandler(handle_time_callback, pattern=r"^ti
 
 if __name__ == "__main__":
     main()
+
