@@ -505,7 +505,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if len(row) > 0 and str(row[0]).strip() == org_name:
                 if len(row) > 3:
                     if len(row) < 4 or not row[1] or not row[2] or not row[3]:
-    logger.critical(f"❌ ОШИБКА: Расписание для '{org_name}' неполное. Ожидались: [Дни], [Начало], [Конец]")
+        logger.critical(f"❌ ОШИБКА: Расписание для '{org_name}' неполное. Ожидались: [Дни], [Начало], [Конец]")
     schedule_text = "⚠️ Расписание не задано. Обратитесь к администратору."
 else:
     # Поддержка непостоянного расписания: дни по колонкам C–I
@@ -2003,3 +2003,4 @@ application.add_handler(CallbackQueryHandler(handle_time_callback, pattern=r"^ti
 
 if __name__ == "__main__":
     main()
+
