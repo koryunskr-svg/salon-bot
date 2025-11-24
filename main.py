@@ -24,7 +24,7 @@ from telegram.ext import (
 )
 
 # --- ИМПОРТЫ ИЗ КОНФИГА И УТИЛИТ ---
-from config import TELEGRAM_BOT_TOKEN, TIMEZONE, RESERVATION_TIMEOUT, WARNING_TIMEOUT, SHEET_ID, CALENDAR_ID
+ffrom config import TELEGRAM_TOKEN as TELEGRAM_BOT_TOKEN, ..., TIMEZONE, RESERVATION_TIMEOUT, WARNING_TIMEOUT, SHEET_ID, CALENDAR_ID
 from utils.safe_google import (
     safe_get_sheet_data,
     safe_append_to_sheet,
@@ -1975,3 +1975,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
