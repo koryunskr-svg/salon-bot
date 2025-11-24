@@ -7,7 +7,7 @@ import pytz
 load_dotenv()
 
 # Основные переменные из .env
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GOOGLE_CREDENTIALS_JSON_STR = os.getenv("GOOGLE_CREDENTIALS_JSON") # В виде строки
 SHEET_ID = os.getenv("SHEET_ID")
 CALENDAR_ID = os.getenv("CALENDAR_ID")
@@ -43,7 +43,3 @@ if missing:
     raise ValueError(f"❌ Не заданы обязательные переменные окружения: {', '.join(missing)}")
 
 print("✅ Конфигурация загружена.")
-
-
-
-
