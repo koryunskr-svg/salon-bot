@@ -519,11 +519,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📞 Связаться с админом", callback_data="contact_admin")],
     ]
     rm = InlineKeyboardMarkup(kb)
-    text = f"{greeting}\n\nМы работаем: {schedule_text}"
+    text = f"""{greeting}
+<b>{org_name}</b>
+Мы работаем: {schedule_text}"""
     if update.message:
-        await update.message.reply_text(text, reply_markup=rm)
+        await update.message.reply_text(text, reply_markup=rm, parse_mode='HTML')
     elif update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=rm)
+        await update.callback_query.edit_message_text(text, reply_markup=rm, parse_mode='HTML')
     context.user_data["state"] = MENU
     return MENU
 
