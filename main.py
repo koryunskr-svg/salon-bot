@@ -494,7 +494,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_business_event("user_started", user_id=update.effective_user.id)
 
     greeting = get_setting("Текст приветствия", "Добро пожаловать!")
-    schedule_text = "График работы не указан"
+        schedule_text = "График работы не указан"
     org_name = get_setting("Название заведения", "").strip()
     if not org_name:
         schedule_text = "⚠️ Название заведения не задано в настройках"
@@ -503,12 +503,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         found = False
         for row in data:
             if len(row) > 0 and str(row[0]).strip() == org_name:
-                if len(row) > 3:
-                    days = row[1] or "Пн-Вс"
-                    start = row[2] or "09:00"
-                    end = row[3] or "18:00"
-                    schedule_text = f"{days} {start}–{end}"
-                    found = True
+                # ✅ Берём данные из колонок C (дни), D (начало), E (конец)
+                days = (row[2] if len(row) > 2 else "").strip() or "Пн-Вс"
+                start = (row[3] if len(row) > 3 else "").strip() or "09:00"
+                end = (row[4] if len(row) > 4 else "").strip() or "18:00"
+                schedule_text = f"{days} {start}–{end}"
+                found = True
                 break
         if not found:
             schedule_text = f"❌ Расписание для '{org_name}' не найдено"
@@ -1975,4 +1975,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
