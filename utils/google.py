@@ -13,18 +13,15 @@ SCOPES = [
 ]
 
 def get_google_credentials():
-    """Получает учётные данные из строки JSON из переменной окружения."""
     if not GOOGLE_CREDENTIALS_JSON:
         raise EnvironmentError("❌ Переменная окружения GOOGLE_CREDENTIALS_JSON не задана.")
     try:
         creds_info = json.loads(GOOGLE_CREDENTIALS_JSON)
     except json.JSONDecodeError as e:
         raise ValueError(f"❌ Неверный формат JSON в GOOGLE_CREDENTIALS_JSON: {e}")
-    credentials = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
-    return credentials
+    return Credentials.from_service_account_info(creds_info, scopes=SCOPES)
 
 def get_sheet_data(spreadsheet_id: str, range_name: str):
-    """Получает данные из Google Таблицы."""
     creds = get_google_credentials()
     service = build("sheets", "v4", credentials=creds)
     sheet = service.spreadsheets()
@@ -32,7 +29,6 @@ def get_sheet_data(spreadsheet_id: str, range_name: str):
     return result.get("values", [])
 
 def append_to_sheet(spreadsheet_id: str, sheet_name: str, row: list):
-    """Добавляет строку в Google Таблицу."""
     creds = get_google_credentials()
     service = build("sheets", "v4", credentials=creds)
     body = {"values": [row]}
@@ -44,11 +40,6 @@ def append_to_sheet(spreadsheet_id: str, sheet_name: str, row: list):
     ).execute()
 
 def update_sheet_row(spreadsheet_id: str, sheet_name: str, row_index: int, row: list):
-    """
-    Обновляет строку в Google Таблице.
-    row_index: Номер строки (начиная с 1).
-    row: Список значений для ячеек строки.
-    """
     creds = get_google_credentials()
     service = build("sheets", "v4", credentials=creds)
     range_name = f"{sheet_name}!A{row_index}:ZZ{row_index}"
@@ -66,7 +57,6 @@ def update_sheet_row(spreadsheet_id: str, sheet_name: str, row_index: int, row: 
         raise
 
 def get_calendar_events(calendar_id: str, time_min, time_max, query=None):
-    """Получает события из Google Календаря."""
     creds = get_google_credentials()
     service = build("calendar", "v3", credentials=creds)
     events = service.events().list(
@@ -80,7 +70,6 @@ def get_calendar_events(calendar_id: str, time_min, time_max, query=None):
     return events.get("items", [])
 
 def create_calendar_event(calendar_id: str, summary: str, start_time: str, end_time: str, color_id=None, description=None):
-    """Создаёт событие в Google Календаре."""
     creds = get_google_credentials()
     service = build("calendar", "v3", credentials=creds)
     tz_str = str(TIMEZONE)
@@ -96,7 +85,6 @@ def create_calendar_event(calendar_id: str, summary: str, start_time: str, end_t
     return created["id"]
 
 def update_calendar_event(calendar_id: str, event_id: str, summary=None, color_id=None, description=None):
-    """Обновляет событие в Google Календаре."""
     creds = get_google_credentials()
     service = build("calendar", "v3", credentials=creds)
     event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
@@ -106,15 +94,11 @@ def update_calendar_event(calendar_id: str, event_id: str, summary=None, color_i
         event["colorId"] = color_id
     if description:
         event["description"] = description
-    # Обновление timeZone не требуется, если start/end приходят уже с TZ — но для гарантии:
-    if 'start' in event and 'dateTime' in event['start']:
-        event['start']['timeZone'] = str(TIMEZONE)
-    if 'end' in event and 'dateTime' in event['end']:
-        event['end']['timeZone'] = str(TIMEZONE)
+    event["start"]["timeZone"] = str(TIMEZONE)
+    event["end"]["timeZone"] = str(TIMEZONE)
     service.events().update(calendarId=calendar_id, eventId=event_id, body=event).execute()
 
 def delete_calendar_event(calendar_id: str, event_id: str):
-    """Удаляет событие из Google Календаря."""
     creds = get_google_credentials()
     service = build("calendar", "v3", credentials=creds)
     try:
@@ -122,6 +106,5 @@ def delete_calendar_event(calendar_id: str, event_id: str):
         logger.info(f"✅ Событие {event_id} удалено из календаря {calendar_id}.")
     except Exception as e:
         logger.error(f"❌ Ошибка при удалении события {event_id}: {e}")
-        # Не пробрасываем исключение — не критично для основного потока
 
 logger.info("✅ Модуль google.py загружен.")
