@@ -492,9 +492,8 @@ async def _validate_booking_checks(context: ContextTypes.DEFAULT_TYPE, name: str
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     log_business_event("user_started", user_id=update.effective_user.id)
-
     greeting = get_setting("Текст приветствия", "Добро пожаловать!")
-        schedule_text = "График работы не указан"
+    schedule_text = "График работы не указан"
     org_name = get_setting("Название заведения", "").strip()
     if not org_name:
         schedule_text = "⚠️ Название заведения не задано в настройках"
