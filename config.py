@@ -32,7 +32,7 @@ TIMEZONE_NAME = "Europe/Moscow" # Может быть загружено из т
 # --- Валидация основных переменных ---
 REQUIRED_CONFIG = [
     "TELEGRAM_BOT_TOKEN",
-    "GOOGLE_CREDENTIALS_JSON_STR",
+    "GOOGLE_CREDENTIALS_JSON",
     "SHEET_ID",
     "CALENDAR_ID",
     "TIMEZONE"
@@ -43,4 +43,6 @@ if missing:
     raise ValueError(f"❌ Не заданы обязательные переменные окружения: {', '.join(missing)}")
 
 print("✅ Конфигурация загружена.")
+
+
 
