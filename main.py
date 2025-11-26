@@ -757,9 +757,9 @@ kb = [
     [InlineKeyboardButton("👩‍🦰 Сначала cпециалист", callback_data="priority_specialist")],
     [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
     ]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
-    context.user_data["state"] = SHOW_PRICE_INFO
-    return SHOW_PRICE_INFO
+await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+context.user_data["state"] = SHOW_PRICE_INFO
+return SHOW_PRICE_INFO
 
 # --- SELECT DATE ---
 async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1982,3 +1982,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
