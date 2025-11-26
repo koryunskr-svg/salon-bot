@@ -749,11 +749,9 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"""✅ Услуга: {ss}
 💰 Цена: {price_str}
 ⏳ Длительность: {fmt_dur}"""
-    if desc:
-        text += f"
-ℹ️ {desc}"
-    text += "
-Что для вас важнее?"
+if desc and str(desc).strip():
+    text += f"\nℹ️ {str(desc).strip()}"
+text += "\nЧто для вас важнее?"
     kb = [
         [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
         [InlineKeyboardButton("👩‍🦰 Сначала cпециалист", callback_data="priority_specialist")],
