@@ -501,36 +501,36 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
         found = False
-        for row in data:
+                for row in data:
             if len(row) > 0 and str(row[0]).strip() == org_name:
                 if len(row) > 3:
-                if len(row) < 4 or not row[1] or not row[2] or not row[3]:
-                    logger.critical(f"❌ ОШИБКА: Расписание для '{org_name}' неполное. Ожидались: [Дни], [Начало], [Конец]")
-                    schedule_text = "⚠️ Расписание не задано. Обратитесь к администратору."
-    else:
-    # Поддержка непостоянного расписания: дни по колонкам C–I
-    day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-    intervals = []
-    for i, day in enumerate(day_names):
-        if i + 2 < len(row):  # C3=индекс 2, ..., I3=индекс 8
-            cell = str(row[i + 2]).strip()
-            if cell and cell.lower() != "выходной" and "-" in cell:
-                parts = cell.split("-", 1)
-                if len(parts) == 2:
-                    st, en = parts[0].strip(), parts[1].strip()
-                    intervals.append((day, st, en))
-    if not intervals:
-        schedule_text = "⚠️ Расписание временно недоступно"
-    else:
-        from itertools import groupby
-        schedule_parts = []
-        for (st, en), grp in groupby(intervals, key=lambda x: (x[1], x[2])):
-            days = [d for d, _, _ in grp]
-            d_str = days[0] if len(days) == 1 else f"{days[0]}–{days[-1]}"
-            schedule_parts.append(f"{d_str} {st}–{en}")
-        schedule_text = ", ".join(schedule_parts)
-    found = True
-    break
+                    if len(row) < 4 or not row[1] or not row[2] or not row[3]:
+                        logger.critical(f"❌ ОШИБКА: Расписание для '{org_name}' неполное. Ожидались: [Дни], [Начало], [Конец]")
+                        schedule_text = "⚠️ Расписание не задано. Обратитесь к администратору."
+                else:
+                    # Поддержка непостоянного расписания: дни по колонкам C–I
+                    day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+                    intervals = []
+                    for i, day in enumerate(day_names):
+                        if i + 2 < len(row):  # C3=индекс 2, ..., I3=индекс 8
+                            cell = str(row[i + 2]).strip()
+                            if cell and cell.lower() != "выходной" and "-" in cell:
+                                parts = cell.split("-", 1)
+                                if len(parts) == 2:
+                                    st, en = parts[0].strip(), parts[1].strip()
+                                    intervals.append((day, st, en))
+                    if not intervals:
+                        schedule_text = "⚠️ Расписание временно недоступно"
+                    else:
+                        from itertools import groupby
+                        schedule_parts = []
+                        for (st, en), grp in groupby(intervals, key=lambda x: (x[1], x[2])):
+                            days = [d for d, _, _ in grp]
+                            d_str = days[0] if len(days) == 1 else f"{days[0]}–{days[-1]}"
+                            schedule_parts.append(f"{d_str} {st}–{en}")
+                        schedule_text = ", ".join(schedule_parts)
+                found = True
+                break
         if not found:
             schedule_text = f"❌ Расписание для '{org_name}' не найдено"
     kb = [
@@ -2003,5 +2003,4 @@ application.add_handler(CallbackQueryHandler(handle_time_callback, pattern=r"^ti
 
 if __name__ == "__main__":
     main()
-
 
