@@ -752,10 +752,10 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if desc and str(desc).strip():
     text += f"\nℹ️ {str(desc).strip()}"
 text += "\nЧто для вас важнее?"
-    kb = [
-        [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
-        [InlineKeyboardButton("👩‍🦰 Сначала cпециалист", callback_data="priority_specialist")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+kb = [
+    [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
+    [InlineKeyboardButton("👩‍🦰 Сначала cпециалист", callback_data="priority_specialist")],
+    [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
     context.user_data["state"] = SHOW_PRICE_INFO
