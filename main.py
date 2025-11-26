@@ -746,9 +746,9 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             break
     fmt_dur = format_duration(dur + buf)
     price_str = safe_parse_price(price)
-    text = f"✅ Услуга: {ss}
+    text = f"""✅ Услуга: {ss}
 💰 Цена: {price_str}
-⏳ Длительность: {fmt_dur}"
+⏳ Длительность: {fmt_dur}"""
     if desc:
         text += f"
 ℹ️ {desc}"
