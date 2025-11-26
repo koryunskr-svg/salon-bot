@@ -692,8 +692,8 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fmt_dur = format_duration(dur + buf)
         price_str = safe_parse_price(price)
         text += f"• <b>{name}</b> — {price_str} (длит.: {fmt_dur})\n"
-        if desc:
-            text += f" <i>{desc}</i>\n"
+        if desc and str(desc).strip():
+            text += f" ℹ️ <i>{str(desc).strip()}</i>\n"
     await query.edit_message_text(text or "❌ Услуги не найдены.", parse_mode='HTML')
     try:
         await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад", callback_data="start")]]))
