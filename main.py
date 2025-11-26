@@ -733,7 +733,7 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Ошибка: услуга не выбрана.")
         return
     all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
-    dur, buf, price = 60, 0, "не указана"
+    dur, buf, price, desc = 60, 0, "не указана", ""
     for row in all_services:
         if len(row) > 1 and row[1] == ss:
             try:
@@ -742,10 +742,18 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
             price = row[5] if len(row) > 5 else "не указана"
+            desc = str(row[6]).strip() if len(row) > 6 else ""
             break
     fmt_dur = format_duration(dur + buf)
     price_str = safe_parse_price(price)
-    text = f"✅ Услуга: {ss}\n💰 Цена: {price_str}\n⏳ Длительность: {fmt_dur}\n\nЧто для вас важнее?"
+    text = f"✅ Услуга: {ss}
+💰 Цена: {price_str}
+⏳ Длительность: {fmt_dur}"
+    if desc:
+        text += f"
+ℹ️ {desc}"
+    text += "
+Что для вас важнее?"
     kb = [
         [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
         [InlineKeyboardButton("👩‍🦰 Сначала cпециалист", callback_data="priority_specialist")],
