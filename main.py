@@ -492,6 +492,7 @@ async def _validate_booking_checks(context: ContextTypes.DEFAULT_TYPE, name: str
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     log_business_event("user_started", user_id=update.effective_user.id)
+
     greeting = get_setting("Текст приветствия", "Добро пожаловать!")
     schedule_text = "График работы не указан"
     org_name = get_setting("Название заведения", "").strip()
@@ -502,12 +503,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         found = False
         for row in data:
             if len(row) > 0 and str(row[0]).strip() == org_name:
-                # ✅ Берём данные из колонок C (дни), D (начало), E (конец)
-                days = (row[2] if len(row) > 2 else "").strip() or "Пн-Вс"
-                start = (row[3] if len(row) > 3 else "").strip() or "09:00"
-                end = (row[4] if len(row) > 4 else "").strip() or "18:00"
-                schedule_text = f"{days} {start}–{end}"
-                found = True
+                if len(row) > 3:
+                    days = row[1] or "Пн-Вс"
+                    start = row[2] or "09:00"
+                    end = row[3] or "18:00"
+                    schedule_text = f"{days} {start}–{end}"
+                    found = True
                 break
         if not found:
             schedule_text = f"❌ Расписание для '{org_name}' не найдено"
@@ -519,13 +520,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📞 Связаться с админом", callback_data="contact_admin")],
     ]
     rm = InlineKeyboardMarkup(kb)
-    text = f"""{greeting}
-<b>{org_name}</b>
-Мы работаем: {schedule_text}"""
+    text = f"{greeting}\n\nМы работаем: {schedule_text}"
     if update.message:
-        await update.message.reply_text(text, reply_markup=rm, parse_mode='HTML')
+        await update.message.reply_text(text, reply_markup=rm)
     elif update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=rm, parse_mode='HTML')
+        await update.callback_query.edit_message_text(text, reply_markup=rm)
     context.user_data["state"] = MENU
     return MENU
 
@@ -692,8 +691,8 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fmt_dur = format_duration(dur + buf)
         price_str = safe_parse_price(price)
         text += f"• <b>{name}</b> — {price_str} (длит.: {fmt_dur})\n"
-        if desc and str(desc).strip():
-            text += f" ℹ️ <i>{str(desc).strip()}</i>\n"
+        if desc:
+            text += f" <i>{desc}</i>\n"
     await query.edit_message_text(text or "❌ Услуги не найдены.", parse_mode='HTML')
     try:
         await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад", callback_data="start")]]))
@@ -733,7 +732,7 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Ошибка: услуга не выбрана.")
         return
     all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
-    dur, buf, price, desc = 60, 0, "не указана", ""
+    dur, buf, price = 60, 0, "не указана"
     for row in all_services:
         if len(row) > 1 and row[1] == ss:
             try:
@@ -742,24 +741,18 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
             price = row[5] if len(row) > 5 else "не указана"
-            desc = str(row[6]).strip() if len(row) > 6 else ""
             break
     fmt_dur = format_duration(dur + buf)
     price_str = safe_parse_price(price)
-    text = f"""✅ Услуга: {ss}
-💰 Цена: {price_str}
-⏳ Длительность: {fmt_dur}"""
-if desc and str(desc).strip():
-    text += f"\nℹ️ {str(desc).strip()}"
-text += "\nЧто для вас важнее?"
-kb = [
-    [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
-    [InlineKeyboardButton("👩‍🦰 Сначала cпециалист", callback_data="priority_specialist")],
-    [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+    text = f"✅ Услуга: {ss}\n💰 Цена: {price_str}\n⏳ Длительность: {fmt_dur}\n\nЧто для вас важнее?"
+    kb = [
+        [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
+        [InlineKeyboardButton("👩‍🦰 Сначала cпециалист", callback_data="priority_specialist")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
     ]
-await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
-context.user_data["state"] = SHOW_PRICE_INFO
-return SHOW_PRICE_INFO
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+    context.user_data["state"] = SHOW_PRICE_INFO
+    return SHOW_PRICE_INFO
 
 # --- SELECT DATE ---
 async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
