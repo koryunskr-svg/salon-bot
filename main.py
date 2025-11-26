@@ -1,4 +1,4 @@
-# main.py - Q-1977-11.11.25
+# main.py - Q-1977-11.11.25 - старый
 import logging
 import logging.handlers
 import os
@@ -1975,3 +1975,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
