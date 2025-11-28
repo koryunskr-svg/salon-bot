@@ -504,9 +504,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for row in data:
             if len(row) > 0 and str(row[0]).strip() == org_name:
                 if len(row) > 3:
-                    days = row[1] or "Пн-Вс"
-                    start = row[2] or "09:00"
-                    end = row[3] or "18:00"
+                    days = (row[2] if len(row) > 2 else "").strip() or "Пн-Вс"
+                    start = (row[3] if len(row) > 3 else "").strip() or "09:00"
+                    end = (row[4] if len(row) > 4 else "").strip() or "18:00"
                     schedule_text = f"{days} {start}–{end}"
                     found = True
                 break
@@ -520,9 +520,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📞 Связаться с админом", callback_data="contact_admin")],
     ]
     rm = InlineKeyboardMarkup(kb)
-    text = f"{greeting}\n\nМы работаем: {schedule_text}"
+    text = f"{greeting}\n<b>{org_name}</b>\nМы работаем: {schedule_text}"
     if update.message:
-        await update.message.reply_text(text, reply_markup=rm)
+        await update.message.reply_text(text, reply_markup=rm, parse_mode="HTML")
     elif update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=rm)
     context.user_data["state"] = MENU
