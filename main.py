@@ -489,28 +489,77 @@ async def _validate_booking_checks(context: ContextTypes.DEFAULT_TYPE, name: str
     return True, None
 
 # --- HANDLERS ---
+# --- HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     log_business_event("user_started", user_id=update.effective_user.id)
 
     greeting = get_setting("Текст приветствия", "Добро пожаловать!")
+    org_name_setting = get_setting("Название заведения", "").strip()
+
     schedule_text = "График работы не указан"
-    org_name = get_setting("Название заведения", "").strip()
-    if not org_name:
-        schedule_text = "⚠️ Название заведения не задано в настройках"
+    org_name_display = org_name_setting
+
+    if not org_name_setting:
+        org_name_display = "⚠️ Название заведения не задано в настройках"
     else:
+        # Загружаем данные из листа "График специалистов", начиная с A3
         data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
         found = False
         for row in data:
-            if len(row) > 0 and str(row[0]).strip() == org_name:
-                days = (row[2] if len(row) > 2 else "").strip() or "Пн-Вс"
-                start = (row[3] if len(row) > 3 else "").strip() or "09:00"
-                end = (row[4] if len(row) > 4 else "").strip() or "18:00"
-                schedule_text = f"{days} {start}–{end}"
+            # Проверяем, совпадает ли имя мастера (столбец A) с названием заведения
+            if len(row) > 0 and str(row[0]).strip() == org_name_setting:
                 found = True
-                break
+                # --- НОВАЯ ЛОГИКА ФОРМИРОВАНИЯ РАСПИСАНИЯ (группировка дней) ---
+                # Ожидаем 7 значений: Пн (C), Вт (D), Ср (E), Чт (F), Пт (G), Сб (H), Вс (I)
+                # Индексы в row: 2 (Пн), 3 (Вт), 4 (Ср), 5 (Чт), 6 (Пт), 7 (Сб), 8 (Вс)
+                daily_schedules = []
+                day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+                # Извлекаем 7 значений графика (Пн-Вс), если они есть
+                for i in range(7):
+                    index = i + 2  # Индекс столбца (C=2, D=3, ..., I=8)
+                    if index < len(row):
+                        daily_schedules.append(str(row[index]).strip())
+                    else:
+                        daily_schedules.append("")  # Если столбец пуст или не существует
+
+                # Группируем подряд идущие дни с одинаковым расписанием
+                grouped_schedule_parts = []
+                i = 0
+                while i < len(daily_schedules):
+                    current_schedule = daily_schedules[i]
+                    if not current_schedule:  # Пропускаем пустые ячейки
+                        i += 1
+                        continue
+
+                    start_day_index = i
+                    # Ищем, сколько подряд идущих дней имеют одинаковое расписание
+                    while i < len(daily_schedules) - 1 and daily_schedules[i + 1] == current_schedule:
+                        i += 1
+                    end_day_index = i
+
+                    # Формируем часть строки расписания
+                    if start_day_index == end_day_index:
+                        # Один день
+                        grouped_schedule_parts.append(f"{day_names[start_day_index]} {current_schedule}")
+                    else:
+                        # Несколько дней подряд
+                        grouped_schedule_parts.append(f"{day_names[start_day_index]}-{day_names[end_day_index]} {current_schedule}")
+                    i += 1  # Переходим к следующему дню или группе
+
+                # Собираем итоговую строку расписания
+                if grouped_schedule_parts:
+                    schedule_text = ", ".join(grouped_schedule_parts) + "."
+                else:
+                    schedule_text = "График работы не указан."
+                # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+                break  # Нашли строку, выходим из цикла
+
         if not found:
-            schedule_text = f"❌ Расписание для '{org_name}' не найдено"
+            org_name_display = f"⚠️ Заведение '{org_name_setting}' не найдено в графике."
+            schedule_text = "Не могу отобразить расписание."
+
+    # Формируем клавиатуру
     kb = [
         [InlineKeyboardButton("📅 Записаться на приём", callback_data="book")],
         [InlineKeyboardButton("❌ Отменить или изменить запись", callback_data="modify")],
@@ -519,9 +568,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📞 Связаться с админом", callback_data="contact_admin")],
     ]
     rm = InlineKeyboardMarkup(kb)
-    text = f"{greeting}\n<b>{org_name}</b>\nМы работаем: {schedule_text}"
+
+    # Формируем итоговое сообщение
+    # Название заведения отображается отдельной строкой, как в предыдущем варианте, но без HTML тегов
+    text = f"{greeting}\n\n{org_name_display}\nМы работаем: {schedule_text}"
+
     if update.message:
-        await update.message.reply_text(text, reply_markup=rm, parse_mode="HTML")
+        await update.message.reply_text(text, reply_markup=rm) # Убран parse_mode="HTML", так как нет тегов
     elif update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=rm)
     context.user_data["state"] = MENU
@@ -572,6 +625,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Напишите ваше сообщение — администратор свяжется с вами.")
         context.user_data["state"] = AWAITING_ADMIN_MESSAGE
         return
+
     # АДМИНСКИЕ ФУНКЦИИ
     admin_handlers = {
         "admin_book_for_client": admin_book_for_client,
