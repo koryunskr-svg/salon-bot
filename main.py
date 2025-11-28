@@ -503,12 +503,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         found = False
         for row in data:
             if len(row) > 0 and str(row[0]).strip() == org_name:
-                if len(row) > 3:
-                    days = (row[2] if len(row) > 2 else "").strip() or "Пн-Вс"
-                    start = (row[3] if len(row) > 3 else "").strip() or "09:00"
-                    end = (row[4] if len(row) > 4 else "").strip() or "18:00"
-                    schedule_text = f"{days} {start}–{end}"
-                    found = True
+                days = (row[2] if len(row) > 2 else "").strip() or "Пн-Вс"
+                start = (row[3] if len(row) > 3 else "").strip() or "09:00"
+                end = (row[4] if len(row) > 4 else "").strip() or "18:00"
+                schedule_text = f"{days} {start}–{end}"
+                found = True
                 break
         if not found:
             schedule_text = f"❌ Расписание для '{org_name}' не найдено"
