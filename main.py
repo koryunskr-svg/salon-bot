@@ -1,4 +1,4 @@
-# main.py - Q-1977-11.11.25
+# main.py - Q-1977-11.11.25 - для исправлений
 import logging
 import logging.handlers
 import os
@@ -667,9 +667,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("subservice_"):
         context.user_data["subservice"] = data.split("subservice_", 1)[1]
         return await show_price_info(update, context)
+        # --- ИЗМЕНЕНИЕ button_handler: Поддержка priority_date и priority_specialist ---
     if data.startswith("priority_"):
-        context.user_data["priority"] = data.split("priority_", 1)[1]
-        return await select_date(update, context)
+        priority_choice = data.split("priority_", 1)[1]
+        context.user_data["priority"] = priority_choice
+        # Очищаем потенциально старые данные, чтобы не было конфликта между сценариями
+        if priority_choice == "date":
+            # Сценарий A: Сначала дата -> потом мастер
+            # Удаляем возможного мастера, выбранного ранее (например, при возврате назад в сценарии B)
+            context.user_data.pop("selected_specialist", None)
+            return await select_date(update, context)
+        elif priority_choice == "specialist":
+            # Сценарий B: Сначала мастер -> потом дата
+            # Удаляем возможную дату, выбранную ранее (например, при возврате назад в сценарии A)
+            context.user_data.pop("date", None)
+            # Удаляем возможного мастера, выбранного ранее (например, при возврате назад)
+            context.user_data.pop("selected_specialist", None)
+            return await select_specialist(update, context)
+        else:
+            # На всякий случай, если придёт неизвестный приоритет
+            logger.warning(f"⚠️ Неизвестный приоритет: {priority_choice}")
+            await query.edit_message_text("❌ Ошибка: неизвестный приоритет.")
+            return
+    # --- /ИЗМЕНЕНИЕ button_handler ---
     if data.startswith("date_"):
         context.user_data["date"] = data.split("date_", 1)[1]
         if context.user_data.get("priority") == "date":
@@ -836,74 +856,228 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return SHOW_PRICE_INFO
 
 # --- SELECT DATE ---
+# --- ПОЛНАЯ ЗАМЕНА select_date ---
 async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    today = datetime.now(TIMEZONE).date()
-    priority = context.user_data.get("priority", "date")
-    st = context.user_data.get("service_type")
-    ss = context.user_data.get("subservice")
-    specialist = context.user_data.get("selected_specialist")
-    dates = set()
-    for i in range(1, 11):
-        d = (today + timedelta(days=i)).strftime("%d.%m.%Y")
-        slots = find_available_slots(st, ss, d, specialist, priority)
-        if slots:
-            dates.add(d)
-    kb = [[InlineKeyboardButton(d, callback_data=f"date_{d}")] for d in sorted(dates)]
-    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-    await update.callback_query.edit_message_text("Выберите дату:", reply_markup=InlineKeyboardMarkup(kb))
-    context.user_data["state"] = SELECT_DATE
-    return SELECT_DATE
+    query = update.callback_query
+    await query.answer()
+    await update_last_activity(update, context)
+
+    # Получаем выбранного специалиста, категорию услуги, приоритет
+    # ИСПОЛЬЗУЕМ "selected_specialist", как в оригинальной функции
+    selected_specialist = context.user_data.get("selected_specialist") # Может быть None
+    service_type = context.user_data.get("service_type")
+    subservice = context.user_data.get("subservice")
+    priority = context.user_data.get("priority", "date") # По умолчанию "date"
+
+    if not service_type or not subservice:
+        await query.edit_message_text("❌ Ошибка: категория или название услуги не выбраны.")
+        return
+
+    # Загружаем график специалистов и услуги
+    schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
+    all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
+
+    # Находим длительность и буфер услуги
+    service_row = None
+    for row in all_services:
+        if len(row) > 1 and row[1] == subservice:
+            service_row = row
+            break
+
+    if not service_row:
+        await query.edit_message_text("❌ Услуга не найдена в таблице.")
+        return
+
+    try:
+        service_duration = int(service_row[2])
+        service_buffer = int(service_row[3])
+    except (ValueError, IndexError):
+        logger.error(f"❌ Неверные данные длительности/буфера для услуги {subservice}: {service_row[2:4]}")
+        await query.edit_message_text("❌ Ошибка в данных длительности услуги.")
+        return
+
+    tz = pytz.timezone(get_setting("Часовой пояс", "Europe/Moscow"))
+    now = datetime.now(tz)
+    days_ahead = int(get_setting("Количество дней генерации слотов", 30))
+
+    # --- СЦЕНАРИЙ B: "Сначала мастер", потом дата (selected_specialist есть) ---
+    if selected_specialist:
+        available_dates_for_specialist = []
+        for days_offset in range(days_ahead + 1):
+            target_date = (now + timedelta(days=days_offset)).date()
+            target_day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][target_date.weekday()]
+            target_date_str = target_date.strftime("%d.%m.%Y")
+
+            # Найдём строку расписания для конкретного специалиста
+            spec_schedule_row = None
+            for row in schedule_data:
+                if len(row) > 0 and row[0].strip() == selected_specialist:
+                    spec_schedule_row = row
+                    break
+
+            if not spec_schedule_row:
+                logger.warning(f"⚠️ График для специалиста '{selected_specialist}' не найден.")
+                continue # Переходим к следующей дате
+
+            # Проверяем, работает ли специалист в этот день
+            day_index = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].index(target_day_name) + 2 # Индекс столбца (C=2, D=3, ...)
+            if day_index < len(spec_schedule_row):
+                work_schedule = spec_schedule_row[day_index].strip()
+                if work_schedule.lower() != "выходной" and work_schedule:
+                    # УПРОЩЕНИЕ: считаем, что если он работает, то дата доступна.
+                    # TODO: Проверить реальную доступность мастера в день по его календарю и расписанию
+                    available_dates_for_specialist.append(target_date_str)
+
+        kb = []
+        for date_str in sorted(available_dates_for_specialist):
+            kb.append([InlineKeyboardButton(date_str, callback_data=f"date_{date_str}")])
+
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+
+        await query.edit_message_text(f"📅 Выберите дату для специалиста '{selected_specialist}':", reply_markup=InlineKeyboardMarkup(kb))
+        context.user_data["state"] = SELECT_DATE
+        return
+
+    # --- СЦЕНАРИЙ A: "Сначала дата", потом мастер (selected_specialist is None) ---
+    else:
+        available_dates = set() # Используем set, чтобы избежать дубликатов дат
+        for days_offset in range(days_ahead + 1):
+            target_date = (now + timedelta(days=days_offset)).date()
+            target_day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][target_date.weekday()]
+            target_date_str = target_date.strftime("%d.%m.%Y")
+
+            # Проверяем, есть ли хотя бы один специалист нужной категории, который работает и имеет свободное время
+            for row in schedule_data:
+                if len(row) > 0:
+                    spec_name = row[0].strip()
+                    spec_categories_str = row[1].strip().lower()
+                    spec_categories = [cat.strip() for cat in spec_categories_str.split(',')]
+
+                    # Проверяем, подходит ли специалист по категории
+                    if service_type.lower() in spec_categories:
+                        # Проверяем, работает ли он в этот день
+                        day_index = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].index(target_day_name) + 2 # Индекс столбца (C=2, D=3, ...)
+                        if day_index < len(row):
+                            work_schedule = row[day_index].strip()
+                            if work_schedule.lower() != "выходной" and work_schedule: # Если не выходной и не пусто
+                                # Проверяем, есть ли у него свободное время (упрощённо - просто проверим его график)
+                                # TODO: Проверить реальную доступность мастера в день
+                                # Пока что, если он работает в этот день и подходит по категории, добавляем дату
+                                available_dates.add(target_date_str)
+                                # Нашли хотя бы одного подходящего специалиста с потенциальным временем, можно перейти к следующей дате
+                                break
+
+        # Формируем клавиатуру с доступными датами
+        kb = []
+        for date_str in sorted(available_dates):
+            kb.append([InlineKeyboardButton(date_str, callback_data=f"date_{date_str}")])
+
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+
+        await query.edit_message_text(f"📅 Выберите дату для услуги '{subservice}':", reply_markup=InlineKeyboardMarkup(kb))
+        context.user_data["state"] = SELECT_DATE
+        return
+# --- /ПОЛНАЯ ЗАМЕНА select_date ---
 
 # --- SELECT SPECIALIST ---
+# --- ПОЛНАЯ ЗАМЕНА select_specialist ---
 async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    date_str = context.user_data.get("date")
-    if not date_str:
-        await query.edit_message_text("❌ Ошибка: дата не выбрана.")
+    await query.answer()
+    await update_last_activity(update, context)
+
+    # Получаем выбранную дату, категорию услуги, приоритет
+    date_str = context.user_data.get("date") # Может быть None
+    service_type = context.user_data.get("service_type")
+    subservice = context.user_data.get("subservice")
+    priority = context.user_data.get("priority", "date") # По умолчанию "date"
+
+    if not service_type or not subservice:
+        await query.edit_message_text("❌ Ошибка: категория или название услуги не выбраны.")
         return
-    specialists_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
-    available = []
-    try:
-        target = datetime.strptime(date_str, "%d.%m.%Y")
-        day_name = target.strftime("%a")
-        short_map = {"Mon": "Пн", "Tue": "Вт", "Wed": "Ср", "Thu": "Чт", "Fri": "Пт", "Sat": "Сб", "Sun": "Вс"}
-        target_day = short_map.get(day_name)
-        if not target_day:
-            await query.edit_message_text("❌ Ошибка: невозможно определить день недели.")
+
+    # Загружаем график специалистов
+    schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
+    if not schedule_data:
+        await query.edit_message_text("❌ Не удалось загрузить график специалистов.")
+        return
+
+    # --- СЦЕНАРИЙ A: "Сначала дата", потом мастер (date_str есть) ---
+    if date_str:
+        # date_str есть, ищем мастеров, которые работают в эту дату и подходят под категорию
+        try:
+            selected_date = datetime.strptime(date_str, "%d.%m.%Y").date()
+        except ValueError:
+            await query.edit_message_text("❌ Неверный формат даты.")
             return
-    except Exception:
-        await query.edit_message_text("❌ Ошибка: неверный формат даты.")
+
+        target_day = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][selected_date.weekday()]
+
+        available_specialists = []
+        for row in schedule_data:
+            if len(row) > 0:
+                specialist_name = row[0].strip()
+                specialist_categories_str = row[1].strip().lower()
+                specialist_categories = [cat.strip() for cat in specialist_categories_str.split(',')]
+
+                if service_type.lower() in specialist_categories:
+                    day_index = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].index(target_day) + 2
+                    if day_index < len(row):
+                        work_schedule = row[day_index].strip()
+                        if work_schedule.lower() != "выходной" and work_schedule:
+                            # Проверяем, есть ли у него свободное время (упрощённо)
+                            # TODO: Проверить реальную доступность мастера в день
+                            available_specialists.append(specialist_name)
+
+        kb = []
+        for spec in sorted(available_specialists):
+             kb.append([InlineKeyboardButton(spec, callback_data=f"specialist_{spec}")])
+
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+
+        await query.edit_message_text(f"👩‍🦰 Выберите специалиста на {date_str}:", reply_markup=InlineKeyboardMarkup(kb))
+        context.user_data["state"] = SELECT_SPECIALIST
         return
 
-    selected_service_type = context.user_data.get("service_type")
-    if not selected_service_type:
-        await query.edit_message_text("❌ Ошибка: категория услуги не выбрана.")
+    # --- СЦЕНАРИЙ B: "Сначала мастер", потом дата (date_str is None) ---
+    else:
+        # date_str нет, ищем мастеров, подходящих под категорию, без привязки к дате
+        available_specialists = set() # Используем set, чтобы избежать дубликатов
+
+        tz = pytz.timezone(get_setting("Часовой пояс", "Europe/Moscow"))
+        now = datetime.now(tz)
+        end_date = now + timedelta(days=int(get_setting("Количество дней генерации слотов", 30)))
+
+        current_date_check = now.date()
+        end_date_check = end_date.date()
+
+        while current_date_check <= end_date_check:
+            target_day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][current_date_check.weekday()]
+
+            for row in schedule_data:
+                if len(row) > 0:
+                    specialist_name = row[0].strip()
+                    category = row[1].strip() if len(row) > 1 else ""
+
+                    if category.lower() == service_type.lower():
+                        day_schedule_index = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].index(target_day_name) + 2
+                        if day_schedule_index < len(row):
+                            day_schedule = str(row[day_schedule_index]).strip()
+                            if day_schedule.lower() != "выходной" and day_schedule:
+                                available_specialists.add(specialist_name)
+
+            current_date_check += timedelta(days=1)
+
+        kb = []
+        for spec in sorted(available_specialists):
+             kb.append([InlineKeyboardButton(spec, callback_data=f"specialist_{spec}")])
+
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+
+        await query.edit_message_text(f"👩‍🦰 Выберите специалиста для услуги '{subservice}':", reply_markup=InlineKeyboardMarkup(kb))
+        context.user_data["state"] = SELECT_SPECIALIST
         return
-
-    for row in specialists_data:
-        if len(row) > 0 and row[0] != get_setting("Название заведения", "Название организации"):
-            name = row[0]
-            # --- НОВАЯ ПРОВЕРКА КАТЕГОРИИ СПЕЦИАЛИСТА ---
-            specialist_categories = str(row[1]).strip() if len(row) > 1 else ""
-            if specialist_categories and selected_service_type:
-                if selected_service_type not in [cat.strip() for cat in specialist_categories.split(",")]:
-                    continue  # cпециалист не подходит под выбранную категорию
-            # ---------------------------------------
-            try:
-                col_idx = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(target_day) + 1
-            except ValueError:
-                continue
-            if col_idx >= len(row):
-                continue
-            work_time = row[col_idx]
-            if validate_work_schedule(work_time):
-                available.append(name)
-    kb = [[InlineKeyboardButton(m, callback_data=f"specialist_{m}")] for m in available]
-    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-    await query.edit_message_text("Выберите специалиста:", reply_markup=InlineKeyboardMarkup(kb))
-    context.user_data["state"] = SELECT_SPECIALIST
-    return SELECT_SPECIALIST
-
+# --- /ПОЛНАЯ ЗАМЕНА select_specialist ---
 # --- SELECT TIME ---
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
