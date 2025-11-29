@@ -784,8 +784,8 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ss:
         await query.edit_message_text("❌ Ошибка: услуга не выбрана.")
         return
-        # --- НОВАЯ ЛОГИКА ПОКАЗА ОПИСАНИЯ И ФОРМИРОВАНИЯ ТЕКСТА ---
-    # all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or [] # (эта строка уже есть, не дублируем)
+            # --- НОВАЯ ЛОГИКА ПОКАЗА ОПИСАНИЯ И ФОРМИРОВАНИЯ ТЕКСТА ---
+    # all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or [] # (уже определена выше)
     dur, buf, price = 60, 0, "не указана"
     description = "" # Инициализируем описание как пустую строку
 
