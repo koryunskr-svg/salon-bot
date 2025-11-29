@@ -1,4 +1,4 @@
-# main.py - Q-1977-11.11.25-изм.
+# main.py - Q-1977-11.11.25 - для исправлений
 import logging
 import logging.handlers
 import os
@@ -668,8 +668,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["subservice"] = data.split("subservice_", 1)[1]
         return await show_price_info(update, context)
     if data.startswith("priority_"):
-        context.user_data["priority"] = data.split("priority_", 1)[1]
-        return await select_date(update, context)
+        priority_choice = data.split("priority_", 1)[1]
+        context.user_data["priority"] = priority_choice
+        # --- ИСПРАВЛЕНАЯ ЛОГИКА ---
+        if priority_choice == "date":
+            return await select_date(update, context)
+        elif priority_choice == "specialist":
+            return await select_specialist(update, context)
+        else:
+            # На всякий случай, если придет неизвестный приоритет
+            logger.warning(f"⚠️ Неизвестный приоритет: {priority_choice}")
+            await query.edit_message_text("❌ Ошибка: неизвестный приоритет.")
+            # Или верни к выбору приоритета
+            # return await show_price_info(update, context) # Не рекомендуется, может зациклить
+            return
+    # --- /ИСПРАВЛЕНАЯ ЛОГИКА ---
     if data.startswith("date_"):
         context.user_data["date"] = data.split("date_", 1)[1]
         if context.user_data.get("priority") == "date":
