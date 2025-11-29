@@ -797,7 +797,25 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             break
     fmt_dur = format_duration(dur + buf)
     price_str = safe_parse_price(price)
-    text = f"✅ Услуга: {ss}\n💰 Цена: {price_str}\n⏳ Длительность: {fmt_dur}\n\nЧто для вас важнее?"
+    # --- НАЧАЛО ИЗМЕНЕНИЯ ДЛЯ ПОКАЗА ОПИСАНИЯ ---
+# Ищем полную строку данных для выбранной услуги, чтобы получить описание
+all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
+subservice_row = None
+for row in all_services:
+    if len(row) > 1 and row[1] == ss: # row[1] - это Название услуги
+        subservice_row = row
+        break
+
+description = ""
+if subservice_row and len(subservice_row) > 6: # row[6] - это Описание (7-й столбец, индекс 6)
+    description = subservice_row[6].strip()
+
+# Формируем текст с учётом описания
+text = f"✅ Услуга: {ss}\n💰 Цена: {price_str}\n⏳ Длительность: {fmt_dur}"
+if description:
+    text += f"\n📝 Описание: {description}"
+text += f"\n\nЧто для вас важнее?"
+# --- КОНЕЦ ИЗМЕНЕНИЯ ---
     kb = [
         [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
         [InlineKeyboardButton("👩‍🦰 Сначала cпециалист", callback_data="priority_specialist")],
