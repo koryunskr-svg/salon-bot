@@ -602,8 +602,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("❌ Возврат невозможен. Подтвердите или отмените запись.")
             return
         elif state == AWAITING_WAITING_LIST_DETAILS:
-            await start(update, context)
-            return MENU
+            # Возвращаемся к выбору времени (где была кнопка "В лист ожидания"
+            return await select_time(update, context)U
         elif state == AWAITING_ADMIN_SEARCH:
             return await handle_record_command(update, context)
         else:
@@ -2237,3 +2237,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
