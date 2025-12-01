@@ -724,21 +724,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "confirm_repeat":
         return await finalize_booking(update, context)
 
-
-if data == "waiting_list":
-    await query.edit_message_text(
-        "📋 Чтобы встать в лист ожидания, уточните:\n"
-        "1. Категорию и название услуги\n"
-        "2. Имя cпециалиста (или 'любой')\n"
-        "3. Желаемые дату и время"
-    )
-    # Создаём клавиатуру с кнопкой "Назад"
-    kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
-    # Применяем клавиатуру к *этому же* сообщению
-    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(kb))
-    context.user_data["state"] = AWAITING_WAITING_LIST_DETAILS
-    return AWAITING_WAITING_LIST_DETAILS
-# --- /ИСПРАВЛЕНИЕ 1 ---
+    # --- ИСПРАВЛЕНИЕ 1: Добавление кнопки "Назад" в сообщение листа ожидания ---
+    if data == "waiting_list":
+        await query.edit_message_text(
+            "📋 Чтобы встать в лист ожидания, уточните:\n"
+            "1. Категорию и название услуги\n"
+            "2. Имя cпециалиста (или 'любой')\n"
+            "3. Желаемые дату и время"
+        )
+        # Создаём клавиатуру с кнопкой "Назад"
+        kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
+        # Применяем клавиатуру к *этому же* сообщению
+        await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(kb))
+        context.user_data["state"] = AWAITING_WAITING_LIST_DETAILS
+        return AWAITING_WAITING_LIST_DETAILS
+    # --- /ИСПРАВЛЕНИЕ 1 ---
     if data == "confirm_booking":
         return await finalize_booking(update, context)
     if data == "cancel_booking":
@@ -2095,13 +2095,13 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
         ENTER_PHONE: enter_phone,
         AWAITING_ADMIN_MESSAGE: lambda u,c: (notify_admins(c, f"📞 Сообщение от клиента (ID скрыт): {u.message.text}"), u.message.reply_text("✅ Администратор свяжется с вами."), c.user_data.clear(), c.user_data.update({"state": MENU}) or MENU),
         AWAITING_WAITING_LIST_DETAILS: handle_waiting_list_input,
-        AWAITING_REPEAT_CONFIRMATION: lambda u,c: u.message.reply_text("❌ Пожалуйста, используйте кнопки для подтверждения или отмены.") or AWAITING_REPEAT_CONFIRMATION,
+        AWAITING_REPEAT_CONFIRMATION: lambda u,c: u.message.reply_text("❌ Пожалуйста, используйте кнопки для подтверждения или отмены.") or            AWAITING_REPEAT_CONFIRMATION,
         AWAITING_ADMIN_SEARCH: handle_admin_search,
         AWAITING_MY_RECORDS_NAME: handle_my_records_input,
         AWAITING_MY_RECORDS_PHONE: handle_my_records_input,
         AWAITING_WL_CATEGORY: handle_waiting_list_input,
         AWAITING_WL_SPECIALIST: handle_waiting_list_input,
-        AWAITING_WL_DATE: ,
+        AWAITING_WL_DATE: handle_waiting_list_input,
         AWAITING_WL_TIME: handle_waiting_list_input,
         AWAITING_WL_PRIORITY: handle_waiting_list_input,
         AWAITING_CONFIRMATION: lambda u,c: u.message.reply_text("❌ Пожалуйста, используйте кнопки 'Подтвердить' или 'Отменить'.") or AWAITING_CONFIRMATION,
