@@ -1,4 +1,4 @@
-# main.py - Q-2232-30.11.25
+# main.py - Q-2232-30.11.25 - для исправлений
 import logging
 import logging.handlers
 import os
@@ -723,15 +723,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cancel_reservation(update, context)
     if data == "confirm_repeat":
         return await finalize_booking(update, context)
-    if data == "waiting_list":
-        await query.edit_message_text(
-            "📋 Чтобы встать в лист ожидания, уточните:\n"
-            "1. Категорию и название услуги\n"
-            "2. Имя cпециалиста (или 'любой')\n"
-            "3. Желаемые дату и время"
-        )
-        context.user_data["state"] = AWAITING_WAITING_LIST_DETAILS
-        return AWAITING_WAITING_LIST_DETAILS
+
+
+if data == "waiting_list":
+    await query.edit_message_text(
+        "📋 Чтобы встать в лист ожидания, уточните:\n"
+        "1. Категорию и название услуги\n"
+        "2. Имя cпециалиста (или 'любой')\n"
+        "3. Желаемые дату и время"
+    )
+    # Создаём клавиатуру с кнопкой "Назад"
+    kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
+    # Применяем клавиатуру к *этому же* сообщению
+    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(kb))
+    context.user_data["state"] = AWAITING_WAITING_LIST_DETAILS
+    return AWAITING_WAITING_LIST_DETAILS
+# --- /ИСПРАВЛЕНИЕ 1 ---
     if data == "confirm_booking":
         return await finalize_booking(update, context)
     if data == "cancel_booking":
@@ -2094,7 +2101,7 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
         AWAITING_MY_RECORDS_PHONE: handle_my_records_input,
         AWAITING_WL_CATEGORY: handle_waiting_list_input,
         AWAITING_WL_SPECIALIST: handle_waiting_list_input,
-        AWAITING_WL_DATE: handle_waiting_list_input,
+        AWAITING_WL_DATE: ,
         AWAITING_WL_TIME: handle_waiting_list_input,
         AWAITING_WL_PRIORITY: handle_waiting_list_input,
         AWAITING_CONFIRMATION: lambda u,c: u.message.reply_text("❌ Пожалуйста, используйте кнопки 'Подтвердить' или 'Отменить'.") or AWAITING_CONFIRMATION,
