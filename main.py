@@ -603,7 +603,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         elif state == AWAITING_WAITING_LIST_DETAILS:
             # Возвращаемся к выбору времени (где была кнопка "В лист ожидания"
-            return await select_time(update, context)U
+            return await select_time(update, context)
         elif state == AWAITING_ADMIN_SEARCH:
             return await handle_record_command(update, context)
         else:
@@ -1106,6 +1106,7 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(kb))
         except Exception:
             pass
+        context.user_data["state"] = SELECT_TIME
         return
     kb = []
     for s in slots:
@@ -2237,4 +2238,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
