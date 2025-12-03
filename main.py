@@ -1,4 +1,4 @@
-# main.py - Q-2246-04.12.25 - для исправлений
+# main.py - Q-2249-04.12.25 - для исправлений
 import logging
 import logging.handlers
 import os
@@ -590,7 +590,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         back_map = {
             SELECT_SUBSERVICE: select_service_type,
             SHOW_PRICE_INFO: select_subservice,
-            SELECT_DATE: show_price_info,
+            SELECT_DATE: lambda u,c: (
+                select_specialist(u,c) if c.user_data.get("priority") == "specialist"
+                else show_price_info(u,c)
+            ),
             SELECT_SPECIALIST: lambda u,c: (
                 select_date(u,c) if c.user_data.get("date")
                 else show_price_info(u,c)
@@ -2244,4 +2247,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
