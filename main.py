@@ -591,8 +591,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             SELECT_SUBSERVICE: select_service_type,
             SHOW_PRICE_INFO: select_subservice,
             SELECT_DATE: show_price_info,
-            SELECT_SPECIALIST: show_price_info,
-            SELECT_TIME: lambda u,c: select_date(u,c) if context.user_data.get("priority")=="date" else select_specialist(u,c),
+            SELECT_SPECIALIST: lambda u,c: (
+                select_date(u,c) if c.user_data.get("date")
+                else show_price_info(u,c)
+            ),
+            SELECT_TIME: lambda u,c: (
+                select_specialist(u,c) if c.user_data.get("priority") == "date"
+                else select_date(u,c)
+            ),
             ENTER_NAME: select_time,
             ENTER_PHONE: enter_name,
         }
