@@ -1,4 +1,4 @@
-# main.py - Q-2249-04.12.25
+# main.py - Q-2249-04.12.25 - для исправлений
 import logging
 import logging.handlers
 import os
@@ -596,7 +596,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
             SELECT_SPECIALIST: lambda u,c: (
                 select_date(u,c) if c.user_data.get("priority") == "date"
-                else select_service_type(u,c)  # ← ВОЗВРАЩАЕМ В ВЫБОР УСЛУГИ, а не в show_price_info
+                else show_price_info(u,c)  # ← ИСПРАВЛЕНО: возвращаем в выбор приоритета
             ),
             SELECT_TIME: lambda u,c: (
                 select_specialist(u,c) if c.user_data.get("priority") == "date"
@@ -2247,4 +2247,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
