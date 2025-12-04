@@ -596,7 +596,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
             SELECT_SPECIALIST: lambda u,c: (
                 select_date(u,c) if c.user_data.get("date")
-                else show_price_info(u,c)
+                else select_service_type(u,c)  # ← ВОЗВРАЩАЕМ В ВЫБОР УСЛУГИ, а не в show_price_info
             ),
             SELECT_TIME: lambda u,c: (
                 select_specialist(u,c) if c.user_data.get("priority") == "date"
