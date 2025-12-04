@@ -733,21 +733,72 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "confirm_repeat":
         return await finalize_booking(update, context)
 
-    # --- ИСПРАВЛЕНИЕ 1: Добавление кнопки "Назад" в сообщение листа ожидания ---
+    # --- УМНЫЙ ВХОД В ЛИСТ ОЖИДАНИЯ (Вариант 1) ---
     if data == "waiting_list":
-        await query.edit_message_text(
-            "📋 Чтобы встать в лист ожидания, уточните:\n"
-            "1. Категорию и название услуги\n"
-            "2. Имя cпециалиста (или 'любой')\n"
-            "3. Желаемые дату и время"
+        st = context.user_data.get("service_type", "не указана")
+        ss = context.user_data.get("subservice", "не указана")
+        spec = context.user_data.get("selected_specialist", "любой")
+        date = context.user_data.get("date", "не указана")
+        time = context.user_data.get("time", "не указано")
+        
+        msg = (
+            "📋 Вы в листе ожидания.\n\n"
+            f"✅ Услуга: <b>{ss}</b> ({st})\n"
+            f"📅 Дата: <b>{date}</b>\n"
+            f"⏰ Время: <b>{time}</b> (проверим ±30 мин)\n"
+            f"👩‍🦰 Предпочтение: <b>{spec}</b>\n\n"
+            "👉 Выберите, кого ждать:"
         )
-        # Создаём клавиатуру с кнопкой "Назад"
-        kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
-        # Применяем клавиатуру к *этому же* сообщению
-        await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(kb))
-        context.user_data["state"] = AWAITING_WAITING_LIST_DETAILS
-        return AWAITING_WAITING_LIST_DETAILS
-    # --- /ИСПРАВЛЕНИЕ 1 ---
+        kb = [
+            [InlineKeyboardButton(f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific")],
+            [InlineKeyboardButton("👥 Любой мастер", callback_data="wl_prefer_any")],
+            [InlineKeyboardButton("⬅️ Отмена", callback_data="back")]
+        ]
+        await query.edit_message_text(
+            msg, 
+            reply_markup=InlineKeyboardMarkup(kb), 
+            parse_mode="HTML"
+        )
+        context.user_data["state"] = SELECT_TIME  # остаёмся в SELECT_TIME, чтобы back работал
+        return SELECT_TIME
+    # --- /УМНЫЙ ВХОД В ЛИСТ ОЖИДАНИЯ ---
+
+    # --- ОБРАБОТКА выбора в листе ожидания ---
+    if data == "wl_prefer_specific":
+        specialist = context.user_data.get("selected_specialist", "любой")
+    elif data == "wl_prefer_any":
+        specialist = "любой"
+    else:
+        return  # неизвестная команда
+
+    # Сохраняем запись в лист ожидания
+    entry = [
+        f"WAIT-{int(time.time())}",
+        datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M"),
+        update.effective_user.full_name or "Не указано",
+        context.user_data.get("phone", ""),
+        context.user_data["service_type"],
+        context.user_data["subservice"],
+        specialist,
+        context.user_data["date"],
+        context.user_data.get("time", ""),
+        "1",  # приоритет = высокий
+        "ожидает",
+        str(update.effective_user.id)
+    ]
+    try:
+        safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [entry])
+        await query.edit_message_text(
+            "✅ Вы добавлены в лист ожидания.\nМы уведомим вас, когда появится подходящее время.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ В меню", callback_data="start")]])
+        )
+        context.user_data.clear()
+        return MENU
+    except Exception as e:
+        logger.error(f"❌ Ошибка добавления в лист ожидания: {e}")
+        await query.edit_message_text("❌ Ошибка. Попробуйте позже.")
+        return MENU
+
     if data == "confirm_booking":
         return await finalize_booking(update, context)
     if data == "cancel_booking":
