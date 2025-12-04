@@ -1491,7 +1491,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             subservice = context.user_data.get("subservice", "")
             specialist = context.user_data.get("selected_specialist", "любой")
             date = context.user_data.get("date", "")
-            time = context.user_data.get("time", "")
+            user_time = context.user_data.get("time", "")
             entry = [
                 f"WAIT-{int(time.time())}",
                 datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M"),
@@ -1501,7 +1501,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
                 subservice,
                 specialist,
                 date,
-                time,
+                user_time,
                 "1",
                 "ожидает",
                 str(update.effective_chat.id)
@@ -2298,3 +2298,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
