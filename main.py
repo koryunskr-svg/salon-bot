@@ -739,7 +739,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ss = context.user_data.get("subservice", "не указана")
         spec = context.user_data.get("selected_specialist", "любой")
         date = context.user_data.get("date", "не указана")
-        time = context.user_data.get("time", "не указано")
+        user_time = context.user_data.get("time", "не указано")
         
         msg = (
             "📋 Вы в листе ожидания.\n\n"
@@ -1493,7 +1493,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             date = context.user_data.get("date", "")
             user_time = context.user_data.get("time", "")
             entry = [
-                f"WAIT-{int(time.time())}",
+                f"WAIT-{int(time.time())}",  # ← time.time() — OK, time — модуль
                 datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M"),
                 update.effective_user.full_name or "Не указано",
                 context.user_data.get("phone", ""),
@@ -1501,10 +1501,10 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
                 subservice,
                 specialist,
                 date,
-                user_time,
+                user_time,  # ← исправлено
                 "1",
                 "ожидает",
-                str(update.effective_chat.id)
+                str(update.effective_user.id)
             ]
             try:
                 safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [entry])
@@ -2298,4 +2298,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
