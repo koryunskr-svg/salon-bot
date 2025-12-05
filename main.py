@@ -789,6 +789,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [entry])
         await query.answer()
+        await query.message.edit_reply_markup(reply_markup=None)  # ← УДАЛИТЬ КЛАВИАТУРУ
         await query.message.reply_text(
             "✅ Вы добавлены в лист ожидания.\nМы уведомим вас, когда появится подходящее время.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ В меню", callback_data="start")]])
