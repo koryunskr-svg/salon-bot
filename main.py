@@ -1,4 +1,4 @@
-# main.py - Q-2302-05.12.25 - для изменений
+# main.py - Q-2302-05.12.25 
 import logging
 import logging.handlers
 import os
@@ -1585,7 +1585,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
                 f"Специалист: {context.user_data['wl_specialist']}\nДата: {context.user_data['wl_date']}\n"
                 f"Время: {context.user_data['wl_time']}\nПриоритет: {context.user_data['wl_priority']}\nСтатус: ожидает"
             )
-            logger.info(f"✅ Клиент {update.effective_user.id} добавлен в лист ожидания: {sheet_data}")
+            logger.info(f"✅ Клиент {update.effective_chat.id} добавлен в лист ожидания: {sheet_data}")
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения в лист ожидания: {e}")
             await msg.reply_text("❌ Ошибка при сохранении в лист ожидания. Повторите попытку позже.")
