@@ -1,4 +1,4 @@
-# main.py - Q-2302-05.12.25
+# main.py - Q-2302-05.12.25 - для изменений
 import logging
 import logging.handlers
 import os
@@ -784,7 +784,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.get("time", ""),
         "1",  # приоритет = высокий
         "ожидает",
-        str(update.effective_user.id)
+        str(update.effective_chat.id)
     ]
     try:
         safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [entry])
@@ -1506,7 +1506,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
                 user_time,  # ← исправлено
                 "1",
                 "ожидает",
-                str(update.effective_user.id)
+                str(update.effective_chat.id)
             ]
             try:
                 safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [entry])
@@ -1576,7 +1576,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             context.user_data["wl_time"],
             context.user_data["wl_priority"],
             "ожидает",
-            str(update.effective_user.id)
+            str(update.effective_chat.id)
         ]
         try:
             safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [sheet_data])
