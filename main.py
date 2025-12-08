@@ -799,7 +799,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.answer()
     await query.message.edit_reply_markup(reply_markup=None)
-    await query.message.reply_text(
+    await query.edit_message_text(
         "✅ Вы добавлены в лист ожидания.\nМы уведомим вас, когда появится подходящее время.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
