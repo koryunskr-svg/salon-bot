@@ -750,7 +750,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👉 Выберите, кого ждать:"
         )
         kb = [
-            
+            [InlineKeyboardButton(f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific")],
             [InlineKeyboardButton("👥 Любой мастер", callback_data="wl_prefer_any")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="back")],  # ← в select_time
             [InlineKeyboardButton("🏠 В меню", callback_data="start")]  # ← в /start
@@ -763,6 +763,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = SELECT_TIME  # остаёмся в SELECT_TIME, чтобы back работал
         return SELECT_TIME
     # --- /УМНЫЙ ВХОД В ЛИСТ ОЖИДАНИЯ ---
+    if data == "any_specialist":
+        context.user_data["selected_specialist"] = "любой"
+        return await select_date(update, context)
 
     # --- ОБРАБОТКА выбора в листе ожидания ---
     if data == "wl_prefer_specific":
@@ -1111,6 +1114,7 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
              kb.append([InlineKeyboardButton(spec, callback_data=f"specialist_{spec}")])
 
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+        kb.append([InlineKeyboardButton("👤 Любой мастер", callback_data="any_specialist")])
 
         await query.edit_message_text(f"👩‍🦰 Выберите специалиста на {date_str}:", reply_markup=InlineKeyboardMarkup(kb))
         context.user_data["state"] = SELECT_SPECIALIST
@@ -2308,6 +2312,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
