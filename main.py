@@ -809,6 +809,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Запись отменена.")
         context.user_data.clear()
         return MENU
+        
     await query.edit_message_text("❌ Неизвестная команда.")
 
 # --- PRICES ---
@@ -2302,3 +2303,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
