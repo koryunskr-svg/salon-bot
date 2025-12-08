@@ -752,7 +752,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = [
             [InlineKeyboardButton(f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific")],
             [InlineKeyboardButton("👥 Любой мастер", callback_data="wl_prefer_any")],
-            [InlineKeyboardButton("⬅️ Отмена", callback_data="back")]
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],  # ← в select_time
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")]  # ← в /start
         ]
         await query.edit_message_text(
             msg, 
@@ -2304,5 +2305,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
