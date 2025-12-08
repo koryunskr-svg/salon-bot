@@ -750,7 +750,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👉 Выберите, кого ждать:"
         )
         kb = [
-            [InlineKeyboardButton(f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific")],
+            
             [InlineKeyboardButton("👥 Любой мастер", callback_data="wl_prefer_any")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="back")],  # ← в select_time
             [InlineKeyboardButton("🏠 В меню", callback_data="start")]  # ← в /start
@@ -795,11 +795,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MENU
 
     await query.answer()
-    await query.message.edit_reply_markup(reply_markup=None)
+        await query.message.edit_reply_markup(reply_markup=None)
     await query.message.reply_text(
         "✅ Вы добавлены в лист ожидания.\nМы уведомим вас, когда появится подходящее время.",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ В меню", callback_data="start")]])
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+        ])
     )
+    context.user_data.clear()
+    return MENU)
     context.user_data.clear()
     return MENU
 
