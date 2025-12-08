@@ -100,7 +100,7 @@ def get_cached_settings() -> Dict[str, Any]:
                 _settings_cache_timestamp = now
                 missing = [k for k in ["Время начала работы", "Время окончания работы"] if k not in _settings_cache]
                 if missing:
-                    logger.warning(f⚠️ Отсутствуют настройки: {missing}")
+                    logger.warning(f! Отсутствуют настройки: {missing}")
             except Exception as e:
                 logger.error(f"❌ Ошибка загрузки настроек: {e}")
                 if not _settings_cache:
@@ -2317,3 +2317,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
