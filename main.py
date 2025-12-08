@@ -1,4 +1,4 @@
-# main.py - Q-2302-05.12.25 
+# main.py - Q-2302-05.12.25 - для изменений
 import logging
 import logging.handlers
 import os
@@ -786,23 +786,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "ожидает",
         str(update.effective_chat.id)
     ]
-    try:
-        safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [entry])
-        await query.answer()
-        await query.message.edit_reply_markup(reply_markup=None)  # ← УДАЛИТЬ КЛАВИАТУРУ
-        await query.message.reply_text(
-            "✅ Вы добавлены в лист ожидания.\nМы уведомим вас, когда появится подходящее время.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ В меню", callback_data="start")]])
-        )
-        context.user_data.clear()
-        return MENU
-    except Exception as e:
-        logger.error(f"❌ Ошибка добавления в лист ожидания: {e}")
+
+    success = safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [entry])
+    if not success:
+        logger.error("❌ safe_append_to_sheet вернул False")
         await query.edit_message_text("❌ Ошибка. Попробуйте позже.")
         return MENU
 
+    await query.answer()
+    await query.message.edit_reply_markup(reply_markup=None)
+    await query.message.reply_text(
+        "✅ Вы добавлены в лист ожидания.\nМы уведомим вас, когда появится подходящее время.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ В меню", callback_data="start")]])
+    )
+    context.user_data.clear()
+    return MENU
+
     if data == "confirm_booking":
         return await finalize_booking(update, context)
+
     if data == "cancel_booking":
         await query.edit_message_text("❌ Запись отменена.")
         context.user_data.clear()
