@@ -795,7 +795,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MENU
 
     await query.answer()
-        await query.message.edit_reply_markup(reply_markup=None)
+    await query.message.edit_reply_markup(reply_markup=None)
     await query.message.reply_text(
         "✅ Вы добавлены в лист ожидания.\nМы уведомим вас, когда появится подходящее время.",
         reply_markup=InlineKeyboardMarkup([
@@ -2310,3 +2310,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
