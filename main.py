@@ -805,8 +805,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     context.user_data.clear()
     return MENU)
-    context.user_data.clear()
-    return MENU
 
     if data == "confirm_booking":
         return await finalize_booking(update, context)
@@ -2310,4 +2308,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
