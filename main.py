@@ -100,7 +100,7 @@ def get_cached_settings() -> Dict[str, Any]:
                 _settings_cache_timestamp = now
                 missing = [k for k in ["Время начала работы", "Время окончания работы"] if k not in _settings_cache]
                 if missing:
-                    logger.warning(f"⚠️ Отсутствуют настройки: {missing}")
+                    logger.warning(f⚠️ Отсутствуют настройки: {missing}")
             except Exception as e:
                 logger.error(f"❌ Ошибка загрузки настроек: {e}")
                 if not _settings_cache:
@@ -1113,8 +1113,8 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for spec in sorted(available_specialists):
              kb.append([InlineKeyboardButton(spec, callback_data=f"specialist_{spec}")])
 
-        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
         kb.append([InlineKeyboardButton("👤 Любой мастер", callback_data="any_specialist")])
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
 
         await query.edit_message_text(f"👩‍🦰 Выберите специалиста на {date_str}:", reply_markup=InlineKeyboardMarkup(kb))
         context.user_data["state"] = SELECT_SPECIALIST
