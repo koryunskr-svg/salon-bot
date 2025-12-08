@@ -800,7 +800,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     await query.message.edit_reply_markup(reply_markup=None)
     await query.edit_message_text(
-        "✅ Вы добавлены в лист ожидания.\nМы уведомим вас, когда появится подходящее время.",
+        f"✅ Вы добавлены в лист ожидания.\n"
+        f"Услуга: {context.user_data.get('subservice', 'не указана')} ({context.user_data.get('service_type', 'не указана')})\n"
+        f"Дата: {context.user_data.get('date', 'не указана')}\n"
+        f"Время: {context.user_data.get('time', 'не указано')} (±30 мин)\n"
+        f"Мастер: {specialist}\n\n"
+        f"Мы уведомим вас, когда появится подходящее время.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
             [InlineKeyboardButton("🏠 В меню", callback_data="start")]
