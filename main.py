@@ -811,6 +811,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MENU
         
     await query.edit_message_text("❌ Неизвестная команда.")
+    return MENU
 
 # --- PRICES ---
 async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2303,4 +2304,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
