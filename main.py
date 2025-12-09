@@ -586,36 +586,42 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
     if data == "back":
-        state = context.user_data.get("state")
-        back_map = {
-            SELECT_SUBSERVICE: select_service_type,
-            SHOW_PRICE_INFO: select_subservice,
-            SELECT_DATE: lambda u,c: (
-                select_specialist(u,c) if c.user_data.get("priority") == "specialist"
-                else show_price_info(u,c)
-            ),
-            SELECT_SPECIALIST: lambda u,c: (
-                select_date(u,c) if c.user_data.get("priority") == "date"
-                else show_price_info(u,c)  # ← ИСПРАВЛЕНО: возвращаем в выбор приоритета
-            ),
-            SELECT_TIME: lambda u,c: (
-                select_specialist(u,c) if c.user_data.get("priority") == "date"
-                else select_date(u,c)
-            ),
-            ENTER_NAME: select_time,
-            ENTER_PHONE: enter_name,
-        }
-        if state in back_map:
-            return await back_map[state](update, context)
-        elif state in (CONFIRM_RESERVATION, AWAITING_REPEAT_CONFIRMATION):
-            await query.edit_message_text("❌ Возврат невозможен. Подтвердите или отмените запись.")
-            return
-        elif state == AWAITING_WAITING_LIST_DETAILS:
-            # Возвращаемся к выбору времени (где была кнопка "В лист ожидания"
-            return await select_time(update, context)
-        elif state == AWAITING_ADMIN_SEARCH:
-            return await handle_record_command(update, context)
+        # Получаем предыдущее состояние из стека
+        state_history = context.user_data.get("state_history", [])
+        if state_history:
+            # Удаляем текущее состояние из стека
+            current_state = state_history.pop()
+            # Получаем предыдущее состояние
+            previous_state = state_history[-1] if state_history else MENU
+            # Восстанавливаем стек
+            context.user_data["state_history"] = state_history
+            # Очищаем текущее состояние
+            context.user_data.pop("state", None)
+            # Возвращаемся к предыдущему состоянию
+            if previous_state == MENU:
+                await show_menu(update, context)
+                return MENU
+            elif previous_state == SHOW_PRICE_INFO:
+                return await show_price_info(update, context)
+            elif previous_state == SELECT_DATE:
+                return await select_date(update, context)
+            elif previous_state == SELECT_SPECIALIST:
+                return await select_specialist(update, context)
+            elif previous_state == SELECT_TIME:
+                return await select_time(update, context)
+            elif previous_state == AWAITING_WAITING_LIST_DETAILS:
+                # Возврат к предыдущему шагу листа ожидания
+                current_step = context.user_data.get("wl_current_step", 0)
+                prev_step = max(0, current_step - 1)
+                context.user_data["wl_current_step"] = prev_step
+                # Вызов функции ввода для возврата к предыдущему шагу
+                return await handle_waiting_list_input(update, context)
+            else:
+                # Если состояние неизвестно, возвращаем в меню
+                await show_menu(update, context)
+                return MENU
         else:
+            # Если стек пуст, возвращаем в меню
             await start(update, context)
             return MENU
     if data == "start":
@@ -751,7 +757,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         kb = [
             [InlineKeyboardButton(f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific")],
-            [InlineKeyboardButton("👥 Любой мастер", callback_data="wl_prefer_any")],
+            [InlineKeyboardButton("👥 Любой", callback_data="wl_prefer_any")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="back")],  # ← в select_time
             [InlineKeyboardButton("🏠 В меню", callback_data="start")]  # ← в /start
         ]
@@ -1118,7 +1124,7 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for spec in sorted(available_specialists):
              kb.append([InlineKeyboardButton(spec, callback_data=f"specialist_{spec}")])
 
-        kb.append([InlineKeyboardButton("👤 Любой мастер", callback_data="any_specialist")])
+        kb.append([InlineKeyboardButton("👤 Любой", callback_data="any_specialist")])
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
 
         await query.edit_message_text(f"👩‍🦰 Выберите специалиста на {date_str}:", reply_markup=InlineKeyboardMarkup(kb))
