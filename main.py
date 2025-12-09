@@ -599,7 +599,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data.pop("state", None)
             # Возвращаемся к предыдущему состоянию
             if previous_state == MENU:
-                await show_menu(update, context)
+                await start(update, context)
                 return MENU
             elif previous_state == SHOW_PRICE_INFO:
                 return await show_price_info(update, context)
@@ -618,7 +618,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return await handle_waiting_list_input(update, context)
             else:
                 # Если состояние неизвестно, возвращаем в меню
-                await show_menu(update, context)
+                await start(update, context)
                 return MENU
         else:
             # Если стек пуст, возвращаем в меню
