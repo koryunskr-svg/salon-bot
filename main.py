@@ -586,42 +586,37 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
     if data == "back":
-        # Получаем предыдущее состояние из стека
-        state_history = context.user_data.get("state_history", [])
-        if state_history:
-            # Удаляем текущее состояние из стека
-            current_state = state_history.pop()
-            # Получаем предыдущее состояние
-            previous_state = state_history[-1] if state_history else MENU
-            # Восстанавливаем стек
-            context.user_data["state_history"] = state_history
-            # Очищаем текущее состояние
-            context.user_data.pop("state", None)
-            # Возвращаемся к предыдущему состоянию
-            if previous_state == MENU:
-                await start(update, context)
-                return MENU
-            elif previous_state == SHOW_PRICE_INFO:
-                return await show_price_info(update, context)
-            elif previous_state == SELECT_DATE:
-                return await select_date(update, context)
-            elif previous_state == SELECT_SPECIALIST:
-                return await select_specialist(update, context)
-            elif previous_state == SELECT_TIME:
-                return await select_time(update, context)
-            elif previous_state == AWAITING_WAITING_LIST_DETAILS:
-                # Возврат к предыдущему шагу листа ожидания
-                current_step = context.user_data.get("wl_current_step", 0)
-                prev_step = max(0, current_step - 1)
-                context.user_data["wl_current_step"] = prev_step
-                # Вызов функции ввода для возврата к предыдущему шагу
-                return await handle_waiting_list_input(update, context)
-            else:
-                # Если состояние неизвестно, возвращаем в меню
-                await start(update, context)
-                return MENU
+        state = context.user_data.get("state")
+        back_map = {
+            SELECT_SUBSERVICE: select_service_type,
+            SHOW_PRICE_INFO: select_subservice,
+            SELECT_DATE: lambda u,c: (
+                select_specialist(u,c) if c.user_data.get("priority") == "specialist"
+                else select_service_type(u,c) # <-- ИСПРАВЛЕНО: возвращаем к выбору типа услуги, а не в главное меню или show_price_info
+            ),
+            SELECT_SPECIALIST: lambda u,c: (
+                select_date(u,c) if c.user_data.get("priority") == "date"
+                else show_price_info(u,c)  # <-- ИСПРАВЛЕНО: возвращаем в show_price_info, а не в главное меню
+            ),
+            SELECT_TIME: lambda u,c: (
+                select_specialist(u,c) if c.user_data.get("priority") == "date" # <-- ИСПРАВЛЕНО: если был сначала мастер
+                else select_date(u,c) # <-- ИСПРАВЛЕНО: если была сначала дата
+            ),
+            ENTER_NAME: select_time,
+            ENTER_PHONE: enter_name,
+        }
+        if state in back_map:
+            return await back_map[state](update, context)
+        elif state in (CONFIRM_RESERVATION, AWAITING_REPEAT_CONFIRMATION):
+            await query.edit_message_text("❌ Возврат невозможен. Подтвердите или отмените запись.")
+            return
+        elif state == AWAITING_WAITING_LIST_DETAILS:
+            # Возвращаемся к выбору времени (где была кнопка "В лист ожидания")
+            return await select_time(update, context)
+        elif state == AWAITING_ADMIN_SEARCH:
+            return await handle_record_command(update, context)
         else:
-            # Если стек пуст, возвращаем в меню
+            # Для всех других случаев, включая MENU, возвращаем в главное меню
             await start(update, context)
             return MENU
     if data == "start":
