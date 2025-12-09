@@ -943,6 +943,12 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+    # Сохраняем текущее состояние в историю перед переходом
+    state_history = context.user_data.get("state_history", [])
+    current_state = context.user_data.get("state")
+    if current_state and current_state not in [state_history[-1] if state_history else None]:
+        state_history.append(current_state)
+        context.user_data["state_history"] = state_history
     context.user_data["state"] = SHOW_PRICE_INFO
     return SHOW_PRICE_INFO
 
