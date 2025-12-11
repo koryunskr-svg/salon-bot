@@ -577,8 +577,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, reply_markup=rm) # Убран parse_mode="HTML", так как нет тегов
     elif update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=rm)
+    # Сохраняем текущее состояние в историю перед переходом
+    state_history = context.user_data.get("state_history", [])
+    current_state = context.user_data.get("state")
+    if current_state and current_state not in [state_history[-1] if state_history else None]:
+        state_history.append(current_state)
+        context.user_data["state_history"] = state_history
+    # Сохраняем текущее состояние в историю перед переходом
+    state_history = context.user_data.get("state_history", [])
+    current_state = context.user_data.get("state")
+    if current_state and current_state not in [state_history[-1] if state_history else None]:
+        state_history.append(current_state)
+        context.user_data["state_history"] = state_history
     context.user_data["state"] = MENU
     return MENU
+
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -586,37 +599,60 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
     if data == "back":
-        state = context.user_data.get("state")
-        back_map = {
-            SELECT_SUBSERVICE: select_service_type,
-            SHOW_PRICE_INFO: select_subservice,
-            SELECT_DATE: lambda u,c: (
-                select_specialist(u,c) if c.user_data.get("priority") == "specialist"
-                else select_service_type(u,c) # <-- ИСПРАВЛЕНО: возвращаем к выбору типа услуги, а не в главное меню или show_price_info
-            ),
-            SELECT_SPECIALIST: lambda u,c: (
-                select_date(u,c) if c.user_data.get("priority") == "date"
-                else show_price_info(u,c)  # <-- ИСПРАВЛЕНО: возвращаем в show_price_info, а не в главное меню
-            ),
-            SELECT_TIME: lambda u,c: (
-                select_specialist(u,c) if c.user_data.get("priority") == "date" # <-- ИСПРАВЛЕНО: если был сначала мастер
-                else select_date(u,c) # <-- ИСПРАВЛЕНО: если была сначала дата
-            ),
-            ENTER_NAME: select_time,
-            ENTER_PHONE: enter_name,
-        }
-        if state in back_map:
-            return await back_map[state](update, context)
-        elif state in (CONFIRM_RESERVATION, AWAITING_REPEAT_CONFIRMATION):
-            await query.edit_message_text("❌ Возврат невозможен. Подтвердите или отмените запись.")
-            return
-        elif state == AWAITING_WAITING_LIST_DETAILS:
-            # Возвращаемся к выбору времени (где была кнопка "В лист ожидания")
-            return await select_time(update, context)
-        elif state == AWAITING_ADMIN_SEARCH:
-            return await handle_record_command(update, context)
+        # Получаем предыдущее состояние из стека
+        state_history = context.user_data.get("state_history", [])
+        if state_history:
+            # Удаляем текущее состояние из стека
+            current_state = state_history.pop()
+            # Получаем предыдущее состояние
+            previous_state = state_history[-1] if state_history else MENU
+            # Восстанавливаем стек
+            context.user_data["state_history"] = state_history
+            # Очищаем текущее состояние
+            context.user_data.pop("state", None)
+            # Возвращаемся к предыдущему состоянию
+            if previous_state == MENU:
+                return await start(update, context) # Вызов start вместо show_menu
+            elif previous_state == SHOW_PRICE_INFO:
+                return await show_price_info(update, context)
+            elif previous_state == SELECT_DATE:
+                return await select_date(update, context)
+            elif previous_state == SELECT_SPECIALIST:
+                return await select_specialist(update, context)
+            elif previous_state == SELECT_TIME:
+                return await select_time(update, context)
+            elif previous_state == AWAITING_WAITING_LIST_DETAILS:
+                # Возврат к предыдущему шагу листа ожидания
+                current_step = context.user_data.get("wl_current_step", 0)
+                prev_step = max(0, current_step - 1)
+                context.user_data["wl_current_step"] = prev_step
+                # Вызов функции ввода для возврата к предыдущему шагу
+                return await handle_waiting_list_input(update, context)
+            elif previous_state == AWAITING_WL_CATEGORY:
+                return await select_time(update, context) # Возврат к выбору времени из листа ожидания
+            elif previous_state == AWAITING_WL_SPECIALIST:
+                # Возврат к предыдущему шагу листа ожидания (например, к категории)
+                return await handle_waiting_list_input(update, context)
+            elif previous_state == AWAITING_WL_DATE:
+                # Возврат к предыдущему шагу листа ожидания (например, к специалисту)
+                return await handle_waiting_list_input(update, context)
+            elif previous_state == AWAITING_WL_TIME:
+                # Возврат к предыдущему шагу листа ожидания (например, к дате)
+                return await handle_waiting_list_input(update, context)
+            elif previous_state == AWAITING_WL_PRIORITY:
+                # Возврат к предыдущему шагу листа ожидания (например, ко времени)
+                return await handle_waiting_list_input(update, context)
+            elif previous_state == CONFIRM_RESERVATION:
+                return await select_time(update, context) # Возврат к выбору времени
+            elif previous_state == ENTER_NAME:
+                return await select_time(update, context) # Возврат к выбору времени
+            elif previous_state == ENTER_PHONE:
+                return await enter_name(update, context) # Возврат к вводу имени
+            else:
+                # Если состояние неизвестно, возвращаем в меню
+                return await start(update, context)
         else:
-            # Для всех других случаев, включая MENU, возвращаем в главное меню
+            # Если стек пуст, возвращаем в меню
             await start(update, context)
             return MENU
     if data == "start":
@@ -753,7 +789,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = [
             [InlineKeyboardButton(f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific")],
             [InlineKeyboardButton("👥 Любой", callback_data="wl_prefer_any")],
-            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],  # ← в select_time
+            [InlineKeyboardButton("⬅️ Назад", )],  # ← в select_time
             [InlineKeyboardButton("🏠 В меню", callback_data="start")]  # ← в /start
         ]
         await query.edit_message_text(
@@ -761,6 +797,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(kb), 
             parse_mode="HTML"
         )
+        # Сохраняем текущее состояние в историю перед переходом
+        state_history = context.user_data.get("state_history", [])
+        current_state = context.user_data.get("state")
+        if current_state and current_state not in [state_history[-1] if state_history else None]:
+            state_history.append(current_state)
+            context.user_data["state_history"] = state_history
         context.user_data["state"] = SELECT_TIME  # остаёмся в SELECT_TIME, чтобы back работал
         return SELECT_TIME
     # --- /УМНЫЙ ВХОД В ЛИСТ ОЖИДАНИЯ ---
@@ -808,7 +850,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Мастер: {specialist}\n\n"
         f"Мы уведомим вас, когда появится подходящее время.",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+            [InlineKeyboardButton("⬅️ Назад", )],
             [InlineKeyboardButton("🏠 В меню", callback_data="start")]
         ])
     )
@@ -863,8 +905,14 @@ async def select_service_type(update: Update, context: ContextTypes.DEFAULT_TYPE
     services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:A") or []
     types = list({row[0] for row in services if row and len(row) > 0})
     kb = [[InlineKeyboardButton(t, callback_data=f"service_{t}")] for t in types]
-    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+    kb.append([InlineKeyboardButton("⬅️ Назад", )])
     await update.callback_query.edit_message_text("Выберите категорию услуги:", reply_markup=InlineKeyboardMarkup(kb))
+    # Сохраняем текущее состояние в историю перед переходом
+    state_history = context.user_data.get("state_history", [])
+    current_state = context.user_data.get("state")
+    if current_state and current_state not in [state_history[-1] if state_history else None]:
+        state_history.append(current_state)
+        context.user_data["state_history"] = state_history
     context.user_data["state"] = SELECT_SERVICE_TYPE
     return SELECT_SERVICE_TYPE
 
@@ -878,8 +926,14 @@ async def select_subservice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
     subs = [row[1] for row in all_services if len(row) > 1 and row[0] == st]
     kb = [[InlineKeyboardButton(s, callback_data=f"subservice_{s}")] for s in subs]
-    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+    kb.append([InlineKeyboardButton("⬅️ Назад", )])
     await query.edit_message_text(f"Выберите услугу ({st}):", reply_markup=InlineKeyboardMarkup(kb))
+    # Сохраняем текущее состояние в историю перед переходом
+    state_history = context.user_data.get("state_history", [])
+    current_state = context.user_data.get("state")
+    if current_state and current_state not in [state_history[-1] if state_history else None]:
+        state_history.append(current_state)
+        context.user_data["state_history"] = state_history
     context.user_data["state"] = SELECT_SUBSERVICE
     return SELECT_SUBSERVICE
 
@@ -935,7 +989,7 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = [
         [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
         [InlineKeyboardButton("👩‍🦰 Сначала cпециалист", callback_data="priority_specialist")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+        [InlineKeyboardButton("⬅️ Назад", )],
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
     # Сохраняем текущее состояние в историю перед переходом
@@ -1027,6 +1081,12 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
 
         await query.edit_message_text(f"📅 Выберите дату для специалиста '{selected_specialist}':", reply_markup=InlineKeyboardMarkup(kb))
+        # Сохраняем текущее состояние в историю перед переходом
+        state_history = context.user_data.get("state_history", [])
+        current_state = context.user_data.get("state")
+        if current_state and current_state not in [state_history[-1] if state_history else None]:
+            state_history.append(current_state)
+            context.user_data["state_history"] = state_history
         context.user_data["state"] = SELECT_DATE
         return
 
@@ -1064,9 +1124,15 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for date_str in sorted(available_dates):
             kb.append([InlineKeyboardButton(date_str, callback_data=f"date_{date_str}")])
 
-        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+        kb.append([InlineKeyboardButton("⬅️ Назад", )])
 
         await query.edit_message_text(f"📅 Выберите дату для услуги '{subservice}':", reply_markup=InlineKeyboardMarkup(kb))
+        # Сохраняем текущее состояние в историю перед переходом
+        state_history = context.user_data.get("state_history", [])
+        current_state = context.user_data.get("state")
+        if current_state and current_state not in [state_history[-1] if state_history else None]:
+            state_history.append(current_state)
+            context.user_data["state_history"] = state_history
         context.user_data["state"] = SELECT_DATE
         return
 # --- /ПОЛНАЯ ЗАМЕНА select_date ---
@@ -1126,8 +1192,15 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
              kb.append([InlineKeyboardButton(spec, callback_data=f"specialist_{spec}")])
 
         kb.append([InlineKeyboardButton("👤 Любой", callback_data="any_specialist")])
-        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+        kb.append([InlineKeyboardButton("⬅️ Назад", )])
 
+        await query.edit_message_text(f"👩‍🦰 Выберите специалиста на {date_str}:", reply_markup=InlineKeyboardMarkup(kb))
+        # Сохраняем текущее состояние в историю перед переходом
+        state_history = context.user_data.get("state_history", [])
+        current_state = context.user_data.get("state")
+        if current_state and current_state not in [state_history[-1] if state_history else None]:
+            state_history.append(current_state)
+            context.user_data["state_history"] = state_history
         await query.edit_message_text(f"👩‍🦰 Выберите специалиста на {date_str}:", reply_markup=InlineKeyboardMarkup(kb))
         context.user_data["state"] = SELECT_SPECIALIST
         return
@@ -1165,8 +1238,15 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for spec in sorted(available_specialists):
              kb.append([InlineKeyboardButton(spec, callback_data=f"specialist_{spec}")])
 
-        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+        kb.append([InlineKeyboardButton("⬅️ Назад", )])
 
+        await query.edit_message_text(f"👩‍🦰 Выберите специалиста для услуги '{subservice}':", reply_markup=InlineKeyboardMarkup(kb))
+        # Сохраняем текущее состояние в историю перед переходом
+        state_history = context.user_data.get("state_history", [])
+        current_state = context.user_data.get("state")
+        if current_state and current_state not in [state_history[-1] if state_history else None]:
+            state_history.append(current_state)
+            context.user_data["state_history"] = state_history
         await query.edit_message_text(f"👩‍🦰 Выберите специалиста для услуги '{subservice}':", reply_markup=InlineKeyboardMarkup(kb))
         context.user_data["state"] = SELECT_SPECIALIST
         return
@@ -1192,6 +1272,16 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(kb))
         except Exception:
             pass
+        # Сохраняем текущее состояние в историю перед переходом
+        state_history = context.user_data.get("state_history", [])
+        current_state = context.user_data.get("state")
+        if current_state and current_state not in [state_history[-1] if state_history else None]:
+            state_history.append(current_state)
+            context.user_data["state_history"] = state_history
+        try:
+            await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(kb))
+        except Exception:
+            pass
         context.user_data["state"] = SELECT_TIME
         return
     kb = []
@@ -1199,6 +1289,13 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         t = s.get("time", "N/A")
         m = s.get("specialist", "N/A")
         kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
+    kb.append([InlineKeyboardButton("⬅️ Назад", )])
+    await query.edit_message_text("Выберите время:", reply_markup=InlineKeyboardMarkup(kb))
+    # Сохраняем текущее состояние в историю перед переходом        state_history = context.user_data.get("state_history", [])
+    current_state = context.user_data.get("state")
+    if current_state and current_state not in [state_history[-1] if state_history else None]:
+        state_history.append(current_state)
+        context.user_data["state_history"] = state_history
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
     await query.edit_message_text("Выберите время:", reply_markup=InlineKeyboardMarkup(kb))
     context.user_data["state"] = SELECT_TIME
@@ -1240,6 +1337,12 @@ async def reserve_slot(update: Update, context: ContextTypes.DEFAULT_TYPE, speci
         data={"user_id": update.effective_user.id}
     )
     await query.edit_message_text("⏳ Слот зарезервирован! Введите ваше имя:")
+    # Сохраняем текущее состояние в историю перед переходом
+    state_history = context.user_data.get("state_history", [])
+    current_state = context.user_data.get("state")
+    if current_state and current_state not in [state_history[-1] if state_history else None]:
+        state_history.append(current_state)
+        context.user_data["state_history"] = state_history
     context.user_data["state"] = ENTER_NAME
     return ENTER_NAME
 
@@ -1288,6 +1391,12 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTER_NAME
     context.user_data["name"] = name
     await update.message.reply_text("📞 Теперь введите ваш телефон:", reply_markup=ReplyKeyboardRemove())
+    # Сохраняем текущее состояние в историю перед переходом
+    state_history = context.user_data.get("state_history", [])
+    current_state = context.user_data.get("state")
+    if current_state and current_state not in [state_history[-1] if state_history else None]:
+        state_history.append(current_state)
+        context.user_data["state_history"] = state_history
     context.user_data["state"] = ENTER_PHONE
     return ENTER_PHONE
 
@@ -1510,6 +1619,12 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
         missing = [f for f in required if not context.user_data.get(f)]
         if missing:
             await msg.reply_text("📋 Вы в листе ожидания.\nПожалуйста, укажите категорию услуги.")
+            # Сохраняем текущее состояние в историю перед переходом
+            state_history = context.user_data.get("state_history", [])
+            current_state = context.user_data.get("state")
+            if current_state and current_state not in [state_history[-1] if state_history else None]:
+                state_history.append(current_state)
+                context.user_data["state_history"] = state_history
             context.user_data["state"] = AWAITING_WL_CATEGORY
             return AWAITING_WL_CATEGORY
         else:
@@ -1557,6 +1672,12 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             return AWAITING_WL_CATEGORY
         context.user_data["wl_category"] = user_input
         await msg.reply_text(f"👤 Вы выбрали категорию: <b>{user_input}</b>.\nТеперь укажите имя специалиста (или 'любой').", parse_mode='HTML')
+        # Сохраняем текущее состояние в историю перед переходом
+        state_history = context.user_data.get("state_history", [])
+        current_state = context.user_data.get("state")
+        if current_state and current_state not in [state_history[-1] if state_history else None]:
+            state_history.append(current_state)
+            context.user_data["state_history"] = state_history
         context.user_data["state"] = AWAITING_WL_SPECIALIST
         return AWAITING_WL_SPECIALIST
     elif state == AWAITING_WL_SPECIALIST:
@@ -1565,6 +1686,12 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             return AWAITING_WL_SPECIALIST
         context.user_data["wl_specialist"] = user_input
         await msg.reply_text(f"👤 Специалист: <b>{user_input}</b>.\nТеперь укажите желаемую дату (ДД.ММ.ГГГГ).", parse_mode='HTML')
+        # Сохраняем текущее состояние в историю перед переходом
+        state_history = context.user_data.get("state_history", [])
+        current_state = context.user_data.get("state")
+        if current_state and current_state not in [state_history[-1] if state_history else None]:
+            state_history.append(current_state)
+            context.user_data["state_history"] = state_history
         context.user_data["state"] = AWAITING_WL_DATE
         return AWAITING_WL_DATE
     elif state == AWAITING_WL_DATE:
@@ -1573,6 +1700,12 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             return AWAITING_WL_DATE
         context.user_data["wl_date"] = user_input
         await msg.reply_text(f"📅 Дата: <b>{user_input}</b>.\nТеперь укажите желаемое время (ЧЧ:ММ).", parse_mode='HTML')
+        # Сохраняем текущее состояние в историю перед переходом
+        state_history = context.user_data.get("state_history", [])
+        current_state = context.user_data.get("state")
+        if current_state and current_state not in [state_history[-1] if state_history else None]:
+            state_history.append(current_state)
+            context.user_data["state_history"] = state_history
         context.user_data["state"] = AWAITING_WL_TIME
         return AWAITING_WL_TIME
     elif state == AWAITING_WL_TIME:
@@ -1581,6 +1714,12 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             return AWAITING_WL_TIME
         context.user_data["wl_time"] = user_input
         await msg.reply_text(f"⏰ Время: <b>{user_input}</b>.\nТеперь укажите приоритет (например, 'раньше', 'позже', 'около').", parse_mode='HTML')
+        # Сохраняем текущее состояние в историю перед переходом
+        state_history = context.user_data.get("state_history", [])
+        current_state = context.user_data.get("state")
+        if current_state and current_state not in [state_history[-1] if state_history else None]:
+            state_history.append(current_state)
+            context.user_data["state_history"] = state_history
         context.user_data["state"] = AWAITING_WL_PRIORITY
         return AWAITING_WL_PRIORITY
     elif state == AWAITING_WL_PRIORITY:
