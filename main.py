@@ -1,4 +1,4 @@
-# main.py - Q-2302-05.12.25 - с изменениями
+# main.py - Q-2302-05.12.25 - для изменений
 import logging
 import logging.handlers
 import os
@@ -760,12 +760,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(kb), 
             parse_mode="HTML"
         )
-        context.user_data["state"] = SELECT_TIME  # остаёмся в SELECT_TIME, чтобы back работал
-        return SELECT_TIME
+        context.user_data["state"] = AWAITING_WAITING_LIST_DETAILS
+        return AWAITING_WAITING_LIST_DETAILS
     # --- /УМНЫЙ ВХОД В ЛИСТ ОЖИДАНИЯ ---
     if data == "any_specialist":
         context.user_data["selected_specialist"] = "любой"
-        return await select_date(update, context)
+        if context.user_data.get("priority") == "date":
+            return await select_time(update, context)
+        else:
+            return await select_date(update, context)
 
     # --- ОБРАБОТКА выбора в листе ожидания ---
     if data == "wl_prefer_specific":
@@ -1123,10 +1126,8 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = []
         for spec in sorted(available_specialists):
              kb.append([InlineKeyboardButton(spec, callback_data=f"specialist_{spec}")])
-
         kb.append([InlineKeyboardButton("👤 Любой", callback_data="any_specialist")])
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-
         await query.edit_message_text(f"👩‍🦰 Выберите специалиста на {date_str}:", reply_markup=InlineKeyboardMarkup(kb))
         context.user_data["state"] = SELECT_SPECIALIST
         return
@@ -1163,9 +1164,8 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = []
         for spec in sorted(available_specialists):
              kb.append([InlineKeyboardButton(spec, callback_data=f"specialist_{spec}")])
-
+        kb.append([InlineKeyboardButton("👤 Любой", callback_data="any_specialist")])
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-
         await query.edit_message_text(f"👩‍🦰 Выберите специалиста для услуги '{subservice}':", reply_markup=InlineKeyboardMarkup(kb))
         context.user_data["state"] = SELECT_SPECIALIST
         return
