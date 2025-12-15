@@ -610,7 +610,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif state in (CONFIRM_RESERVATION, AWAITING_REPEAT_CONFIRMATION):
             await query.edit_message_text("❌ Возврат невозможен. Подтвердите или отмените запись.")
             return
-                elif state == AWAITING_WAITING_LIST_DETAILS:
+        elif state == AWAITING_WAITING_LIST_DETAILS:
             # Возвращаемся к сообщению "📋 Вы в листе ожидания." с выбором "Только ...", "Любой"
             st = context.user_data.get("service_type", "не указана")
             ss = context.user_data.get("subservice", "не указана")
