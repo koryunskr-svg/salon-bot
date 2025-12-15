@@ -610,9 +610,36 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif state in (CONFIRM_RESERVATION, AWAITING_REPEAT_CONFIRMATION):
             await query.edit_message_text("❌ Возврат невозможен. Подтвердите или отмените запись.")
             return
-        elif state == AWAITING_WAITING_LIST_DETAILS:
-            # Возвращаемся к выбору времени (где была кнопка "В лист ожидания"
-            return await select_time(update, context)
+                elif state == AWAITING_WAITING_LIST_DETAILS:
+            # Возвращаемся к сообщению "📋 Вы в листе ожидания." с выбором "Только ...", "Любой"
+            st = context.user_data.get("service_type", "не указана")
+            ss = context.user_data.get("subservice", "не указана")
+            spec = context.user_data.get("selected_specialist", "любой")
+            date = context.user_data.get("date", "не указана")
+            user_time = context.user_data.get("time", "не указано")
+            
+            msg = (
+                "📋 Вы в листе ожидания.\n\n"
+                f"✅ Услуга: <b>{ss}</b> ({st})\n"
+                f"📅 Дата: <b>{date}</b>\n"
+                f"⏰ Время: <b>{user_time}</b> (проверим ±30 мин)\n"
+                f"👩‍🦰 Предпочтение: <b>{spec}</b>\n\n"
+                "👉 Выберите, кого ждать:"
+            )
+            kb = [
+                [InlineKeyboardButton(f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific")],
+                [InlineKeyboardButton("👥 Любой", callback_data="wl_prefer_any")],
+                [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+            ]
+            await query.edit_message_text(
+                msg,
+                reply_markup=InlineKeyboardMarkup(kb),
+                parse_mode="HTML"
+            )
+            # Устанавливаем состояние, которое было до добавления в лист ожидания
+            context.user_data["state"] = AWAITING_WL_PRIORITY
+            return AWAITING_WL_PRIORITY
         elif state == AWAITING_ADMIN_SEARCH:
             return await handle_record_command(update, context)
         else:
