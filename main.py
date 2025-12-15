@@ -814,8 +814,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🏠 В меню", callback_data="start")]
         ])
     )
-    context.user_data.clear()
-    return MENU
+    context.user_data["state"] = AWAITING_WAITING_LIST_DETAILS
+    return AWAITING_WAITING_LIST_DETAILS
 
     if data == "confirm_booking":
         return await finalize_booking(update, context)
