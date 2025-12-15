@@ -1,4 +1,4 @@
-# main.py - Q-2302-05.12.25 - исходный
+# main.py - Q-2302-05.12.25 - с изменениями
 import logging
 import logging.handlers
 import os
@@ -100,7 +100,7 @@ def get_cached_settings() -> Dict[str, Any]:
                 _settings_cache_timestamp = now
                 missing = [k for k in ["Время начала работы", "Время окончания работы"] if k not in _settings_cache]
                 if missing:
-                    logger.warning(f"⚠️ Отсутствуют настройки: {missing}")
+                    logger.warning(f"! Отсутствуют настройки: {missing}")
             except Exception as e:
                 logger.error(f"❌ Ошибка загрузки настроек: {e}")
                 if not _settings_cache:
@@ -750,8 +750,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👉 Выберите, кого ждать:"
         )
         kb = [
-            
-            [InlineKeyboardButton("👥 Любой мастер", callback_data="wl_prefer_any")],
+            [InlineKeyboardButton(f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific")],
+            [InlineKeyboardButton("👥 Любой", callback_data="wl_prefer_any")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="back")],  # ← в select_time
             [InlineKeyboardButton("🏠 В меню", callback_data="start")]  # ← в /start
         ]
@@ -763,6 +763,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = SELECT_TIME  # остаёмся в SELECT_TIME, чтобы back работал
         return SELECT_TIME
     # --- /УМНЫЙ ВХОД В ЛИСТ ОЖИДАНИЯ ---
+    if data == "any_specialist":
+        context.user_data["selected_specialist"] = "любой"
+        return await select_date(update, context)
 
     # --- ОБРАБОТКА выбора в листе ожидания ---
     if data == "wl_prefer_specific":
@@ -796,8 +799,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.answer()
     await query.message.edit_reply_markup(reply_markup=None)
-    await query.message.reply_text(
-        "✅ Вы добавлены в лист ожидания.\nМы уведомим вас, когда появится подходящее время.",
+    await query.edit_message_text(
+        f"✅ Вы добавлены в лист ожидания.\n"
+        f"Услуга: {context.user_data.get('subservice', 'не указана')} ({context.user_data.get('service_type', 'не указана')})\n"
+        f"Дата: {context.user_data.get('date', 'не указана')}\n"
+        f"Время: {context.user_data.get('time', 'не указано')} (±30 мин)\n"
+        f"Мастер: {specialist}\n\n"
+        f"Мы уведомим вас, когда появится подходящее время.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
             [InlineKeyboardButton("🏠 В меню", callback_data="start")]
@@ -929,6 +937,12 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+    # Сохраняем текущее состояние в историю перед переходом
+    state_history = context.user_data.get("state_history", [])
+    current_state = context.user_data.get("state")
+    if current_state and current_state not in [state_history[-1] if state_history else None]:
+        state_history.append(current_state)
+        context.user_data["state_history"] = state_history
     context.user_data["state"] = SHOW_PRICE_INFO
     return SHOW_PRICE_INFO
 
@@ -1110,6 +1124,7 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for spec in sorted(available_specialists):
              kb.append([InlineKeyboardButton(spec, callback_data=f"specialist_{spec}")])
 
+        kb.append([InlineKeyboardButton("👤 Любой", callback_data="any_specialist")])
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
 
         await query.edit_message_text(f"👩‍🦰 Выберите специалиста на {date_str}:", reply_markup=InlineKeyboardMarkup(kb))
