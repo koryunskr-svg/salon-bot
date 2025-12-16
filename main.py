@@ -633,7 +633,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("🏠 В меню", callback_data="start")]
             ]
             await query.edit_message_text(
-                msg,ф
+                msg,
                 reply_markup=InlineKeyboardMarkup(kb),
                 parse_mode="HTML"
             )
@@ -2351,3 +2351,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
