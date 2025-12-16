@@ -633,18 +633,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("🏠 В меню", callback_data="start")]
             ]
             await query.edit_message_text(
-                msg,
+                msg,ф
                 reply_markup=InlineKeyboardMarkup(kb),
                 parse_mode="HTML"
             )
-            # Устанавливаем состояние, которое было до добавления в лист ожидания
-            context.user_data["state"] = AWAITING_WL_PRIORITY
-            return AWAITING_WL_PRIORITY
-        elif state == AWAITING_WL_PRIORITY:
-            # После выбора "Только ..." или "Любой" в "📋 Вы в листе ожидания.",
-            # нажатие "Назад" возвращает в главное меню.
-            await start(update, context)
-            return MENU
+            context.user_data["state"] = AWAITING_WL_PRIORITY_CHOICE
+            return AWAITING_WL_PRIORITY_CHOICE
         elif state == AWAITING_ADMIN_SEARCH:
             return await handle_record_command(update, context)
         else:
@@ -792,8 +786,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(kb), 
             parse_mode="HTML"
         )
-        context.user_data["state"] = AWAITING_WAITING_LIST_DETAILS
-        return AWAITING_WAITING_LIST_DETAILS
+        context.user_data["state"] = AWAITING_WL_PRIORITY_CHOICE
+        return AWAITING_WL_PRIORITY_CHOICE
     # --- /УМНЫЙ ВХОД В ЛИСТ ОЖИДАНИЯ ---
     if data == "any_specialist":
         context.user_data["selected_specialist"] = "любой"
@@ -2222,6 +2216,7 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
             AWAITING_WL_DATE: handle_waiting_list_input,
             AWAITING_WL_TIME: select_time,
             # AWAITING_WL_PRIORITY больше не обрабатывается через back_map
+            AWAITING_WL_PRIORITY_CHOICE: select_time, # Назад из "📋 Вы в листе ожидания." -> к выбору времени
             AWAITING_CONFIRMATION: lambda u,c: u.message.reply_text("❌ Пожалуйста, используйте кнопки 'Подтвердить' или 'Отменить'.") or AWAITING_CONFIRMATION,
         }
     if state in handlers:
