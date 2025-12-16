@@ -640,6 +640,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Устанавливаем состояние, которое было до добавления в лист ожидания
             context.user_data["state"] = AWAITING_WL_PRIORITY
             return AWAITING_WL_PRIORITY
+        elif state == AWAITING_WL_PRIORITY:
+            # После выбора "Только ..." или "Любой" в "📋 Вы в листе ожидания.",
+            # нажатие "Назад" возвращает в главное меню.
+            await start(update, context)
+            return MENU
         elif state == AWAITING_ADMIN_SEARCH:
             return await handle_record_command(update, context)
         else:
@@ -2208,17 +2213,17 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
         ENTER_PHONE: enter_phone,
         AWAITING_ADMIN_MESSAGE: lambda u,c: (notify_admins(c, f"📞 Сообщение от клиента (ID скрыт): {u.message.text}"), u.message.reply_text("✅ Администратор свяжется с вами."), c.user_data.clear(), c.user_data.update({"state": MENU}) or MENU),
         AWAITING_WAITING_LIST_DETAILS: handle_waiting_list_input,
-        AWAITING_REPEAT_CONFIRMATION: lambda u,c: u.message.reply_text("❌ Пожалуйста, используйте кнопки для подтверждения или отмены.") or                           AWAITING_REPEAT_CONFIRMATION,
-        AWAITING_ADMIN_SEARCH: handle_admin_search,
-        AWAITING_MY_RECORDS_NAME: handle_my_records_input,
-        AWAITING_MY_RECORDS_PHONE: handle_my_records_input,
-        AWAITING_WL_CATEGORY: handle_waiting_list_input,
-        AWAITING_WL_SPECIALIST: handle_waiting_list_input,
-        AWAITING_WL_DATE: handle_waiting_list_input,
-        AWAITING_WL_TIME: select_time,
-        AWAITING_WL_PRIORITY: select_time,
-        AWAITING_CONFIRMATION: lambda u,c: u.message.reply_text("❌ Пожалуйста, используйте кнопки 'Подтвердить' или 'Отменить'.") or AWAITING_CONFIRMATION,
-    }
+            AWAITING_REPEAT_CONFIRMATION: lambda u,c: u.message.reply_text("❌ Пожалуйста, используйте кнопки для подтверждения или отмены.") or AWAITING_REPEAT_CONFIRMATION,
+            AWAITING_ADMIN_SEARCH: handle_admin_search,
+            AWAITING_MY_RECORDS_NAME: handle_my_records_input,
+            AWAITING_MY_RECORDS_PHONE: handle_my_records_input,
+            AWAITING_WL_CATEGORY: handle_waiting_list_input,
+            AWAITING_WL_SPECIALIST: handle_waiting_list_input,
+            AWAITING_WL_DATE: handle_waiting_list_input,
+            AWAITING_WL_TIME: select_time,
+            # AWAITING_WL_PRIORITY больше не обрабатывается через back_map
+            AWAITING_CONFIRMATION: lambda u,c: u.message.reply_text("❌ Пожалуйста, используйте кнопки 'Подтвердить' или 'Отменить'.") or AWAITING_CONFIRMATION,
+        }
     if state in handlers:
         if state == AWAITING_ADMIN_MESSAGE:
             await notify_admins(context, f"📞 Сообщение от клиента (ID скрыт): {update.message.text}")
