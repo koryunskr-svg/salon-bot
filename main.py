@@ -1,4 +1,4 @@
-# main.py - Q-2302-05.12.25 - для изменений-2252
+# main.py - Q-2302-05.12.25 - для изменений
 import logging
 import logging.handlers
 import os
@@ -758,7 +758,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cancel_reservation(update, context)
     if data == "confirm_repeat":
         return await finalize_booking(update, context)
-
+    if data == "refresh_time": return await select_time(update, context)
     # --- УМНЫЙ ВХОД В ЛИСТ ОЖИДАНИЯ (Вариант 1) ---
     if data == "waiting_list":
         st = context.user_data.get("service_type", "не указана")
@@ -1211,6 +1211,7 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Свободных слотов нет.")
         kb = [
             [InlineKeyboardButton("📋 В лист ожидания", callback_data="waiting_list")],
+            [InlineKeyboardButton("🔄 Обновить", callback_data="refresh_time")], # Добавлена кнопка "Обновить"
             [InlineKeyboardButton("⬅️ Назад", callback_data="back")]
         ]
         try:
@@ -1218,7 +1219,7 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
         context.user_data["state"] = SELECT_TIME
-        return
+        return SELECT_TIME
     kb = []
     for s in slots:
         t = s.get("time", "N/A")
@@ -2350,4 +2351,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
