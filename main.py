@@ -1149,14 +1149,11 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             # TODO: Проверить реальную доступность мастера в день
                             available_specialists.append(specialist_name)
 
-        kb = []
-        for spec in sorted(available_specialists):
-             kb.append([InlineKeyboardButton(spec, callback_data=f"specialist_{spec}")])
-        kb.append([InlineKeyboardButton("👤 Любой", callback_data="any_specialist")])
-        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-        await query.edit_message_text(f"👩‍🦰 Выберите специалиста на {date_str}:", reply_markup=InlineKeyboardMarkup(kb))
-        context.user_data["state"] = SELECT_SPECIALIST
-        return
+        # date_str есть, мастер выбран (или "любой"), теперь нужно выбрать время.
+        # Устанавливаем state на SELECT_TIME и вызываем функцию select_time.
+        # selected_specialist (или "любой") уже установлен в context.user_data, например, через specialist_... или any_specialist callback.
+        context.user_data["state"] = SELECT_TIME
+        return await select_time(update, context)
 
     # --- СЦЕНАРИЙ B: "Сначала мастер", потом дата (date_str is None) ---
     else:
@@ -1187,14 +1184,11 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             current_date_check += timedelta(days=1)
 
-        kb = []
-        for spec in sorted(available_specialists):
-             kb.append([InlineKeyboardButton(spec, callback_data=f"specialist_{spec}")])
-        kb.append([InlineKeyboardButton("👤 Любой", callback_data="any_specialist")])
-        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-        await query.edit_message_text(f"👩‍🦰 Выберите специалиста для услуги '{subservice}':", reply_markup=InlineKeyboardMarkup(kb))
-        context.user_data["state"] = SELECT_SPECIALIST
-        return
+        # date_str нет, мастер выбран (или "любой"), теперь нужно выбрать дату.
+        # Устанавливаем state на SELECT_DATE и вызываем функцию select_date.
+        # selected_specialist (или "любой") уже установлен в context.user_data.
+        context.user_data["state"] = SELECT_DATE
+        return await select_date(update, context)
 # --- /ПОЛНАЯ ЗАМЕНА select_specialist ---
 # --- SELECT TIME ---
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2351,4 +2345,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
