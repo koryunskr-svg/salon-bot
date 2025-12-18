@@ -3100,8 +3100,9 @@ def main():
         remove_lock_file()
         return
     try:
-        load_settings_from_table()  # ← ЭТУ СТРОКУ НУЖНО УДАЛИТЬ
+        load_settings_from_table()  
         logger.info("✅ Настройки загружены и закэшированы при старте")
+        tw = get_setting("Триггерные слова", "админ, связаться, помощь")
         global TRIGGER_WORDS
         TRIGGER_WORDS = [w.strip().lower() for w in tw.split(",") if w.strip()]
         logger.info(f"✅ Триггерные слова загружены: {TRIGGER_WORDS}")
