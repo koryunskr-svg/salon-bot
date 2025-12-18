@@ -3099,9 +3099,9 @@ def main():
         remove_lock_file()
         return
     try:
-        load_settings_from_table()
+        # load_settings_from_table() удалено - настройки загружаются через get_cached_settings()
+        get_cached_settings()  # ← ИЛИ ВООБЩЕ УДАЛИТЬ ВСЮ ЭТУ ПРОВЕРКУ
         logger.info("✅ Настройки загружены и закэшированы при старте")
-        tw = get_setting("Триггерные слова", "админ, связаться, помощь")
         global TRIGGER_WORDS
         TRIGGER_WORDS = [w.strip().lower() for w in tw.split(",") if w.strip()]
         logger.info(f"✅ Триггерные слова загружены: {TRIGGER_WORDS}")
