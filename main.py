@@ -942,10 +942,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("date_"):
         context.user_data["date"] = data.split("date_", 1)[1]
         if context.user_data.get("priority") == "date":
-            return await select_specialist(update, context)  # Сценарий A
+            # Сценарий A: сначала дата → потом специалист
+            return await select_specialist(update, context)
         else:
             # Сценарий B: сначала специалист, потом дата → теперь время
-            return await select_time(update, context)  # Сценарий B
+            return await select_time(update, context)
     if data.startswith("specialist_"):
         context.user_data["selected_specialist"] = data.split("specialist_", 1)[1]
         if context.user_data.get("priority") == "specialist":
@@ -1455,15 +1456,40 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if day_index < len(row):
                         work_schedule = row[day_index].strip()
                         if work_schedule.lower() != "выходной" and work_schedule:
-                            # Проверяем, есть ли у него свободное время (упрощённо)
-                            # TODO: Проверить реальную доступность специалиста в день
                             available_specialists.append(specialist_name)
 
-        # date_str есть, специалист выбран (или "любой"), теперь нужно выбрать время.
-        # Устанавливаем state на SELECT_TIME и вызываем функцию select_time.
-        # selected_specialist (или "любой") уже установлен в context.user_data, например, через specialist_... или any_specialist callback.
-        context.user_data["state"] = SELECT_TIME
-        return await select_time(update, context)
+        # date_str есть, нужно показать специалистов для выбора
+        if not available_specialists:
+            await query.edit_message_text(
+                "❌ Нет доступных специалистов на выбранную дату."
+            )
+            return
+
+        kb = []
+        for specialist in sorted(available_specialists):
+            kb.append(
+                [
+                    InlineKeyboardButton(
+                        specialist, callback_data=f"specialist_{specialist}"
+                    )
+                ]
+            )
+
+        kb.append(
+            [
+                InlineKeyboardButton(
+                    "👥 Любой специалист", callback_data="any_specialist"
+                )
+            ]
+        )
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+
+        await query.edit_message_text(
+            f"👩‍💼 Выберите специалиста на {date_str} для услуги '{subservice}':",
+            reply_markup=InlineKeyboardMarkup(kb),
+        )
+        context.user_data["state"] = SELECT_SPECIALIST
+        return SELECT_SPECIALIST  # ← ВОЗВРАЩАЕМ СОСТОЯНИЕ
 
     # --- СЦЕНАРИЙ B: "Сначала специалист", потом дата (date_str is None) ---
     else:
@@ -1546,6 +1572,12 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    # Сохраняем текущее состояние в историю
+    current_state = context.user_data.get("state")
+    if current_state:
+        state_history = context.user_data.get("state_history", [])
+        state_history.append(current_state)
+        context.user_data["state_history"] = state_history
     date_str = context.user_data.get("date")
     specialist = context.user_data.get("selected_specialist")
     st = context.user_data.get("service_type")
@@ -3100,7 +3132,7 @@ def main():
         remove_lock_file()
         return
     try:
-        load_settings_from_table()  
+        load_settings_from_table()
         logger.info("✅ Настройки загружены и закэшированы при старте")
         tw = get_setting("Триггерные слова", "админ, связаться, помощь")
         global TRIGGER_WORDS
