@@ -1,4 +1,4 @@
-# main.py - Q-2302-05.12.25 - для изменений
+# main.py-Q-2608-17.12.25-D-для изм.
 import logging
 import logging.handlers
 import os
@@ -9,9 +9,15 @@ import pytz
 import signal
 import sys
 import threading
+import re
 from typing import Dict, Any
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -24,7 +30,14 @@ from telegram.ext import (
 )
 
 # --- ИМПОРТЫ ИЗ КОНФИГА И УТИЛИТ ---
-from config import TELEGRAM_BOT_TOKEN, TIMEZONE, RESERVATION_TIMEOUT, WARNING_TIMEOUT, SHEET_ID, CALENDAR_ID
+from config import (
+    TELEGRAM_BOT_TOKEN,
+    TIMEZONE,
+    RESERVATION_TIMEOUT,
+    WARNING_TIMEOUT,
+    SHEET_ID,
+    CALENDAR_ID,
+)
 from utils.safe_google import (
     safe_get_sheet_data,
     safe_append_to_sheet,
@@ -35,10 +48,14 @@ from utils.safe_google import (
     safe_delete_calendar_event,
 )
 from utils.slots import find_available_slots
-from utils.reminders import send_reminders, handle_confirm_reminder, handle_cancel_reminder
+from utils.reminders import (
+    send_reminders,
+    handle_confirm_reminder,
+    handle_cancel_reminder,
+)
 from utils.admin import load_admins, notify_admins
 from utils.validation import validate_name, validate_phone
-from utils.settings import load_settings_from_table
+
 
 def safe_parse_price(p) -> str:
     """
@@ -48,8 +65,7 @@ def safe_parse_price(p) -> str:
     if not p:
         return "цена не указана"
     try:
-        import re
-        clean = re.sub(r'[^\d.]', '', str(p).strip())
+        clean = re.sub(r"[^\d.]", "", str(p).strip())
         if not clean:
             return "цена не указана"
         val = int(float(clean))
@@ -57,11 +73,14 @@ def safe_parse_price(p) -> str:
     except (ValueError, TypeError, OverflowError):
         return "цена не указана"
 
+
 # --- GLOBALS ---
 TRIGGER_WORDS = []
 logger = logging.getLogger(__name__)
 
 # --- RATE LIMITING ---
+
+
 class RateLimiter:
     def __init__(self, max_requests: int = 15, window: int = 60):
         self.max_requests = max_requests
@@ -72,11 +91,16 @@ class RateLimiter:
         now = time.time()
         if user_id not in self.requests:
             self.requests[user_id] = []
-        self.requests[user_id] = [req_time for req_time in self.requests[user_id] if now - req_time < self.window]
+        self.requests[user_id] = [
+            req_time
+            for req_time in self.requests[user_id]
+            if now - req_time < self.window
+        ]
         if len(self.requests[user_id]) >= self.max_requests:
             return True
         self.requests[user_id].append(now)
         return False
+
 
 rate_limiter = RateLimiter(max_requests=15, window=60)
 
@@ -85,6 +109,7 @@ _settings_cache: Dict[str, Any] = {}
 _settings_cache_timestamp: float = 0
 _cache_lock = threading.Lock()
 CACHE_TTL: int = 300  # 5 минут
+
 
 def get_cached_settings() -> Dict[str, Any]:
     global _settings_cache, _settings_cache_timestamp
@@ -96,9 +121,17 @@ def get_cached_settings() -> Dict[str, Any]:
         if not _settings_cache or (now - _settings_cache_timestamp) > CACHE_TTL:
             try:
                 raw = safe_get_sheet_data(SHEET_ID, "Настройки!A3:B") or []
-                _settings_cache = {str(row[0]).strip(): str(row[1]).strip() for row in raw if len(row) >= 2 and row[0] and row[1]}
+                _settings_cache = {
+                    str(row[0]).strip(): str(row[1]).strip()
+                    for row in raw
+                    if len(row) >= 2 and row[0] and row[1]
+                }
                 _settings_cache_timestamp = now
-                missing = [k for k in ["Время начала работы", "Время окончания работы"] if k not in _settings_cache]
+                missing = [
+                    k
+                    for k in ["Время начала работы", "Время окончания работы"]
+                    if k not in _settings_cache
+                ]
                 if missing:
                     logger.warning(f"! Отсутствуют настройки: {missing}")
             except Exception as e:
@@ -108,8 +141,10 @@ def get_cached_settings() -> Dict[str, Any]:
                     _settings_cache_timestamp = now
         return _settings_cache
 
+
 def get_setting(key: str, default: str = "") -> str:
     return get_cached_settings().get(key, default)
+
 
 def invalidate_settings_cache():
     global _settings_cache, _settings_cache_timestamp
@@ -118,15 +153,20 @@ def invalidate_settings_cache():
         _settings_cache_timestamp = 0
         logger.info("🧹 Кэш настроек сброшен")
 
+
 # --- КЭШИРОВАНИЕ УСЛУГ ---
 _services_cache = None
 _services_cache_timestamp = 0
 SERVICES_CACHE_TTL = 300
 
+
 def get_cached_services():
     global _services_cache, _services_cache_timestamp
     now = time.time()
-    if _services_cache is None or (now - _services_cache_timestamp) > SERVICES_CACHE_TTL:
+    if (
+        _services_cache is None
+        or (now - _services_cache_timestamp) > SERVICES_CACHE_TTL
+    ):
         try:
             _services_cache = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
             _services_cache_timestamp = now
@@ -134,6 +174,7 @@ def get_cached_services():
             logger.error(f"❌ Ошибка загрузки услуг: {e}")
             _services_cache = []
     return _services_cache
+
 
 def calculate_service_step(subservice: str) -> int:
     services = get_cached_services()
@@ -147,18 +188,26 @@ def calculate_service_step(subservice: str) -> int:
                 break
     return int(get_setting("Дефолтный шаг услуги", "60"))
 
+
 def invalidate_services_cache():
     global _services_cache, _services_cache_timestamp
     _services_cache = None
     _services_cache_timestamp = 0
 
+
 # --- LOGGING SETUP ---
+
+
 def setup_production_logging():
     root = logging.getLogger()
     root.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s - [%(filename)s:%(lineno)d]')
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s - [%(filename)s:%(lineno)d]"
+    )
     os.makedirs("logs", exist_ok=True)
-    file_handler = logging.handlers.RotatingFileHandler('logs/bot.log', maxBytes=10*1024*1024, backupCount=5)
+    file_handler = logging.handlers.RotatingFileHandler(
+        "logs/bot.log", maxBytes=10 * 1024 * 1024, backupCount=5
+    )
     file_handler.setFormatter(formatter)
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
@@ -166,10 +215,13 @@ def setup_production_logging():
         root.addHandler(file_handler)
         root.addHandler(console_handler)
 
+
 # --- GLOBAL ERROR HANDLER ---
+
+
 async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error("Exception while handling an update:", exc_info=context.error)
-    if update and hasattr(update, 'effective_message') and update.effective_message:
+    if update and hasattr(update, "effective_message") and update.effective_message:
         try:
             await update.effective_message.reply_text(
                 "❌ Произошла техническая ошибка. Мы уже работаем над исправлением. Пожалуйста, попробуйте позже."
@@ -181,19 +233,29 @@ async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYP
     except Exception:
         logger.exception("Не удалось уведомить админов")
 
+
 # --- ACTIVITY / SESSIONS ---
+
+
 async def update_last_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["_last_activity"] = time.time()
 
+
 async def global_activity_updater(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_message and getattr(update.effective_message, "text", "") and not update.effective_message.text.startswith('/'):
+    if (
+        update.effective_message
+        and getattr(update.effective_message, "text", "")
+        and not update.effective_message.text.startswith("/")
+    ):
         await update_last_activity(update, context)
+
 
 async def cleanup_old_sessions_job(context: ContextTypes.DEFAULT_TYPE):
     now = time.time()
     max_age = 30 * 24 * 60 * 60
     to_remove = [
-        user_id for user_id, data in context.application.user_data.items()
+        user_id
+        for user_id, data in context.application.user_data.items()
         if now - data.get("_last_activity", now) > max_age
     ]
     for user_id in to_remove:
@@ -204,7 +266,10 @@ async def cleanup_old_sessions_job(context: ContextTypes.DEFAULT_TYPE):
     if to_remove:
         logger.info(f"🧹 Очищено {len(to_remove)} старых сессий")
 
+
 # --- CLEANUP STUCK RESERVATIONS WITH WAITING LIST CHECK ---
+
+
 async def cleanup_stuck_reservations_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         now = datetime.now(TIMEZONE)
@@ -230,7 +295,9 @@ async def cleanup_stuck_reservations_job(context: ContextTypes.DEFAULT_TYPE):
                             slot_time = temp_booking.get("time")
                             slot_specialist = temp_booking.get("specialist")
                             if slot_date and slot_time and slot_specialist:
-                                await check_waiting_list(slot_date, slot_time, slot_specialist, context)
+                                await check_waiting_list(
+                                    slot_date, slot_time, slot_specialist, context
+                                )
                                 processed_slots += 1
                             if user_id in context.application.user_data:
                                 del context.application.user_data[user_id]
@@ -238,40 +305,60 @@ async def cleanup_stuck_reservations_job(context: ContextTypes.DEFAULT_TYPE):
                     except (ValueError, TypeError):
                         pass
         if stuck_count:
-            logger.info(f"🧹 Очищено {stuck_count} зависших бронирований, проверено {processed_slots} слотов")
+            logger.info(
+                f"🧹 Очищено {stuck_count} зависших бронирований, проверено {processed_slots} слотов"
+            )
     except Exception as e:
         logger.error(f"❌ Ошибка при очистке зависших бронирований: {e}")
 
+
 # --- HEALTH CHECK ---
+
+
 async def health_check_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         test_data = safe_get_sheet_data(SHEET_ID, "Настройки!A1:B1") or []
-        test_events = safe_get_calendar_events(
-            CALENDAR_ID,
-            datetime.now(TIMEZONE).isoformat(),
-            (datetime.now(TIMEZONE) + timedelta(hours=1)).isoformat()
-        ) or []
+        test_events = (
+            safe_get_calendar_events(
+                CALENDAR_ID,
+                datetime.now(TIMEZONE).isoformat(),
+                (datetime.now(TIMEZONE) + timedelta(hours=1)).isoformat(),
+            )
+            or []
+        )
         active_users = len(context.application.user_data)
         active_jobs = len(context.job_queue.jobs())
-        logger.info(f"🏥 Health Check: Sheets={bool(test_data)}, Calendar={bool(test_events)}, Users={active_users}, Jobs={active_jobs}")
-        log_business_event("health_check", sheets_connected=bool(test_data), calendar_connected=bool(test_events), active_users=active_users, active_jobs=active_jobs)
+        logger.info(
+            f"🏥 Health Check: Sheets={bool(test_data)}, Calendar={bool(test_events)}, Users={active_users}, Jobs={active_jobs}"
+        )
+        log_business_event(
+            "health_check",
+            sheets_connected=bool(test_data),
+            calendar_connected=bool(test_events),
+            active_users=active_users,
+            active_jobs=active_jobs,
+        )
     except Exception as e:
         logger.error(f"❌ Health Check failed: {e}")
         await notify_admins(context, f"🚨 Health Check failed: {e}")
 
+
 # --- LOCK FILE ---
+
+
 def create_lock_file():
     lock_file = "bot.lock"
     if os.path.exists(lock_file):
         logger.critical("❌ Бот уже запущен! Файл bot.lock существует.")
         return False
     try:
-        with open(lock_file, 'w') as f:
+        with open(lock_file, "w") as f:
             f.write(str(os.getpid()))
         return True
     except Exception as e:
         logger.error(f"❌ Не удалось создать lock-файл: {e}")
         return False
+
 
 def remove_lock_file():
     try:
@@ -280,6 +367,7 @@ def remove_lock_file():
             logger.info("🗑️ Lock-файл удалён.")
     except Exception as e:
         logger.error(f"❌ Не удалось удалить lock-файл: {e}")
+
 
 # --- STATES ---
 (
@@ -311,12 +399,15 @@ def remove_lock_file():
     AWAITING_ADMIN_NEW_SPECIALIST,
     AWAITING_ADMIN_NEW_TIME,
     AWAITING_PHONE_FOR_CALLBACK,
-) = range(28)
+    AWAITING_WL_PRIORITY_CHOICE,
+) = range(29)
 
 ACTIVE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано"}
 CANCELLABLE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано"}
 
 # --- HELPERS ---
+
+
 def format_duration(minutes: int) -> str:
     if not isinstance(minutes, int) or minutes < 0:
         return "N/A"
@@ -329,12 +420,13 @@ def format_duration(minutes: int) -> str:
     else:
         return f"{hours} ч {mins} мин"
 
+
 def validate_configuration():
     required = {
         "TELEGRAM_BOT_TOKEN": TELEGRAM_BOT_TOKEN,
         "SHEET_ID": SHEET_ID,
         "CALENDAR_ID": CALENDAR_ID,
-        "TIMEZONE": TIMEZONE
+        "TIMEZONE": TIMEZONE,
     }
     missing = [k for k, v in required.items() if not v]
     if missing:
@@ -346,8 +438,10 @@ def validate_configuration():
     logger.info("✅ Конфигурация проверена успешно")
     return True
 
+
 def log_business_event(event_type, **kwargs):
     logger.info(f"BUSINESS_EVENT: {event_type} - {kwargs}")
+
 
 def validate_time_format(time_str: str) -> bool:
     try:
@@ -357,6 +451,7 @@ def validate_time_format(time_str: str) -> bool:
         return True
     except ValueError:
         return False
+
 
 def validate_work_schedule(work_time_str: str) -> bool:
     if not isinstance(work_time_str, str):
@@ -368,24 +463,36 @@ def validate_work_schedule(work_time_str: str) -> bool:
     times = work_time_str.split("-")
     if len(times) != 2:
         return False
-    return validate_time_format(times[0].strip()) and validate_time_format(times[1].strip())
+    return validate_time_format(times[0].strip()) and validate_time_format(
+        times[1].strip()
+    )
+
 
 def validate_date_format(date_str: str) -> bool:
     try:
         if not isinstance(date_str, str):
             return False
-        if not date_str.count('.') == 2:
+        if not date_str.count(".") == 2:
             return False
         datetime.strptime(date_str, "%d.%m.%Y")
         return True
     except ValueError:
         return False
 
+
 # --- CHECK WAITING LIST (С ПОДДЕРЖКОЙ ПРИОРИТЕТА И БЛИЗКИХ СЛОТОВ) ---
-async def check_waiting_list(slot_date: str, slot_time: str, specialist: str, context: ContextTypes.DEFAULT_TYPE) -> None:
+
+
+async def check_waiting_list(
+    slot_date: str, slot_time: str, specialist: str, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     try:
-        MAX_DIFF = int(get_setting("Максимальное отклонение времени для листа ожидания", "30"))
-        MAX_NOTIFY = int(get_setting("Максимальное количество уведомлений из листа ожидания", "1"))
+        MAX_DIFF = int(
+            get_setting("Максимальное отклонение времени для листа ожидания", "30")
+        )
+        MAX_NOTIFY = int(
+            get_setting("Максимальное количество уведомлений из листа ожидания", "1")
+        )
         waiting_list = safe_get_sheet_data(SHEET_ID, "Лист ожидания!A3:L") or []
         candidates = []
         for idx, row in enumerate(waiting_list, start=2):
@@ -396,36 +503,47 @@ async def check_waiting_list(slot_date: str, slot_time: str, specialist: str, co
             wait_specialist = str(row[6]).strip() if len(row) > 6 and row[6] else ""
             status = str(row[10]).strip() if len(row) > 10 and row[10] else ""
             chat_id = str(row[11]).strip() if len(row) > 11 and row[11] else ""
-            priority = int(row[9]) if len(row) > 9 and row[9] and str(row[9]).isdigit() else 1
-            if status == "ожидает" and chat_id.isdigit() and wait_date == slot_date and (wait_specialist == specialist or wait_specialist == "любой"):
+            priority = (
+                int(row[9]) if len(row) > 9 and row[9] and str(row[9]).isdigit() else 1
+            )
+            if (
+                status == "ожидает"
+                and chat_id.isdigit()
+                and wait_date == slot_date
+                and (wait_specialist == specialist or wait_specialist == "любой")
+            ):
                 try:
                     slot_min = int(slot_time[:2]) * 60 + int(slot_time[3:5])
                     wait_min = int(wait_time[:2]) * 60 + int(wait_time[3:5])
                     diff = abs(slot_min - wait_min)
                     if diff <= MAX_DIFF:
-                        candidates.append({
-                            'priority': priority,
-                            'diff': diff,
-                            'idx': idx,
-                            'row': row,
-                            'chat_id': int(chat_id),
-                            'req_time': wait_time
-                        })
+                        candidates.append(
+                            {
+                                "priority": priority,
+                                "diff": diff,
+                                "idx": idx,
+                                "row": row,
+                                "chat_id": int(chat_id),
+                                "req_time": wait_time,
+                            }
+                        )
                 except (ValueError, IndexError):
                     continue
-        candidates.sort(key=lambda x: (-x['priority'], x['diff']))
+        candidates.sort(key=lambda x: (-x["priority"], x["diff"]))
         notified = 0
         for cand in candidates[:MAX_NOTIFY]:
             try:
                 await context.bot.send_message(
-                    chat_id=cand['chat_id'],
-                    text=f"🎉 Появилось свободное время!\n📅 Дата: {slot_date}\n⏰ Время: {slot_time} (запрашивали {cand['req_time']})\n👩‍💼 Специалист: {specialist}\nНажмите /start для записи."
+                    chat_id=cand["chat_id"],
+                    text=f"🎉 Появилось свободное время!\n📅 Дата: {slot_date}\n⏰ Время: {slot_time} (запрашивали {cand['req_time']})\n👩‍💼 Специалист: {specialist}\nНажмите /start для записи.",
                 )
-                updated = list(cand['row'])
+                updated = list(cand["row"])
                 updated[10] = "уведомлен"
-                safe_update_sheet_row(SHEET_ID, "Лист ожидания", cand['idx'], updated)
+                safe_update_sheet_row(SHEET_ID, "Лист ожидания", cand["idx"], updated)
                 notified += 1
-                logger.info(f"✅ Уведомлён клиент: {cand['chat_id']}, приоритет {cand['priority']}")
+                logger.info(
+                    f"✅ Уведомлён клиент: {cand['chat_id']}, приоритет {cand['priority']}"
+                )
             except Exception as e:
                 logger.error(f"❌ Ошибка уведомления: {e}")
         if notified:
@@ -433,8 +551,16 @@ async def check_waiting_list(slot_date: str, slot_time: str, specialist: str, co
     except Exception as e:
         logger.error(f"❌ Ошибка в check_waiting_list: {e}", exc_info=True)
 
+
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ЗАПИСЕЙ ---
-async def _display_records(update: Update, context: ContextTypes.DEFAULT_TYPE, records, title="Ваши активные записи:"):
+
+
+async def _display_records(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    records,
+    title="Ваши активные записи:",
+):
     query = update.callback_query
     msg = f"📋 <b>{title}</b>\n\n"
     kb = []
@@ -448,48 +574,89 @@ async def _display_records(update: Update, context: ContextTypes.DEFAULT_TYPE, r
         st = str(r[8]).strip() if len(r) > 8 else "N/A"
         msg += f"<b>ID:</b> {rid}\n<b>Услуга:</b> {svc} ({cat})\n<b>Специалист:</b> {mst}\n<b>Дата:</b> {dt}\n<b>Время:</b> {tm}\n<b>Статус:</b> {st}\n"
         if st in CANCELLABLE_STATUSES:
-            kb.append([InlineKeyboardButton(f"❌ Отменить {dt} {tm}", callback_data=f"cancel_record_{rid}")])
+            kb.append(
+                [
+                    InlineKeyboardButton(
+                        f"❌ Отменить {dt} {tm}", callback_data=f"cancel_record_{rid}"
+                    )
+                ]
+            )
         else:
             msg += "<b>Действие:</b> Отмена невозможна\n"
         msg += "\n"
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="start")])
     rm = InlineKeyboardMarkup(kb)
     if query:
-        await query.edit_message_text(msg, reply_markup=rm, parse_mode='HTML')
+        await query.edit_message_text(msg, reply_markup=rm, parse_mode="HTML")
     else:
-        await update.message.reply_text(msg, reply_markup=rm, parse_mode='HTML')
+        await update.message.reply_text(msg, reply_markup=rm, parse_mode="HTML")
 
-async def _validate_booking_checks(context: ContextTypes.DEFAULT_TYPE, name: str, phone: str, date_str: str, time_str: str, service_type: str):
+
+async def _validate_booking_checks(
+    context: ContextTypes.DEFAULT_TYPE,
+    name: str,
+    phone: str,
+    date_str: str,
+    time_str: str,
+    service_type: str,
+):
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     try:
-        new_start = TIMEZONE.localize(datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M"))
-        new_end = new_start + timedelta(minutes=calculate_service_step(context.user_data.get("subservice", "default")))
+        new_start = TIMEZONE.localize(
+            datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+        )
+        new_end = new_start + timedelta(
+            minutes=calculate_service_step(
+                context.user_data.get("subservice", "default")
+            )
+        )
     except ValueError:
         return False, "❌ Неверный формат даты/времени"
     for r in records:
-        if len(r) > 7 and str(r[1]).strip() == name and str(r[2]).strip() == phone and str(r[8]).strip() == "подтверждено":
+        if (
+            len(r) > 7
+            and str(r[1]).strip() == name
+            and str(r[2]).strip() == phone
+            and str(r[8]).strip() == "подтверждено"
+        ):
             rec_date = str(r[6]).strip()
             rec_time = str(r[7]).strip()
             try:
-                rec_start = TIMEZONE.localize(datetime.strptime(f"{rec_date} {rec_time}", "%d.%m.%Y %H:%M"))
-                rec_end = rec_start + timedelta(minutes=calculate_service_step(str(r[4]).strip()))
+                rec_start = TIMEZONE.localize(
+                    datetime.strptime(f"{rec_date} {rec_time}", "%d.%m.%Y %H:%M")
+                )
+                rec_end = rec_start + timedelta(
+                    minutes=calculate_service_step(str(r[4]).strip())
+                )
                 if max(new_start, rec_start) < min(new_end, rec_end):
-                    return False, f"❌ У вас уже есть запись на {rec_date} в {rec_time} к {str(r[5]).strip()} (услуга: {str(r[4]).strip()})."
+                    return (
+                        False,
+                        f"❌ У вас уже есть запись на {rec_date} в {rec_time} к {str(r[5]).strip()} (услуга: {str(r[4]).strip()}).",
+                    )
             except ValueError:
                 continue
     for r in records:
-        if len(r) > 4 and str(r[1]).strip() == name and str(r[2]).strip() == phone and str(r[3]).strip() == service_type and str(r[8]).strip() == "подтверждено":
+        if (
+            len(r) > 4
+            and str(r[1]).strip() == name
+            and str(r[2]).strip() == phone
+            and str(r[3]).strip() == service_type
+            and str(r[8]).strip() == "подтверждено"
+        ):
             context.user_data["repeat_booking_conflict"] = {
                 "category": str(r[3]).strip(),
                 "date": str(r[6]).strip(),
                 "time": str(r[7]).strip(),
-                "specialist": str(r[5]).strip()
+                "specialist": str(r[5]).strip(),
             }
             return "CONFIRM_REPEAT", None
     return True, None
 
+
 # --- HANDLERS ---
 # --- HANDLERS ---
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     log_business_event("user_started", user_id=update.effective_user.id)
@@ -507,7 +674,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
         found = False
         for row in data:
-            # Проверяем, совпадает ли имя мастера (столбец A) с названием заведения
+            # Проверяем, совпадает ли имя специалиста (столбец A) с названием заведения
             if len(row) > 0 and str(row[0]).strip() == org_name_setting:
                 found = True
                 # --- НОВАЯ ЛОГИКА ФОРМИРОВАНИЯ РАСПИСАНИЯ (группировка дней) ---
@@ -521,7 +688,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if index < len(row):
                         daily_schedules.append(str(row[index]).strip())
                     else:
-                        daily_schedules.append("")  # Если столбец пуст или не существует
+                        # Если столбец пуст или не существует
+                        daily_schedules.append("")
 
                 # Группируем подряд идущие дни с одинаковым расписанием
                 grouped_schedule_parts = []
@@ -534,17 +702,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                     start_day_index = i
                     # Ищем, сколько подряд идущих дней имеют одинаковое расписание
-                    while i < len(daily_schedules) - 1 and daily_schedules[i + 1] == current_schedule:
+                    while (
+                        i < len(daily_schedules) - 1
+                        and daily_schedules[i + 1] == current_schedule
+                    ):
                         i += 1
                     end_day_index = i
 
                     # Формируем часть строки расписания
                     if start_day_index == end_day_index:
                         # Один день
-                        grouped_schedule_parts.append(f"{day_names[start_day_index]} {current_schedule}")
+                        grouped_schedule_parts.append(
+                            f"{day_names[start_day_index]} {current_schedule}"
+                        )
                     else:
                         # Несколько дней подряд
-                        grouped_schedule_parts.append(f"{day_names[start_day_index]}-{day_names[end_day_index]} {current_schedule}")
+                        grouped_schedule_parts.append(
+                            f"{day_names[start_day_index]}-{day_names[end_day_index]} {current_schedule}"
+                        )
                     i += 1  # Переходим к следующему дню или группе
 
                 # Собираем итоговую строку расписания
@@ -562,7 +737,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Формируем клавиатуру
     kb = [
         [InlineKeyboardButton("📅 Записаться на приём", callback_data="book")],
-        [InlineKeyboardButton("❌ Отменить или изменить запись", callback_data="modify")],
+        [
+            InlineKeyboardButton(
+                "❌ Отменить или изменить запись", callback_data="modify"
+            )
+        ],
         [InlineKeyboardButton("📋 Мои записи", callback_data="my_records")],
         [InlineKeyboardButton("💅 Услуги и цены", callback_data="prices")],
         [InlineKeyboardButton("📞 Связаться с админом", callback_data="contact_admin")],
@@ -574,11 +753,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"{greeting}\n\n{org_name_display}\nМы работаем: {schedule_text}"
 
     if update.message:
-        await update.message.reply_text(text, reply_markup=rm) # Убран parse_mode="HTML", так как нет тегов
+        # Убран parse_mode="HTML", так как нет тегов
+        await update.message.reply_text(text, reply_markup=rm)
     elif update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=rm)
     context.user_data["state"] = MENU
     return MENU
+
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -590,17 +771,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         back_map = {
             SELECT_SUBSERVICE: select_service_type,
             SHOW_PRICE_INFO: select_subservice,
-            SELECT_DATE: lambda u,c: (
-                select_specialist(u,c) if c.user_data.get("priority") == "specialist"
-                else show_price_info(u,c)
+            SELECT_DATE: lambda u, c: (
+                select_specialist(u, c)
+                if c.user_data.get("priority") == "specialist"
+                else show_price_info(u, c)
             ),
-            SELECT_SPECIALIST: lambda u,c: (
-                select_date(u,c) if c.user_data.get("priority") == "date"
-                else show_price_info(u,c)  # ← ИСПРАВЛЕНО: возвращаем в выбор приоритета
+            SELECT_SPECIALIST: lambda u, c: (
+                select_date(u, c)
+                if c.user_data.get("priority") == "date"
+                # ← ИСПРАВЛЕНО: возвращаем в выбор приоритета
+                else show_price_info(u, c)
             ),
-            SELECT_TIME: lambda u,c: (
-                select_specialist(u,c) if c.user_data.get("priority") == "date"
-                else select_date(u,c)
+            SELECT_TIME: lambda u, c: (
+                select_specialist(u, c)
+                if c.user_data.get("priority") == "date"
+                else select_date(u, c)
             ),
             ENTER_NAME: select_time,
             ENTER_PHONE: enter_name,
@@ -608,7 +793,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if state in back_map:
             return await back_map[state](update, context)
         elif state in (CONFIRM_RESERVATION, AWAITING_REPEAT_CONFIRMATION):
-            await query.edit_message_text("❌ Возврат невозможен. Подтвердите или отмените запись.")
+            await query.edit_message_text(
+                "❌ Возврат невозможен. Подтвердите или отмените запись."
+            )
             return
         elif state == AWAITING_WAITING_LIST_DETAILS:
             # Возвращаемся к сообщению "📋 Вы в листе ожидания." с выбором "Только ...", "Любой"
@@ -617,7 +804,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             spec = context.user_data.get("selected_specialist", "любой")
             date = context.user_data.get("date", "не указана")
             user_time = context.user_data.get("time", "не указано")
-            
+
             msg = (
                 "📋 Вы в листе ожидания.\n\n"
                 f"✅ Услуга: <b>{ss}</b> ({st})\n"
@@ -627,15 +814,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "👉 Выберите, кого ждать:"
             )
             kb = [
-                [InlineKeyboardButton(f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific")],
+                [
+                    InlineKeyboardButton(
+                        f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific"
+                    )
+                ],
                 [InlineKeyboardButton("👥 Любой", callback_data="wl_prefer_any")],
                 [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
-                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")],
             ]
             await query.edit_message_text(
-                msg,
-                reply_markup=InlineKeyboardMarkup(kb),
-                parse_mode="HTML"
+                msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML"
             )
             context.user_data["state"] = AWAITING_WL_PRIORITY_CHOICE
             return AWAITING_WL_PRIORITY_CHOICE
@@ -650,14 +839,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "book":
         return await select_service_type(update, context)
     if data == "modify":
-        await query.edit_message_text("❌ Возможность отменить/изменить запись пока недоступна через бота. Обратитесь к администратору.")
+        await query.edit_message_text(
+            "❌ Возможность отменить/изменить запись пока недоступна через бота. Обратитесь к администратору."
+        )
         return MENU
     if data == "my_records":
         return await show_my_records(update, context)
     if data == "prices":
         return await show_prices(update, context)
     if data == "contact_admin":
-        await query.edit_message_text("Напишите ваше сообщение — администратор свяжется с вами.")
+        await query.edit_message_text(
+            "Напишите ваше сообщение — администратор свяжется с вами."
+        )
         context.user_data["state"] = AWAITING_ADMIN_MESSAGE
         return
 
@@ -670,20 +863,36 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data in admin_handlers:
         return await admin_handlers[data](update, context)
     if data.startswith("admin_cancel_"):
-        return await admin_cancel_record(update, context, data.split("admin_cancel_", 1)[1])
+        return await admin_cancel_record(
+            update, context, data.split("admin_cancel_", 1)[1]
+        )
     if data.startswith("admin_reschedule_"):
-        return await admin_reschedule_record(update, context, data.split("admin_reschedule_", 1)[1])
+        return await admin_reschedule_record(
+            update, context, data.split("admin_reschedule_", 1)[1]
+        )
     if data.startswith("admin_manage_"):
-        return await admin_show_record_details(update, context, data.split("admin_manage_", 1)[1])
+        return await admin_show_record_details(
+            update, context, data.split("admin_manage_", 1)[1]
+        )
     if data.startswith("admin_new_date_"):
-        return await admin_process_new_date(update, context, data.split("admin_new_date_", 1)[1])
+        return await admin_process_new_date(
+            update, context, data.split("admin_new_date_", 1)[1]
+        )
     if data.startswith("admin_new_specialist_"):
-        return await admin_process_new_specialist(update, context, data.split("admin_new_specialist_", 1)[1])
+        return await admin_process_new_specialist(
+            update, context, data.split("admin_new_specialist_", 1)[1]
+        )
     if data.startswith("admin_new_slot_"):
         parts = data.split("admin_new_slot_", 1)[1].split("_", 1)
         if len(parts) == 2:
             return await admin_process_new_slot(update, context, parts[0], parts[1])
-    if data in ["admin_change_date", "admin_change_specialist", "admin_change_time", "admin_change_all", "admin_skip_specialist"]:
+    if data in [
+        "admin_change_date",
+        "admin_change_specialist",
+        "admin_change_time",
+        "admin_change_all",
+        "admin_skip_specialist",
+    ]:
         handler_map = {
             "admin_change_date": admin_change_date,
             "admin_change_specialist": admin_change_specialist,
@@ -693,9 +902,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         return await handler_map[data](update, context)
     if data.startswith("admin_confirm_reschedule_"):
-        return await admin_confirm_reschedule(update, context, data.split("admin_confirm_reschedule_", 1)[1])
+        return await admin_confirm_reschedule(
+            update, context, data.split("admin_confirm_reschedule_", 1)[1]
+        )
     if data.startswith("admin_force_reschedule_"):
-        return await admin_force_reschedule(update, context, data.split("admin_force_reschedule_", 1)[1])
+        return await admin_force_reschedule(
+            update, context, data.split("admin_force_reschedule_", 1)[1]
+        )
     if data.startswith("service_"):
         context.user_data["service_type"] = data.split("service_", 1)[1]
         return await select_subservice(update, context)
@@ -708,15 +921,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["priority"] = priority_choice
         # Очищаем потенциально старые данные, чтобы не было конфликта между сценариями
         if priority_choice == "date":
-            # Сценарий A: Сначала дата -> потом мастер
-            # Удаляем возможного мастера, выбранного ранее (например, при возврате назад в сценарии B)
+            # Сценарий A: Сначала дата -> потом специалист
+            # Удаляем возможного специалиста, выбранного ранее (например, при возврате назад в сценарии B)
             context.user_data.pop("selected_specialist", None)
             return await select_date(update, context)
         elif priority_choice == "specialist":
-            # Сценарий B: Сначала мастер -> потом дата
+            # Сценарий B: Сначала специалист -> потом дата
             # Удаляем возможную дату, выбранную ранее (например, при возврате назад в сценарии A)
             context.user_data.pop("date", None)
-            # Удаляем возможного мастера, выбранного ранее (например, при возврате назад)
+            # Удаляем возможного специалиста, выбранного ранее (например, при возврате назад)
             context.user_data.pop("selected_specialist", None)
             return await select_specialist(update, context)
         else:
@@ -728,9 +941,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("date_"):
         context.user_data["date"] = data.split("date_", 1)[1]
         if context.user_data.get("priority") == "date":
-            return await select_specialist(update, context)
+            return await select_specialist(update, context)  # Сценарий A
         else:
-            return await select_time(update, context)
+            # Сценарий B: сначала специалист, потом дата → теперь время
+            return await select_time(update, context)  # Сценарий B
     if data.startswith("specialist_"):
         context.user_data["selected_specialist"] = data.split("specialist_", 1)[1]
         if context.user_data.get("priority") == "specialist":
@@ -745,20 +959,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("❌ Неверный формат слота.")
             return
     if data.startswith("confirm_reminder_"):
-        await handle_confirm_reminder(data.split("confirm_reminder_", 1)[1], query, context)
+        await handle_confirm_reminder(
+            data.split("confirm_reminder_", 1)[1], query, context
+        )
         return
     if data.startswith("cancel_reminder_"):
-        await handle_cancel_reminder(data.split("cancel_reminder_", 1)[1], query, context)
+        await handle_cancel_reminder(
+            data.split("cancel_reminder_", 1)[1], query, context
+        )
         return
     if data.startswith("cancel_record_"):
-        return await cancel_record_from_list(update, context, data.split("cancel_record_", 1)[1])
+        return await cancel_record_from_list(
+            update, context, data.split("cancel_record_", 1)[1]
+        )
     if data == "confirm":
         return await confirm_booking(update, context)
     if data == "cancel_reserve":
         return await cancel_reservation(update, context)
     if data == "confirm_repeat":
         return await finalize_booking(update, context)
-    if data == "refresh_time": return await select_time(update, context)
+    if data == "refresh_time":
+        return await select_time(update, context)
     # --- УМНЫЙ ВХОД В ЛИСТ ОЖИДАНИЯ (Вариант 1) ---
     if data == "waiting_list":
         st = context.user_data.get("service_type", "не указана")
@@ -766,7 +987,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         spec = context.user_data.get("selected_specialist", "любой")
         date = context.user_data.get("date", "не указана")
         user_time = context.user_data.get("time", "не указано")
-        
+
         msg = (
             "📋 Вы в листе ожидания.\n\n"
             f"✅ Услуга: <b>{ss}</b> ({st})\n"
@@ -776,15 +997,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👉 Выберите, кого ждать:"
         )
         kb = [
-            [InlineKeyboardButton(f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific")],
+            [
+                InlineKeyboardButton(
+                    f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific"
+                )
+            ],
             [InlineKeyboardButton("👥 Любой", callback_data="wl_prefer_any")],
-            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],  # ← в select_time
-            [InlineKeyboardButton("🏠 В меню", callback_data="start")]  # ← в /start
+            # ← в select_time
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+            # ← в /start
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")],
         ]
         await query.edit_message_text(
-            msg, 
-            reply_markup=InlineKeyboardMarkup(kb), 
-            parse_mode="HTML"
+            msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML"
         )
         context.user_data["state"] = AWAITING_WL_PRIORITY_CHOICE
         return AWAITING_WL_PRIORITY_CHOICE
@@ -817,7 +1042,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.get("time", ""),
         "1",  # приоритет = высокий
         "ожидает",
-        str(update.effective_chat.id)
+        str(update.effective_chat.id),
     ]
 
     success = safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [entry])
@@ -833,12 +1058,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Услуга: {context.user_data.get('subservice', 'не указана')} ({context.user_data.get('service_type', 'не указана')})\n"
         f"Дата: {context.user_data.get('date', 'не указана')}\n"
         f"Время: {context.user_data.get('time', 'не указано')} (±30 мин)\n"
-        f"Мастер: {specialist}\n\n"
+        f"специалист: {specialist}\n\n"
         f"Мы уведомим вас, когда появится подходящее время.",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
-            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
-        ])
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")],
+            ]
+        ),
     )
     context.user_data["state"] = AWAITING_WAITING_LIST_DETAILS
     return AWAITING_WAITING_LIST_DETAILS
@@ -850,11 +1077,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Запись отменена.")
         context.user_data.clear()
         return MENU
-        
+
     await query.edit_message_text("❌ Неизвестная команда.")
     return MENU
 
+
 # --- PRICES ---
+
+
 async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
@@ -863,12 +1093,22 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for row in services:
         if len(row) < 7:
             continue
-        cat, name, dur_str, buf_str, _, price, desc = row[0], row[1], row[2], row[3], row[4], row[5], row[6]
+        cat, name, dur_str, buf_str, _, price, desc = (
+            row[0],
+            row[1],
+            row[2],
+            row[3],
+            row[4],
+            row[5],
+            row[6],
+        )
         try:
             dur = int(dur_str)
             buf = int(buf_str)
         except Exception:
-            logger.warning(f"⚠️ Неверный формат длительности/буфера в услуге {name}: {dur_str}, {buf_str}")
+            logger.warning(
+                f"⚠️ Неверный формат длительности/буфера в услуге {name}: {dur_str}, {buf_str}"
+            )
             continue
         if cat != current_cat:
             if current_cat is not None:
@@ -880,23 +1120,35 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"• <b>{name}</b> — {price_str} (длит.: {fmt_dur})\n"
         if desc:
             text += f" <i>{desc}</i>\n"
-    await query.edit_message_text(text or "❌ Услуги не найдены.", parse_mode='HTML')
+    await query.edit_message_text(text or "❌ Услуги не найдены.", parse_mode="HTML")
     try:
-        await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад", callback_data="start")]]))
+        await query.message.edit_reply_markup(
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("⬅️ Назад", callback_data="start")]]
+            )
+        )
     except Exception:
         pass
 
+
 # --- SELECT SERVICE TYPE ---
+
+
 async def select_service_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:A") or []
     types = list({row[0] for row in services if row and len(row) > 0})
     kb = [[InlineKeyboardButton(t, callback_data=f"service_{t}")] for t in types]
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-    await update.callback_query.edit_message_text("Выберите категорию услуги:", reply_markup=InlineKeyboardMarkup(kb))
+    await update.callback_query.edit_message_text(
+        "Выберите категорию услуги:", reply_markup=InlineKeyboardMarkup(kb)
+    )
     context.user_data["state"] = SELECT_SERVICE_TYPE
     return SELECT_SERVICE_TYPE
 
+
 # --- SELECT SUBSERVICE ---
+
+
 async def select_subservice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     st = context.user_data.get("service_type")
@@ -907,11 +1159,16 @@ async def select_subservice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subs = [row[1] for row in all_services if len(row) > 1 and row[0] == st]
     kb = [[InlineKeyboardButton(s, callback_data=f"subservice_{s}")] for s in subs]
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-    await query.edit_message_text(f"Выберите услугу ({st}):", reply_markup=InlineKeyboardMarkup(kb))
+    await query.edit_message_text(
+        f"Выберите услугу ({st}):", reply_markup=InlineKeyboardMarkup(kb)
+    )
     context.user_data["state"] = SELECT_SUBSERVICE
     return SELECT_SUBSERVICE
 
+
 # --- SHOW PRICE INFO ---
+
+
 async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     ss = context.user_data.get("subservice")
@@ -919,10 +1176,10 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Ошибка: услуга не выбрана.")
         return
     # --- НОВАЯ ЛОГИКА ПОКАЗА ОПИСАНИЯ И ФОРМИРОВАНИЯ ТЕКСТА ---
-        # --- НАЧАЛО ИСПРАВЛЕННОГО БЛОКА show_price_info ---
+    # --- НАЧАЛО ИСПРАВЛЕННОГО БЛОКА show_price_info ---
     all_services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
     dur, buf, price = 60, 0, "не указана"
-    description = "" # Инициализируем описание как пустую строку
+    description = ""  # Инициализируем описание как пустую строку
 
     # Проходим по таблице "Услуги", чтобы найти данные для выбранной подуслуги (ss)
     for row in all_services:
@@ -930,18 +1187,21 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(row) > 1 and row[1] == ss:
             # Нашли строку с нужной услугой, пробуем извлечь длительность и буфер
             try:
-                dur = int(row[2]) # row[2] - колонка "Длительность"
-                buf = int(row[3]) # row[3] - колонка "Буфер"
+                dur = int(row[2])  # row[2] - колонка "Длительность"
+                buf = int(row[3])  # row[3] - колонка "Буфер"
             except (ValueError, TypeError):
                 # Если не получилось преобразовать в число, логируем и используем значения по умолчанию
-                logger.warning(f"⚠️ Неверный формат длительности/буфера в услуге {ss}: {row[2]}, {row[3]}")
+                logger.warning(
+                    f"⚠️ Неверный формат длительности/буфера в услуге {ss}: {row[2]}, {row[3]}"
+                )
                 # Значения dur и buf остаются как есть (по умолчанию 60, 0)
             # Получаем цену из колонки "Цена" (row[5]), если колонка существует
             price = row[5] if len(row) > 5 else "не указана"
             # --- ПОЛУЧАЕМ ОПИСАНИЕ ИЗ НАЙДЕННОЙ СТРОКИ row ---
             # Проверяем, есть ли колонка "Описание" (row[6]) в строке
-            if len(row) > 6: # Если индекс 6 существует (колонка G - Описание)
-                description = row[6].strip() # Берём значение и убираем лишние пробелы
+            if len(row) > 6:  # Если индекс 6 существует (колонка G - Описание)
+                # Берём значение и убираем лишние пробелы
+                description = row[6].strip()
             # --- /ПОЛУЧАЕМ ОПИСАНИЕ ---
             # Выходим из цикла, так как нужная строка найдена
             break
@@ -962,21 +1222,30 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- /КОНЕЦ ИСПРАВЛЕННОГО БЛОКА ---
     kb = [
         [InlineKeyboardButton("📅 Сначала дата", callback_data="priority_date")],
-        [InlineKeyboardButton("👩‍🦰 Сначала cпециалист", callback_data="priority_specialist")],
+        [
+            InlineKeyboardButton(
+                "👩‍🦰 Сначала cпециалист", callback_data="priority_specialist"
+            )
+        ],
         [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
     # Сохраняем текущее состояние в историю перед переходом
     state_history = context.user_data.get("state_history", [])
     current_state = context.user_data.get("state")
-    if current_state and current_state not in [state_history[-1] if state_history else None]:
+    if current_state and current_state not in [
+        state_history[-1] if state_history else None
+    ]:
         state_history.append(current_state)
         context.user_data["state_history"] = state_history
     context.user_data["state"] = SHOW_PRICE_INFO
     return SHOW_PRICE_INFO
 
+
 # --- SELECT DATE ---
 # --- ПОЛНАЯ ЗАМЕНА select_date ---
+
+
 async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -984,13 +1253,17 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Получаем выбранного специалиста, категорию услуги, приоритет
     # ИСПОЛЬЗУЕМ "selected_specialist", как в оригинальной функции
-    selected_specialist = context.user_data.get("selected_specialist") # Может быть None
+    selected_specialist = context.user_data.get(
+        "selected_specialist"
+    )  # Может быть None
     service_type = context.user_data.get("service_type")
     subservice = context.user_data.get("subservice")
-    priority = context.user_data.get("priority", "date") # По умолчанию "date"
+    priority = context.user_data.get("priority", "date")  # По умолчанию "date"
 
     if not service_type or not subservice:
-        await query.edit_message_text("❌ Ошибка: категория или название услуги не выбраны.")
+        await query.edit_message_text(
+            "❌ Ошибка: категория или название услуги не выбраны."
+        )
         return
 
     # Загружаем график специалистов и услуги
@@ -1012,7 +1285,9 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         service_duration = int(service_row[2])
         service_buffer = int(service_row[3])
     except (ValueError, IndexError):
-        logger.error(f"❌ Неверные данные длительности/буфера для услуги {subservice}: {service_row[2:4]}")
+        logger.error(
+            f"❌ Неверные данные длительности/буфера для услуги {subservice}: {service_row[2:4]}"
+        )
         await query.edit_message_text("❌ Ошибка в данных длительности услуги.")
         return
 
@@ -1020,12 +1295,14 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(tz)
     days_ahead = int(get_setting("Количество дней генерации слотов", 30))
 
-    # --- СЦЕНАРИЙ B: "Сначала мастер", потом дата (selected_specialist есть) ---
+    # --- СЦЕНАРИЙ B: "Сначала специалист", потом дата (selected_specialist есть) ---
     if selected_specialist:
         available_dates_for_specialist = []
         for days_offset in range(days_ahead + 1):
             target_date = (now + timedelta(days=days_offset)).date()
-            target_day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][target_date.weekday()]
+            target_day_name = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][
+                target_date.weekday()
+            ]
             target_date_str = target_date.strftime("%d.%m.%Y")
 
             # Найдём строку расписания для конкретного специалиста
@@ -1036,34 +1313,45 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     break
 
             if not spec_schedule_row:
-                logger.warning(f"⚠️ График для специалиста '{selected_specialist}' не найден.")
-                continue # Переходим к следующей дате
+                logger.warning(
+                    f"⚠️ График для специалиста '{selected_specialist}' не найден."
+                )
+                continue  # Переходим к следующей дате
 
             # Проверяем, работает ли специалист в этот день
-            day_index = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].index(target_day_name) + 2 # Индекс столбца (C=2, D=3, ...)
+            day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(
+                target_day_name
+            ) + 2  # Индекс столбца (C=2, D=3, ...)
             if day_index < len(spec_schedule_row):
                 work_schedule = spec_schedule_row[day_index].strip()
                 if work_schedule.lower() != "выходной" and work_schedule:
                     # УПРОЩЕНИЕ: считаем, что если он работает, то дата доступна.
-                    # TODO: Проверить реальную доступность мастера в день по его календарю и расписанию
+                    # TODO: Проверить реальную доступность специалиста в день по его календарю и расписанию
                     available_dates_for_specialist.append(target_date_str)
 
         kb = []
         for date_str in sorted(available_dates_for_specialist):
-            kb.append([InlineKeyboardButton(date_str, callback_data=f"date_{date_str}")])
+            kb.append(
+                [InlineKeyboardButton(date_str, callback_data=f"date_{date_str}")]
+            )
 
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
 
-        await query.edit_message_text(f"📅 Выберите дату для специалиста '{selected_specialist}':", reply_markup=InlineKeyboardMarkup(kb))
+        await query.edit_message_text(
+            f"📅 Выберите дату для специалиста '{selected_specialist}':",
+            reply_markup=InlineKeyboardMarkup(kb),
+        )
         context.user_data["state"] = SELECT_DATE
-        return
+        return SELECT_DATE
 
-    # --- СЦЕНАРИЙ A: "Сначала дата", потом мастер (selected_specialist is None) ---
+    # --- СЦЕНАРИЙ A: "Сначала дата", потом специалист (selected_specialist is None) ---
     else:
-        available_dates = set() # Используем set, чтобы избежать дубликатов дат
+        available_dates = set()  # Используем set, чтобы избежать дубликатов дат
         for days_offset in range(days_ahead + 1):
             target_date = (now + timedelta(days=days_offset)).date()
-            target_day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][target_date.weekday()]
+            target_day_name = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][
+                target_date.weekday()
+            ]
             target_date_str = target_date.strftime("%d.%m.%Y")
 
             # Проверяем, есть ли хотя бы один специалист нужной категории, который работает и имеет свободное время
@@ -1071,17 +1359,23 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if len(row) > 0:
                     spec_name = row[0].strip()
                     spec_categories_str = row[1].strip().lower()
-                    spec_categories = [cat.strip() for cat in spec_categories_str.split(',')]
+                    spec_categories = [
+                        cat.strip() for cat in spec_categories_str.split(",")
+                    ]
 
                     # Проверяем, подходит ли специалист по категории
                     if service_type.lower() in spec_categories:
                         # Проверяем, работает ли он в этот день
-                        day_index = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].index(target_day_name) + 2 # Индекс столбца (C=2, D=3, ...)
+                        day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(
+                            target_day_name
+                        ) + 2  # Индекс столбца (C=2, D=3, ...)
                         if day_index < len(row):
                             work_schedule = row[day_index].strip()
-                            if work_schedule.lower() != "выходной" and work_schedule: # Если не выходной и не пусто
+                            if (
+                                work_schedule.lower() != "выходной" and work_schedule
+                            ):  # Если не выходной и не пусто
                                 # Проверяем, есть ли у него свободное время (упрощённо - просто проверим его график)
-                                # TODO: Проверить реальную доступность мастера в день
+                                # TODO: Проверить реальную доступность специалиста в день
                                 # Пока что, если он работает в этот день и подходит по категории, добавляем дату
                                 available_dates.add(target_date_str)
                                 # Нашли хотя бы одного подходящего специалиста с потенциальным временем, можно перейти к следующей дате
@@ -1090,30 +1384,41 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Формируем клавиатуру с доступными датами
         kb = []
         for date_str in sorted(available_dates):
-            kb.append([InlineKeyboardButton(date_str, callback_data=f"date_{date_str}")])
+            kb.append(
+                [InlineKeyboardButton(date_str, callback_data=f"date_{date_str}")]
+            )
 
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
 
-        await query.edit_message_text(f"📅 Выберите дату для услуги '{subservice}':", reply_markup=InlineKeyboardMarkup(kb))
+        await query.edit_message_text(
+            f"📅 Выберите дату для услуги '{subservice}':",
+            reply_markup=InlineKeyboardMarkup(kb),
+        )
         context.user_data["state"] = SELECT_DATE
         return
+
+
 # --- /ПОЛНАЯ ЗАМЕНА select_date ---
 
 # --- SELECT SPECIALIST ---
 # --- ПОЛНАЯ ЗАМЕНА select_specialist ---
+
+
 async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await update_last_activity(update, context)
 
     # Получаем выбранную дату, категорию услуги, приоритет
-    date_str = context.user_data.get("date") # Может быть None
+    date_str = context.user_data.get("date")  # Может быть None
     service_type = context.user_data.get("service_type")
     subservice = context.user_data.get("subservice")
-    priority = context.user_data.get("priority", "date") # По умолчанию "date"
+    priority = context.user_data.get("priority", "date")  # По умолчанию "date"
 
     if not service_type or not subservice:
-        await query.edit_message_text("❌ Ошибка: категория или название услуги не выбраны.")
+        await query.edit_message_text(
+            "❌ Ошибка: категория или название услуги не выбраны."
+        )
         return
 
     # Загружаем график специалистов
@@ -1122,53 +1427,61 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Не удалось загрузить график специалистов.")
         return
 
-    # --- СЦЕНАРИЙ A: "Сначала дата", потом мастер (date_str есть) ---
+    # --- СЦЕНАРИЙ A: "Сначала дата", потом специалист (date_str есть) ---
     if date_str:
-        # date_str есть, ищем мастеров, которые работают в эту дату и подходят под категорию
+        # date_str есть, ищем специалистов, которые работают в эту дату и подходят под категорию
         try:
             selected_date = datetime.strptime(date_str, "%d.%m.%Y").date()
         except ValueError:
             await query.edit_message_text("❌ Неверный формат даты.")
             return
 
-        target_day = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][selected_date.weekday()]
+        target_day = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][selected_date.weekday()]
 
         available_specialists = []
         for row in schedule_data:
             if len(row) > 0:
                 specialist_name = row[0].strip()
                 specialist_categories_str = row[1].strip().lower()
-                specialist_categories = [cat.strip() for cat in specialist_categories_str.split(',')]
+                specialist_categories = [
+                    cat.strip() for cat in specialist_categories_str.split(",")
+                ]
 
                 if service_type.lower() in specialist_categories:
-                    day_index = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].index(target_day) + 2
+                    day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(
+                        target_day
+                    ) + 2
                     if day_index < len(row):
                         work_schedule = row[day_index].strip()
                         if work_schedule.lower() != "выходной" and work_schedule:
                             # Проверяем, есть ли у него свободное время (упрощённо)
-                            # TODO: Проверить реальную доступность мастера в день
+                            # TODO: Проверить реальную доступность специалиста в день
                             available_specialists.append(specialist_name)
 
-        # date_str есть, мастер выбран (или "любой"), теперь нужно выбрать время.
+        # date_str есть, специалист выбран (или "любой"), теперь нужно выбрать время.
         # Устанавливаем state на SELECT_TIME и вызываем функцию select_time.
         # selected_specialist (или "любой") уже установлен в context.user_data, например, через specialist_... или any_specialist callback.
         context.user_data["state"] = SELECT_TIME
         return await select_time(update, context)
 
-    # --- СЦЕНАРИЙ B: "Сначала мастер", потом дата (date_str is None) ---
+    # --- СЦЕНАРИЙ B: "Сначала специалист", потом дата (date_str is None) ---
     else:
-        # date_str нет, ищем мастеров, подходящих под категорию, без привязки к дате
-        available_specialists = set() # Используем set, чтобы избежать дубликатов
+        # date_str нет, ищем специалистов, подходящих под категорию, без привязки к дате
+        available_specialists = set()  # Используем set, чтобы избежать дубликатов
 
         tz = pytz.timezone(get_setting("Часовой пояс", "Europe/Moscow"))
         now = datetime.now(tz)
-        end_date = now + timedelta(days=int(get_setting("Количество дней генерации слотов", 30)))
+        end_date = now + timedelta(
+            days=int(get_setting("Количество дней генерации слотов", 30))
+        )
 
         current_date_check = now.date()
         end_date_check = end_date.date()
 
         while current_date_check <= end_date_check:
-            target_day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][current_date_check.weekday()]
+            target_day_name = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][
+                current_date_check.weekday()
+            ]
 
             for row in schedule_data:
                 if len(row) > 0:
@@ -1176,7 +1489,15 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     category = row[1].strip() if len(row) > 1 else ""
 
                     if category.lower() == service_type.lower():
-                        day_schedule_index = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].index(target_day_name) + 2
+                        day_schedule_index = [
+                            "Пн",
+                            "Вт",
+                            "Ср",
+                            "Чт",
+                            "Пт",
+                            "Сб",
+                            "Вс",
+                        ].index(target_day_name) + 2
                         if day_schedule_index < len(row):
                             day_schedule = str(row[day_schedule_index]).strip()
                             if day_schedule.lower() != "выходной" and day_schedule:
@@ -1184,13 +1505,44 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             current_date_check += timedelta(days=1)
 
-        # date_str нет, мастер выбран (или "любой"), теперь нужно выбрать дату.
-        # Устанавливаем state на SELECT_DATE и вызываем функцию select_date.
-        # selected_specialist (или "любой") уже установлен в context.user_data.
-        context.user_data["state"] = SELECT_DATE
-        return await select_date(update, context)
+        # Показываем кнопки с найденными специалистами
+        if not available_specialists:
+            await query.edit_message_text(
+                "❌ Нет доступных специалистов для выбранной услуги."
+            )
+            return
+
+        kb = []
+        for specialist in sorted(available_specialists):
+            kb.append(
+                [
+                    InlineKeyboardButton(
+                        specialist, callback_data=f"specialist_{specialist}"
+                    )
+                ]
+            )
+
+        kb.append(
+            [
+                InlineKeyboardButton(
+                    "👥 Любой специалист", callback_data="any_specialist"
+                )
+            ]
+        )
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+
+        await query.edit_message_text(
+            f"👩‍💼 Выберите специалиста для услуги '{subservice}':",
+            reply_markup=InlineKeyboardMarkup(kb),
+        )
+        context.user_data["state"] = SELECT_SPECIALIST
+        return SELECT_SPECIALIST  # ← ВОЗВРАЩАЕМ СОСТОЯНИЕ
+
+
 # --- /ПОЛНАЯ ЗАМЕНА select_specialist ---
 # --- SELECT TIME ---
+
+
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     date_str = context.user_data.get("date")
@@ -1198,15 +1550,20 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     st = context.user_data.get("service_type")
     ss = context.user_data.get("subservice")
     if not all([date_str, st, ss]):
-        await query.edit_message_text("❌ Ошибка: не все данные для выбора времени выбраны.")
+        await query.edit_message_text(
+            "❌ Ошибка: не все данные для выбора времени выбраны."
+        )
         return
-    slots = find_available_slots(st, ss, date_str, specialist, context.user_data.get("priority", "date"))
+    slots = find_available_slots(
+        st, ss, date_str, specialist, context.user_data.get("priority", "date")
+    )
     if not slots:
         await query.edit_message_text("❌ Свободных слотов нет.")
         kb = [
             [InlineKeyboardButton("📋 В лист ожидания", callback_data="waiting_list")],
-            [InlineKeyboardButton("🔄 Обновить", callback_data="refresh_time")], # Добавлена кнопка "Обновить"
-            [InlineKeyboardButton("⬅️ Назад", callback_data="back")]
+            # Добавлена кнопка "Обновить"
+            [InlineKeyboardButton("🔄 Обновить", callback_data="refresh_time")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
         ]
         try:
             await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(kb))
@@ -1220,12 +1577,19 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         m = s.get("specialist", "N/A")
         kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-    await query.edit_message_text("Выберите время:", reply_markup=InlineKeyboardMarkup(kb))
+    await query.edit_message_text(
+        "Выберите время:", reply_markup=InlineKeyboardMarkup(kb)
+    )
     context.user_data["state"] = SELECT_TIME
     return SELECT_TIME
 
+
 # --- RESERVE SLOT ---
-async def reserve_slot(update: Update, context: ContextTypes.DEFAULT_TYPE, specialist: str, time_str: str):
+
+
+async def reserve_slot(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, specialist: str, time_str: str
+):
     query = update.callback_query
     date_str = context.user_data.get("date")
     ss = context.user_data.get("subservice")
@@ -1234,8 +1598,12 @@ async def reserve_slot(update: Update, context: ContextTypes.DEFAULT_TYPE, speci
     start_dt = TIMEZONE.localize(dt)
     end_dt = start_dt + timedelta(minutes=step)
     event_id = safe_create_calendar_event(
-        CALENDAR_ID, "⏳ Бронь (в процессе)", start_dt.isoformat(), end_dt.isoformat(), "7",
-        f"Бронь: {ss} к {specialist}. В процессе оформления..."
+        CALENDAR_ID,
+        "⏳ Бронь (в процессе)",
+        start_dt.isoformat(),
+        end_dt.isoformat(),
+        "7",
+        f"Бронь: {ss} к {specialist}. В процессе оформления...",
     )
     context.user_data["temp_booking"] = {
         "specialist": specialist,
@@ -1245,25 +1613,30 @@ async def reserve_slot(update: Update, context: ContextTypes.DEFAULT_TYPE, speci
         "start_dt": start_dt,
         "end_dt": end_dt,
         "subservice": ss,
-        "created_at": datetime.now(TIMEZONE).isoformat()
+        "created_at": datetime.now(TIMEZONE).isoformat(),
     }
     context.job_queue.run_once(
-        release_reservation, RESERVATION_TIMEOUT,
+        release_reservation,
+        RESERVATION_TIMEOUT,
         chat_id=update.effective_chat.id,
         name=f"reservation_timeout_{update.effective_chat.id}",
-        data={"user_id": update.effective_user.id}
+        data={"user_id": update.effective_user.id},
     )
     context.job_queue.run_once(
-        warn_reservation, WARNING_TIMEOUT,
+        warn_reservation,
+        WARNING_TIMEOUT,
         chat_id=update.effective_chat.id,
         name=f"reservation_warn_{update.effective_chat.id}",
-        data={"user_id": update.effective_user.id}
+        data={"user_id": update.effective_user.id},
     )
     await query.edit_message_text("⏳ Слот зарезервирован! Введите ваше имя:")
     context.user_data["state"] = ENTER_NAME
     return ENTER_NAME
 
+
 # --- WARN / RELEASE RESERVATION ---
+
+
 async def warn_reservation(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     uid = job.data.get("user_id") if job.data else None
@@ -1271,10 +1644,13 @@ async def warn_reservation(context: ContextTypes.DEFAULT_TYPE):
         logger.error("❌ warn_reservation: Не удалось получить user_id")
         return
     try:
-        await context.bot.send_message(job.chat_id, "⏳ Не забудьте подтвердить запись — осталось немного времени!")
+        await context.bot.send_message(
+            job.chat_id, "⏳ Не забудьте подтвердить запись — осталось немного времени!"
+        )
         logger.info(f"📤 Предупреждение отправлено (chat_id: {job.chat_id})")
     except Exception as e:
         logger.error(f"❌ Ошибка предупреждения: {e}")
+
 
 async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
@@ -1287,36 +1663,53 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
     if temp and temp.get("event_id"):
         try:
             safe_delete_calendar_event(CALENDAR_ID, temp["event_id"])
-            logger.info(f"Резерв слота {temp['date']} {temp['time']} освобождён по таймауту для пользователя {uid}.")
-            await check_waiting_list(temp['date'], temp['time'], temp['specialist'], context)
+            logger.info(
+                f"Резерв слота {temp['date']} {temp['time']} освобождён по таймауту для пользователя {uid}."
+            )
+            await check_waiting_list(
+                temp["date"], temp["time"], temp["specialist"], context
+            )
         except Exception as e:
             logger.error(f"❌ Ошибка освобождения резерва: {e}")
         try:
-            await context.bot.send_message(job.chat_id, "❌ Слот был освобождён из-за неактивности. Вы можете начать запись заново.")
+            await context.bot.send_message(
+                job.chat_id,
+                "❌ Слот был освобождён из-за неактивности. Вы можете начать запись заново.",
+            )
         except Exception:
             pass
     if uid in context.application.user_data:
         context.application.user_data[uid].clear()
 
+
 # --- ENTER NAME / PHONE ---
+
+
 async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("state") != ENTER_NAME:
         return
     name = (update.message.text or "").strip()
     if not validate_name(name):
-        await update.message.reply_text("❌ Неверный формат имени. Используйте только буквы, длиной 2-30 символов, максимум один дефис.")
+        await update.message.reply_text(
+            "❌ Неверный формат имени. Используйте только буквы, длиной 2-30 символов, максимум один дефис."
+        )
         return ENTER_NAME
     context.user_data["name"] = name
-    await update.message.reply_text("📞 Теперь введите ваш телефон:", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text(
+        "📞 Теперь введите ваш телефон:", reply_markup=ReplyKeyboardRemove()
+    )
     context.user_data["state"] = ENTER_PHONE
     return ENTER_PHONE
+
 
 async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("state") != ENTER_PHONE:
         return
     phone = (update.message.text or "").strip()
     if not validate_phone(phone):
-        await update.message.reply_text("❌ Неверный формат номера телефона. Введите номер длиной 10-15 цифр.")
+        await update.message.reply_text(
+            "❌ Неверный формат номера телефона. Введите номер длиной 10-15 цифр."
+        )
         return ENTER_PHONE
     context.user_data["phone"] = phone
     await update.message.reply_text(
@@ -1330,14 +1723,23 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Всё верно?"
     )
     kb = [
-        [InlineKeyboardButton("✅ Подтвердить запись", callback_data="confirm_booking")],
-        [InlineKeyboardButton("❌ Отменить", callback_data="cancel_booking")]
+        [
+            InlineKeyboardButton(
+                "✅ Подтвердить запись", callback_data="confirm_booking"
+            )
+        ],
+        [InlineKeyboardButton("❌ Отменить", callback_data="cancel_booking")],
     ]
-    await update.message.reply_text("Выберите действие:", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text(
+        "Выберите действие:", reply_markup=InlineKeyboardMarkup(kb)
+    )
     context.user_data["state"] = AWAITING_CONFIRMATION
     return AWAITING_CONFIRMATION
 
+
 # --- FINALIZE BOOKING ---
+
+
 async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1349,10 +1751,14 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = context.user_data.get("name")
     phone = context.user_data.get("phone")
     if not all([st, ss, specialist, date_str, time_str, name, phone]):
-        await query.edit_message_text("❌ Не все данные для записи заполнены. Пожалуйста, начните сначала.")
+        await query.edit_message_text(
+            "❌ Не все данные для записи заполнены. Пожалуйста, начните сначала."
+        )
         context.user_data.clear()
         return MENU
-    check_result, error_msg = await _validate_booking_checks(context, name, phone, date_str, time_str, st)
+    check_result, error_msg = await _validate_booking_checks(
+        context, name, phone, date_str, time_str, st
+    )
     if check_result is False:
         temp = context.user_data.get("temp_booking")
         if temp and temp.get("event_id"):
@@ -1367,14 +1773,16 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conflict = context.user_data.get("repeat_booking_conflict", {})
         kb = [
             [InlineKeyboardButton("✅ Да, хочу", callback_data="confirm_repeat")],
-            [InlineKeyboardButton("❌ Отменить", callback_data="start")]
+            [InlineKeyboardButton("❌ Отменить", callback_data="start")],
         ]
         msg = (
             f"⚠️ У вас уже есть запись на <b>{conflict.get('category', 'N/A')}</b>\n"
             f"{conflict.get('date', 'N/A')} в {conflict.get('time', 'N/A')} к {conflict.get('specialist', 'N/A')}.\n\n"
             "Вы уверены, что хотите записаться ещё раз?"
         )
-        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML')
+        await query.edit_message_text(
+            msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML"
+        )
         context.user_data["state"] = AWAITING_REPEAT_CONFIRMATION
         return AWAITING_REPEAT_CONFIRMATION
     temp = context.user_data.get("temp_booking")
@@ -1385,11 +1793,21 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         start_dt = TIMEZONE.localize(dt)
         end_dt = start_dt + timedelta(minutes=step)
         event_id = safe_create_calendar_event(
-            CALENDAR_ID, f"{name} - {ss}", start_dt.isoformat(), end_dt.isoformat(), "10",
-            f"Клиент: {name}, тел.: {phone}"
+            CALENDAR_ID,
+            f"{name} - {ss}",
+            start_dt.isoformat(),
+            end_dt.isoformat(),
+            "10",
+            f"Клиент: {name}, тел.: {phone}",
         )
     else:
-        safe_update_calendar_event(CALENDAR_ID, event_id, f"{name} - {ss}", "10", f"Клиент: {name}, тел.: {phone}")
+        safe_update_calendar_event(
+            CALENDAR_ID,
+            event_id,
+            f"{name} - {ss}",
+            "10",
+            f"Клиент: {name}, тел.: {phone}",
+        )
     record_id = f"ЗАП-{len(safe_get_sheet_data(SHEET_ID, 'Записи!A:A') or []) + 1:03d}"
     new_record = [
         record_id,
@@ -1406,7 +1824,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "❌",
         "❌",
         str(update.effective_chat.id),
-        event_id
+        event_id,
     ]
     safe_append_to_sheet(SHEET_ID, "Записи", [new_record])
     context.user_data.clear()
@@ -1420,9 +1838,13 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"✅ Новая запись: {name} ({phone}) -> {ss} ({date_str} {time_str})")
     return MENU
 
+
 # --- CONFIRM / CANCEL BOOKING ---
+
+
 async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await finalize_booking(update, context)
+
 
 async def cancel_reservation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1431,13 +1853,18 @@ async def cancel_reservation(update: Update, context: ContextTypes.DEFAULT_TYPE)
         try:
             safe_delete_calendar_event(CALENDAR_ID, temp["event_id"])
             logger.info(f"Резерв слота {temp['date']} {temp['time']} отменён вручную.")
-            await check_waiting_list(temp['date'], temp['time'], temp['specialist'], context)
+            await check_waiting_list(
+                temp["date"], temp["time"], temp["specialist"], context
+            )
         except Exception as e:
             logger.error(f"❌ Ошибка при отмене резерва: {e}")
     await query.edit_message_text("❌ Резерв отменён. Слот освобождён.")
     context.user_data.clear()
 
+
 # --- SHOW MY RECORDS ---
+
+
 async def show_my_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if query:
@@ -1448,25 +1875,43 @@ async def show_my_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     found = []
     for r in records:
-        if len(r) > 13 and str(r[13]).strip() == str(user_id) and str(r[8]).strip() in ACTIVE_STATUSES:
+        if (
+            len(r) > 13
+            and str(r[13]).strip() == str(user_id)
+            and str(r[8]).strip() in ACTIVE_STATUSES
+        ):
             found.append(r)
     if not found and name and phone:
         for r in records:
-            if len(r) > 2 and str(r[1]).strip() == name and str(r[2]).strip() == phone and str(r[8]).strip() in ACTIVE_STATUSES:
+            if (
+                len(r) > 2
+                and str(r[1]).strip() == name
+                and str(r[2]).strip() == phone
+                and str(r[8]).strip() in ACTIVE_STATUSES
+            ):
                 found.append(r)
     if not found:
         if not name or not phone:
-            await update.message.reply_text("🔍 Я не нашёл ваши записи. Пожалуйста, введите ваше имя:")
+            await update.message.reply_text(
+                "🔍 Я не нашёл ваши записи. Пожалуйста, введите ваше имя:"
+            )
             context.user_data["state"] = AWAITING_MY_RECORDS_NAME
             return AWAITING_MY_RECORDS_NAME
         else:
-            await (query.edit_message_text if query else update.message.reply_text)("📋 У вас нет активных записей.")
+            await (query.edit_message_text if query else update.message.reply_text)(
+                "📋 У вас нет активных записей."
+            )
             return MENU
     await _display_records(update, context, found, "Ваши активные записи:")
     return MENU
 
+
 # --- CANCEL RECORD FROM LIST ---
-async def cancel_record_from_list(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
+
+
+async def cancel_record_from_list(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
+):
     query = update.callback_query
     chat_id = str(update.effective_chat.id)
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
@@ -1483,12 +1928,17 @@ async def cancel_record_from_list(update: Update, context: ContextTypes.DEFAULT_
             safe_update_sheet_row(SHEET_ID, "Записи", idx, updated)
             await query.edit_message_text(f"✅ Запись {record_id} отменена.")
             if len(r) > 6 and len(r) > 7 and len(r) > 5:
-                await check_waiting_list(str(r[6]).strip(), str(r[7]).strip(), str(r[5]).strip(), context)
+                await check_waiting_list(
+                    str(r[6]).strip(), str(r[7]).strip(), str(r[5]).strip(), context
+                )
             logger.info(f"✅ Клиент {chat_id} отменил запись {record_id}")
             return
     await query.edit_message_text("❌ Запись не найдена.")
 
+
 # --- HANDLE MY RECORDS INPUT ---
+
+
 async def handle_my_records_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = context.user_data.get("state")
     if state == AWAITING_MY_RECORDS_NAME:
@@ -1497,22 +1947,33 @@ async def handle_my_records_input(update: Update, context: ContextTypes.DEFAULT_
             await update.message.reply_text("❌ Имя не может быть пустым.")
             return AWAITING_MY_RECORDS_NAME
         context.user_data["temp_my_records_name"] = name
-        await update.message.reply_text("📞 Теперь введите ваш номер телефона (только цифры, не менее 10).")
+        await update.message.reply_text(
+            "📞 Теперь введите ваш номер телефона (только цифры, не менее 10)."
+        )
         context.user_data["state"] = AWAITING_MY_RECORDS_PHONE
         return AWAITING_MY_RECORDS_PHONE
     elif state == AWAITING_MY_RECORDS_PHONE:
         phone = update.message.text.strip()
         if not validate_phone(phone):
-            await update.message.reply_text("❌ Неверный формат телефона. Введите не менее 10 цифр.")
+            await update.message.reply_text(
+                "❌ Неверный формат телефона. Введите не менее 10 цифр."
+            )
             return AWAITING_MY_RECORDS_PHONE
         name = context.user_data.get("temp_my_records_name")
         records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
         found = []
         for r in records:
-            if len(r) > 2 and str(r[1]).strip() == name and str(r[2]).strip() == phone and str(r[8]).strip() in ACTIVE_STATUSES:
+            if (
+                len(r) > 2
+                and str(r[1]).strip() == name
+                and str(r[2]).strip() == phone
+                and str(r[8]).strip() in ACTIVE_STATUSES
+            ):
                 found.append(r)
         if found:
-            await _display_records(update, context, found, "Ваши активные записи (по введённым данным):")
+            await _display_records(
+                update, context, found, "Ваши активные записи (по введённым данным):"
+            )
         else:
             await update.message.reply_text("❌ Записей с такими данными не найдено.")
         context.user_data.pop("temp_my_records_name", None)
@@ -1520,7 +1981,10 @@ async def handle_my_records_input(update: Update, context: ContextTypes.DEFAULT_
         return MENU
     return MENU
 
+
 # --- WAITING LIST INPUT ---
+
+
 async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     user_input = (msg.text or "").strip()
@@ -1529,7 +1993,9 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
         required = ["service_type", "subservice"]
         missing = [f for f in required if not context.user_data.get(f)]
         if missing:
-            await msg.reply_text("📋 Вы в листе ожидания.\nПожалуйста, укажите категорию услуги.")
+            await msg.reply_text(
+                "📋 Вы в листе ожидания.\nПожалуйста, укажите категорию услуги."
+            )
             context.user_data["state"] = AWAITING_WL_CATEGORY
             return AWAITING_WL_CATEGORY
         else:
@@ -1539,7 +2005,8 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             date = context.user_data.get("date", "")
             user_time = context.user_data.get("time", "")
             entry = [
-                f"WAIT-{int(time.time())}",  # ← time.time() — OK, time — модуль
+                # ← time.time() — OK, time — модуль
+                f"WAIT-{int(time.time())}",
                 datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M"),
                 update.effective_user.full_name or "Не указано",
                 context.user_data.get("phone", ""),
@@ -1550,7 +2017,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
                 user_time,  # ← исправлено
                 "1",
                 "ожидает",
-                str(update.effective_chat.id)
+                str(update.effective_chat.id),
             ]
             try:
                 safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [entry])
@@ -1563,11 +2030,15 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
                 else:
                     confirmation += "• Предпочтительное время: не указано\n"
                 confirmation += "\nМы уведомим вас, когда появится подходящее время."
-                await msg.reply_text(confirmation, parse_mode='HTML')
-                logger.info(f"✅ Добавлена запись в лист ожидания для chat_id {update.effective_chat.id}")
+                await msg.reply_text(confirmation, parse_mode="HTML")
+                logger.info(
+                    f"✅ Добавлена запись в лист ожидания для chat_id {update.effective_chat.id}"
+                )
             except Exception as e:
                 logger.error(f"❌ Ошибка добавления в лист ожидания: {e}")
-                await msg.reply_text("❌ Произошла ошибка при сохранении в лист ожидания. Попробуйте позже.")
+                await msg.reply_text(
+                    "❌ Произошла ошибка при сохранении в лист ожидания. Попробуйте позже."
+                )
             context.user_data.clear()
             context.user_data["state"] = MENU
             return MENU
@@ -1576,7 +2047,10 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             await msg.reply_text("❌ Категория не может быть пустой.")
             return AWAITING_WL_CATEGORY
         context.user_data["wl_category"] = user_input
-        await msg.reply_text(f"👤 Вы выбрали категорию: <b>{user_input}</b>.\nТеперь укажите имя специалиста (или 'любой').", parse_mode='HTML')
+        await msg.reply_text(
+            f"👤 Вы выбрали категорию: <b>{user_input}</b>.\nТеперь укажите имя специалиста (или 'любой').",
+            parse_mode="HTML",
+        )
         context.user_data["state"] = AWAITING_WL_SPECIALIST
         return AWAITING_WL_SPECIALIST
     elif state == AWAITING_WL_SPECIALIST:
@@ -1584,7 +2058,10 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             await msg.reply_text("❌ Имя специалиста не может быть пустым.")
             return AWAITING_WL_SPECIALIST
         context.user_data["wl_specialist"] = user_input
-        await msg.reply_text(f"👤 Специалист: <b>{user_input}</b>.\nТеперь укажите желаемую дату (ДД.ММ.ГГГГ).", parse_mode='HTML')
+        await msg.reply_text(
+            f"👤 Специалист: <b>{user_input}</b>.\nТеперь укажите желаемую дату (ДД.ММ.ГГГГ).",
+            parse_mode="HTML",
+        )
         context.user_data["state"] = AWAITING_WL_DATE
         return AWAITING_WL_DATE
     elif state == AWAITING_WL_DATE:
@@ -1592,7 +2069,10 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             await msg.reply_text("❌ Неверный формат даты. Введите ДД.ММ.ГГГГ.")
             return AWAITING_WL_DATE
         context.user_data["wl_date"] = user_input
-        await msg.reply_text(f"📅 Дата: <b>{user_input}</b>.\nТеперь укажите желаемое время (ЧЧ:ММ).", parse_mode='HTML')
+        await msg.reply_text(
+            f"📅 Дата: <b>{user_input}</b>.\nТеперь укажите желаемое время (ЧЧ:ММ).",
+            parse_mode="HTML",
+        )
         context.user_data["state"] = AWAITING_WL_TIME
         return AWAITING_WL_TIME
     elif state == AWAITING_WL_TIME:
@@ -1600,7 +2080,10 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             await msg.reply_text("❌ Неверный формат времени. Введите ЧЧ:ММ.")
             return AWAITING_WL_TIME
         context.user_data["wl_time"] = user_input
-        await msg.reply_text(f"⏰ Время: <b>{user_input}</b>.\nТеперь укажите приоритет (например, 'раньше', 'позже', 'около').", parse_mode='HTML')
+        await msg.reply_text(
+            f"⏰ Время: <b>{user_input}</b>.\nТеперь укажите приоритет (например, 'раньше', 'позже', 'около').",
+            parse_mode="HTML",
+        )
         context.user_data["state"] = AWAITING_WL_PRIORITY
         return AWAITING_WL_PRIORITY
     elif state == AWAITING_WL_PRIORITY:
@@ -1620,7 +2103,7 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
             context.user_data["wl_time"],
             context.user_data["wl_priority"],
             "ожидает",
-            str(update.effective_chat.id)
+            str(update.effective_chat.id),
         ]
         try:
             safe_append_to_sheet(SHEET_ID, "Лист ожидания!A3:L", [sheet_data])
@@ -1629,11 +2112,22 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
                 f"Специалист: {context.user_data['wl_specialist']}\nДата: {context.user_data['wl_date']}\n"
                 f"Время: {context.user_data['wl_time']}\nПриоритет: {context.user_data['wl_priority']}\nСтатус: ожидает"
             )
-            logger.info(f"✅ Клиент {update.effective_chat.id} добавлен в лист ожидания: {sheet_data}")
+            logger.info(
+                f"✅ Клиент {update.effective_chat.id} добавлен в лист ожидания: {sheet_data}"
+            )
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения в лист ожидания: {e}")
-            await msg.reply_text("❌ Ошибка при сохранении в лист ожидания. Повторите попытку позже.")
-        for key in ["wl_category", "wl_service", "wl_specialist", "wl_date", "wl_time", "wl_priority"]:
+            await msg.reply_text(
+                "❌ Ошибка при сохранении в лист ожидания. Повторите попытку позже."
+            )
+        for key in [
+            "wl_category",
+            "wl_service",
+            "wl_specialist",
+            "wl_date",
+            "wl_time",
+            "wl_priority",
+        ]:
             context.user_data.pop(key, None)
         context.user_data.pop("state", None)
         return MENU
@@ -1642,7 +2136,10 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
         context.user_data.pop("state", None)
         return MENU
 
+
 # --- АДМИНИСТРАТИВНЫЕ ФУНКЦИИ ---
+
+
 async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     admins = load_admins() or []
@@ -1656,27 +2153,42 @@ async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data.clear()
     context.user_data["admin_mode"] = True
     kb = [
-        [InlineKeyboardButton("📅 Записать клиента", callback_data="admin_book_for_client")],
-        [InlineKeyboardButton("🔍 Найти/управлять записью", callback_data="admin_manage_record")],
-        [InlineKeyboardButton("➡️ В главное меню", callback_data="start")]
+        [
+            InlineKeyboardButton(
+                "📅 Записать клиента", callback_data="admin_book_for_client"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔍 Найти/управлять записью", callback_data="admin_manage_record"
+            )
+        ],
+        [InlineKeyboardButton("➡️ В главное меню", callback_data="start")],
     ]
     text = "👨‍💼 Режим администратора. Выберите действие:"
     if update.message:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
     elif update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+        await update.callback_query.edit_message_text(
+            text, reply_markup=InlineKeyboardMarkup(kb)
+        )
+
 
 async def admin_book_for_client(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     context.user_data["admin_mode"] = True
-    await query.edit_message_text("👨‍💼 Режим записи за клиента. Начните процесс записи:")
+    await query.edit_message_text(
+        "👨‍💼 Режим записи за клиента. Начните процесс записи:"
+    )
     return await select_service_type(update, context)
+
 
 async def admin_manage_record(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.edit_message_text("Введите имя или телефон клиента для поиска записей:")
     context.user_data["state"] = AWAITING_ADMIN_SEARCH
     return AWAITING_ADMIN_SEARCH
+
 
 async def handle_admin_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     term = update.message.text.strip()
@@ -1686,7 +2198,9 @@ async def handle_admin_search(update: Update, context: ContextTypes.DEFAULT_TYPE
         if len(r) >= 3:
             name = r[1]
             phone = r[2]
-            if term.lower() in name.lower() or term in phone.replace(" ", "").replace("-", ""):
+            if term.lower() in name.lower() or term in phone.replace(" ", "").replace(
+                "-", ""
+            ):
                 found.append(r)
     if not found:
         await update.message.reply_text("❌ Записи не найдены.")
@@ -1698,11 +2212,24 @@ async def handle_admin_search(update: Update, context: ContextTypes.DEFAULT_TYPE
         dt = r[6] if len(r) > 6 else "N/A"
         tm = r[7] if len(r) > 7 else "N/A"
         st = r[8] if len(r) > 8 else "N/A"
-        kb.append([InlineKeyboardButton(f"{rid} | {dt} {tm} | {svc} | {st}", callback_data=f"admin_manage_{rid}")])
+        kb.append(
+            [
+                InlineKeyboardButton(
+                    f"{rid} | {dt} {tm} | {svc} | {st}",
+                    callback_data=f"admin_manage_{rid}",
+                )
+            ]
+        )
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="admin_back")])
-    await update.message.reply_text(f"📋 Найдено записей: {len(found)}\nВыберите запись для управления:", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text(
+        f"📋 Найдено записей: {len(found)}\nВыберите запись для управления:",
+        reply_markup=InlineKeyboardMarkup(kb),
+    )
 
-async def admin_show_record_details(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
+
+async def admin_show_record_details(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
+):
     query = update.callback_query
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     for r in records:
@@ -1720,15 +2247,31 @@ async def admin_show_record_details(update: Update, context: ContextTypes.DEFAUL
                 f"🆔 Chat ID: {r[13] if len(r) > 13 else 'N/A'}"
             )
             kb = [
-                [InlineKeyboardButton("❌ Отменить запись", callback_data=f"admin_cancel_{record_id}")],
-                [InlineKeyboardButton("🔄 Перенести запись", callback_data=f"admin_reschedule_{record_id}")],
-                [InlineKeyboardButton("⬅️ Назад к поиску", callback_data="admin_manage_record")]
+                [
+                    InlineKeyboardButton(
+                        "❌ Отменить запись", callback_data=f"admin_cancel_{record_id}"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔄 Перенести запись",
+                        callback_data=f"admin_reschedule_{record_id}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "⬅️ Назад к поиску", callback_data="admin_manage_record"
+                    )
+                ],
             ]
             await query.edit_message_text(info, reply_markup=InlineKeyboardMarkup(kb))
             return
     await query.edit_message_text("❌ Запись не найдена.")
 
-async def admin_cancel_record(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
+
+async def admin_cancel_record(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
+):
     query = update.callback_query
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     for idx, r in enumerate(records, start=2):
@@ -1739,20 +2282,32 @@ async def admin_cancel_record(update: Update, context: ContextTypes.DEFAULT_TYPE
             updated = list(r)
             updated[8] = "отменено админом"
             safe_update_sheet_row(SHEET_ID, "Записи", idx, updated)
-            await query.edit_message_text(f"✅ Запись {record_id} отменена администратором.")
+            await query.edit_message_text(
+                f"✅ Запись {record_id} отменена администратором."
+            )
             chat_id = r[13] if len(r) > 13 else None
             if chat_id:
                 try:
-                    await context.bot.send_message(chat_id, f"❌ Ваша запись {record_id} была отменена администратором.")
+                    await context.bot.send_message(
+                        chat_id,
+                        f"❌ Ваша запись {record_id} была отменена администратором.",
+                    )
                 except Exception:
                     pass
             if len(r) > 6 and len(r) > 7 and len(r) > 5:
-                await check_waiting_list(str(r[6]).strip(), str(r[7]).strip(), str(r[5]).strip(), context)
+                await check_waiting_list(
+                    str(r[6]).strip(), str(r[7]).strip(), str(r[5]).strip(), context
+                )
             return
     await query.edit_message_text("❌ Запись не найдена.")
 
+
 # --- ADMIN RESCHEDULE RECORD (ПОЛНАЯ РЕАЛИЗАЦИЯ) ---
-async def admin_reschedule_record(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
+
+
+async def admin_reschedule_record(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
+):
     query = update.callback_query
     await query.answer()
     context.user_data["admin_reschedule_record_id"] = record_id
@@ -1766,7 +2321,15 @@ async def admin_reschedule_record(update: Update, context: ContextTypes.DEFAULT_
     if not current:
         await query.edit_message_text("❌ Запись не найдена.")
         return
-    for i, key in enumerate(["service_type", "subservice", "current_specialist", "current_date", "current_time"]):
+    for i, key in enumerate(
+        [
+            "service_type",
+            "subservice",
+            "current_specialist",
+            "current_date",
+            "current_time",
+        ]
+    ):
         if len(current) > i + 3:
             context.user_data[key] = str(current[i + 3]).strip()
     msg = (
@@ -1780,12 +2343,27 @@ async def admin_reschedule_record(update: Update, context: ContextTypes.DEFAULT_
     )
     kb = [
         [InlineKeyboardButton("📅 Изменить дату", callback_data="admin_change_date")],
-        [InlineKeyboardButton("👩‍💼 Изменить специалиста", callback_data="admin_change_specialist")],
+        [
+            InlineKeyboardButton(
+                "👩‍💼 Изменить специалиста", callback_data="admin_change_specialist"
+            )
+        ],
         [InlineKeyboardButton("⏰ Изменить время", callback_data="admin_change_time")],
-        [InlineKeyboardButton("✅ Перенести всё сразу", callback_data="admin_change_all")],
-        [InlineKeyboardButton("⬅️ Назад к записи", callback_data=f"admin_manage_{record_id}")]
+        [
+            InlineKeyboardButton(
+                "✅ Перенести всё сразу", callback_data="admin_change_all"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ Назад к записи", callback_data=f"admin_manage_{record_id}"
+            )
+        ],
     ]
-    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML')
+    await query.edit_message_text(
+        msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML"
+    )
+
 
 async def admin_change_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1793,17 +2371,45 @@ async def admin_change_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today = datetime.now(TIMEZONE).date()
     dates = [(today + timedelta(days=i)).strftime("%d.%m.%Y") for i in range(1, 11)]
     kb = [[InlineKeyboardButton(d, callback_data=f"admin_new_date_{d}")] for d in dates]
-    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}")])
-    await query.edit_message_text("📅 Выберите новую дату для записи:", reply_markup=InlineKeyboardMarkup(kb))
+    kb.append(
+        [
+            InlineKeyboardButton(
+                "⬅️ Назад",
+                callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}",
+            )
+        ]
+    )
+    await query.edit_message_text(
+        "📅 Выберите новую дату для записи:", reply_markup=InlineKeyboardMarkup(kb)
+    )
+
 
 async def admin_change_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     specialists_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
-    specialists = [row[0] for row in specialists_data if len(row) > 0 and row[0] != get_setting("Название заведения", "Название организации")]
-    kb = [[InlineKeyboardButton(m, callback_data=f"admin_new_specialist_{m}")] for m in specialists]
-    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}")])
-    await query.edit_message_text("👩‍💼 Выберите нового cпециалиста:", reply_markup=InlineKeyboardMarkup(kb))
+    specialists = [
+        row[0]
+        for row in specialists_data
+        if len(row) > 0
+        and row[0] != get_setting("Название заведения", "Название организации")
+    ]
+    kb = [
+        [InlineKeyboardButton(m, callback_data=f"admin_new_specialist_{m}")]
+        for m in specialists
+    ]
+    kb.append(
+        [
+            InlineKeyboardButton(
+                "⬅️ Назад",
+                callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}",
+            )
+        ]
+    )
+    await query.edit_message_text(
+        "👩‍💼 Выберите нового cпециалиста:", reply_markup=InlineKeyboardMarkup(kb)
+    )
+
 
 async def admin_change_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1820,39 +2426,75 @@ async def admin_change_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(err)
         return
     if not slots:
-        await query.edit_message_text(f"❌ Нет доступных слотов для {specialist} на {date_str}.")
+        await query.edit_message_text(
+            f"❌ Нет доступных слотов для {specialist} на {date_str}."
+        )
         return
-    kb = [[InlineKeyboardButton(f"⏰ {s}", callback_data=f"admin_new_slot_{specialist}_{s}")] for s in slots]
-    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}")])
+    kb = [
+        [
+            InlineKeyboardButton(
+                f"⏰ {s}", callback_data=f"admin_new_slot_{specialist}_{s}"
+            )
+        ]
+        for s in slots
+    ]
+    kb.append(
+        [
+            InlineKeyboardButton(
+                "⬅️ Назад",
+                callback_data=f"admin_manage_{context.user_data.get('admin_reschedule_record_id', '')}",
+            )
+        ]
+    )
     await query.edit_message_text(
         f"📅 Дата: <b>{date_str}</b>\n👩‍💼 Специалист: <b>{specialist}</b>\nТеперь выберите <b>новое время</b>.",
-        reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML'
+        reply_markup=InlineKeyboardMarkup(kb),
+        parse_mode="HTML",
     )
+
 
 async def admin_change_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await admin_change_date(update, context)
 
-async def admin_process_new_date(update: Update, context: ContextTypes.DEFAULT_TYPE, date_str: str):
+
+async def admin_process_new_date(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, date_str: str
+):
     query = update.callback_query
     await query.answer()
     context.user_data["new_date"] = date_str
     kb = [
-        [InlineKeyboardButton("👩‍💼 Выбрать cпециалиста", callback_data="admin_change_specialist")],
-        [InlineKeyboardButton("⏰ Пропустить (оставить текущего)", callback_data="admin_skip_specialist")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="admin_change_date")]
+        [
+            InlineKeyboardButton(
+                "👩‍💼 Выбрать cпециалиста", callback_data="admin_change_specialist"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "⏰ Пропустить (оставить текущего)",
+                callback_data="admin_skip_specialist",
+            )
+        ],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="admin_change_date")],
     ]
     await query.edit_message_text(
         f"📅 Новая дата: <b>{date_str}</b>\n\nТеперь выберите специалиста или пропустите этот шаг:",
-        reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML'
+        reply_markup=InlineKeyboardMarkup(kb),
+        parse_mode="HTML",
     )
 
-async def admin_process_new_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE, specialist: str):
+
+async def admin_process_new_specialist(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, specialist: str
+):
     query = update.callback_query
     await query.answer()
     context.user_data["new_specialist"] = specialist
     st = context.user_data.get("service_type")
     ss = context.user_data.get("subservice")
-    date_str = context.user_data.get("new_date") or context.user_data.get("current_date")
+    date_str = context.user_data.get("new_date") or context.user_data.get(
+        "current_date"
+    )
     if not all([st, ss, date_str]):
         await query.edit_message_text("❌ Недостаточно данных для поиска времени.")
         return
@@ -1861,14 +2503,23 @@ async def admin_process_new_specialist(update: Update, context: ContextTypes.DEF
         await query.edit_message_text(err)
         return
     if not slots:
-        await query.edit_message_text(f"❌ У cпециалиста {specialist} нет свободных слотов на {date_str}.")
+        await query.edit_message_text(
+            f"❌ У cпециалиста {specialist} нет свободных слотов на {date_str}."
+        )
         return
-    kb = [[InlineKeyboardButton(s, callback_data=f"admin_new_slot_{specialist}_{s}")] for s in slots]
-    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="admin_change_specialist")])
+    kb = [
+        [InlineKeyboardButton(s, callback_data=f"admin_new_slot_{specialist}_{s}")]
+        for s in slots
+    ]
+    kb.append(
+        [InlineKeyboardButton("⬅️ Назад", callback_data="admin_change_specialist")]
+    )
     await query.edit_message_text(
         f"👩‍💼 Специалист: <b>{specialist}</b>\n📅 Дата: <b>{date_str}</b>\n\nВыберите время:",
-        reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML'
+        reply_markup=InlineKeyboardMarkup(kb),
+        parse_mode="HTML",
     )
+
 
 async def admin_skip_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1880,11 +2531,16 @@ async def admin_skip_specialist(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data["new_specialist"] = current
     return await admin_change_time(update, context)
 
-async def admin_process_new_slot(update: Update, context: ContextTypes.DEFAULT_TYPE, specialist: str, time_str: str):
+
+async def admin_process_new_slot(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, specialist: str, time_str: str
+):
     query = update.callback_query
     await query.answer()
     record_id = context.user_data.get("admin_reschedule_record_id")
-    new_date = context.user_data.get("new_date") or context.user_data.get("current_date")
+    new_date = context.user_data.get("new_date") or context.user_data.get(
+        "current_date"
+    )
     new_specialist = specialist or context.user_data.get("current_specialist")
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     orig = None
@@ -1898,19 +2554,32 @@ async def admin_process_new_slot(update: Update, context: ContextTypes.DEFAULT_T
     name = orig[1] if len(orig) > 1 else ""
     phone = orig[2] if len(orig) > 2 else ""
     st = orig[3] if len(orig) > 3 else ""
-    check_result, error_msg = await _validate_booking_checks(context, name, phone, new_date, time_str, st)
+    check_result, error_msg = await _validate_booking_checks(
+        context, name, phone, new_date, time_str, st
+    )
     if check_result is False:
-        await query.edit_message_text(f"❌ Нельзя перенести запись:\n{error_msg}\n\nВыберите другое время.")
+        await query.edit_message_text(
+            f"❌ Нельзя перенести запись:\n{error_msg}\n\nВыберите другое время."
+        )
         return
     elif check_result == "CONFIRM_REPEAT":
         conflict = context.user_data.get("repeat_booking_conflict", {})
         kb = [
-            [InlineKeyboardButton("✅ Да, перенести", callback_data=f"admin_force_reschedule_{record_id}")],
-            [InlineKeyboardButton("❌ Выбрать другое время", callback_data=f"admin_manage_{record_id}")]
+            [
+                InlineKeyboardButton(
+                    "✅ Да, перенести",
+                    callback_data=f"admin_force_reschedule_{record_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "❌ Выбрать другое время", callback_data=f"admin_manage_{record_id}"
+                )
+            ],
         ]
         await query.edit_message_text(
             f"⚠️ У клиента уже есть запись в этой категории:\n• {conflict.get('category', 'N/A')} {conflict.get('date', 'N/A')} в {conflict.get('time', 'N/A')}\n\nВсё равно перенести?",
-            reply_markup=InlineKeyboardMarkup(kb)
+            reply_markup=InlineKeyboardMarkup(kb),
         )
         return
     msg = (
@@ -1922,13 +2591,32 @@ async def admin_process_new_slot(update: Update, context: ContextTypes.DEFAULT_T
         f"Клиент: {orig[1] if len(orig) > 1 else 'N/A'}"
     )
     kb = [
-        [InlineKeyboardButton("✅ Подтвердить перенос", callback_data=f"admin_confirm_reschedule_{record_id}")],
-        [InlineKeyboardButton("❌ Отменить", callback_data=f"admin_manage_{record_id}")]
+        [
+            InlineKeyboardButton(
+                "✅ Подтвердить перенос",
+                callback_data=f"admin_confirm_reschedule_{record_id}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "❌ Отменить", callback_data=f"admin_manage_{record_id}"
+            )
+        ],
     ]
-    context.user_data.update({"new_date": new_date, "new_time": time_str, "new_specialist": new_specialist})
-    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode='HTML')
+    context.user_data.update(
+        {"new_date": new_date, "new_time": time_str, "new_specialist": new_specialist}
+    )
+    await query.edit_message_text(
+        msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML"
+    )
 
-async def _admin_save_reschedule(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str, force: bool = False):
+
+async def _admin_save_reschedule(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    record_id: str,
+    force: bool = False,
+):
     query = update.callback_query
     await query.answer()
     new_date = context.user_data.get("new_date")
@@ -1963,18 +2651,25 @@ async def _admin_save_reschedule(update: Update, context: ContextTypes.DEFAULT_T
                 start_dt = TIMEZONE.localize(dt)
                 end_dt = start_dt + timedelta(minutes=step)
                 safe_update_calendar_event(
-                    CALENDAR_ID, event_id, f"{name} - {ss}", start_dt.isoformat(), end_dt.isoformat(), "10",
-                    f"Клиент: {name}, тел.: {phone}\nПеренесено: {datetime.now(TIMEZONE).strftime('%d.%m.%Y %H:%M')}"
+                    CALENDAR_ID,
+                    event_id,
+                    f"{name} - {ss}",
+                    start_dt.isoformat(),
+                    end_dt.isoformat(),
+                    "10",
+                    f"Клиент: {name}, тел.: {phone}\nПеренесено: {datetime.now(TIMEZONE).strftime('%d.%m.%Y %H:%M')}",
                 )
             if old_date and old_time and old_specialist:
                 await check_waiting_list(old_date, old_time, old_specialist, context)
-                logger.info(f"🔄 Проверен лист ожидания для освободившегося слота {old_date} {old_time} у {old_specialist} при переносе записи {record_id}.")
+                logger.info(
+                    f"🔄 Проверен лист ожидания для освободившегося слота {old_date} {old_time} у {old_specialist} при переносе записи {record_id}."
+                )
             client_chat_id = r[13] if len(r) > 13 else None
             if client_chat_id and client_chat_id.isdigit():
                 try:
                     await context.bot.send_message(
                         chat_id=int(client_chat_id),
-                        text=f"🔄 Ваша запись {record_id} была перенесена администратором.\n\nНовые данные:\n• Дата: {new_date}\n• Время: {new_time}\n• Специалист: {new_specialist}\n\nЕсли новое время не подходит, свяжитесь с нами."
+                        text=f"🔄 Ваша запись {record_id} была перенесена администратором.\n\nНовые данные:\n• Дата: {new_date}\n• Время: {new_time}\n• Специалист: {new_specialist}\n\nЕсли новое время не подходит, свяжитесь с нами.",
                     )
                 except Exception as e:
                     logger.error(f"❌ Не удалось уведомить клиента о переносе: {e}")
@@ -1982,19 +2677,37 @@ async def _admin_save_reschedule(update: Update, context: ContextTypes.DEFAULT_T
             if force:
                 success += "\n\n⚠️ Перенос выполнен принудительно (клиент имеет повторную запись в категории)"
             await query.edit_message_text(success)
-            for key in ["admin_reschedule_record_id", "new_date", "new_time", "new_specialist", "admin_mode", "repeat_booking_conflict"]:
+            for key in [
+                "admin_reschedule_record_id",
+                "new_date",
+                "new_time",
+                "new_specialist",
+                "admin_mode",
+                "repeat_booking_conflict",
+            ]:
                 context.user_data.pop(key, None)
-            logger.info(f"✅ Админ {'принудительно ' if force else ''}перенес запись {record_id} на {new_date} {new_time} к {new_specialist}")
+            logger.info(
+                f"✅ Админ {'принудительно ' if force else ''}перенес запись {record_id} на {new_date} {new_time} к {new_specialist}"
+            )
             return
     await query.edit_message_text("❌ Запись не найдена.")
 
-async def admin_confirm_reschedule(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
+
+async def admin_confirm_reschedule(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
+):
     return await _admin_save_reschedule(update, context, record_id, force=False)
 
-async def admin_force_reschedule(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
+
+async def admin_force_reschedule(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
+):
     return await _admin_save_reschedule(update, context, record_id, force=True)
 
-async def _get_available_slots_for_admin(service_type: str, subservice: str, date_str: str, specialist: str):
+
+async def _get_available_slots_for_admin(
+    service_type: str, subservice: str, date_str: str, specialist: str
+):
     try:
         day_headers = safe_get_sheet_data(SHEET_ID, "График специалистов!C2:I2") or []
         if not day_headers or len(day_headers[0]) < 7:
@@ -2014,7 +2727,12 @@ async def _get_available_slots_for_admin(service_type: str, subservice: str, dat
             return None, f"❌ Специалист {specialist} не найден в графике."
         day_col_letter = chr(67 + day_number)
         schedule_cell = f"{day_col_letter}{specialist_row_idx}"
-        schedule_data = safe_get_sheet_data(SHEET_ID, f"График специалистов!{schedule_cell}:{schedule_cell}") or []
+        schedule_data = (
+            safe_get_sheet_data(
+                SHEET_ID, f"График специалистов!{schedule_cell}:{schedule_cell}"
+            )
+            or []
+        )
         if not schedule_data or not schedule_data[0]:
             return None, f"❌ Нет графика для {specialist} на {date_str}."
         schedule_range = schedule_data[0][0]
@@ -2027,7 +2745,12 @@ async def _get_available_slots_for_admin(service_type: str, subservice: str, dat
         all_records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
         booked = []
         for r in all_records:
-            if len(r) > 7 and str(r[5]).strip() == specialist and str(r[6]).strip() == date_str and str(r[8]).strip() in ["подтверждено", "в резерве", "ожидает оплаты"]:
+            if (
+                len(r) > 7
+                and str(r[5]).strip() == specialist
+                and str(r[6]).strip() == date_str
+                and str(r[8]).strip() in ["подтверждено", "в резерве", "ожидает оплаты"]
+            ):
                 booked.append(str(r[7]).strip())
         available = []
         current = datetime.combine(target_date.date(), start_time)
@@ -2042,17 +2765,32 @@ async def _get_available_slots_for_admin(service_type: str, subservice: str, dat
         logger.error(f"Ошибка при поиске доступных слотов: {e}")
         return None, "❌ Ошибка при поиске доступных слотов."
 
+
 # --- TRIGGER WORDS ---
+
+
 async def handle_trigger_words(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
     state = context.user_data.get("state")
     ignore_states = [
-        ENTER_NAME, ENTER_PHONE, CONFIRM_RESERVATION, AWAITING_REPEAT_CONFIRMATION,
-        AWAITING_ADMIN_MESSAGE, AWAITING_WAITING_LIST_DETAILS,
-        AWAITING_MY_RECORDS_NAME, AWAITING_MY_RECORDS_PHONE,
-        AWAITING_WL_CATEGORY, AWAITING_WL_SPECIALIST, AWAITING_WL_DATE, AWAITING_WL_TIME, AWAITING_WL_PRIORITY,
-        AWAITING_ADMIN_SEARCH, AWAITING_ADMIN_NEW_DATE, AWAITING_ADMIN_NEW_SPECIALIST, AWAITING_ADMIN_NEW_TIME,
+        ENTER_NAME,
+        ENTER_PHONE,
+        CONFIRM_RESERVATION,
+        AWAITING_REPEAT_CONFIRMATION,
+        AWAITING_ADMIN_MESSAGE,
+        AWAITING_WAITING_LIST_DETAILS,
+        AWAITING_MY_RECORDS_NAME,
+        AWAITING_MY_RECORDS_PHONE,
+        AWAITING_WL_CATEGORY,
+        AWAITING_WL_SPECIALIST,
+        AWAITING_WL_DATE,
+        AWAITING_WL_TIME,
+        AWAITING_WL_PRIORITY,
+        AWAITING_ADMIN_SEARCH,
+        AWAITING_ADMIN_NEW_DATE,
+        AWAITING_ADMIN_NEW_SPECIALIST,
+        AWAITING_ADMIN_NEW_TIME,
         AWAITING_PHONE_FOR_CALLBACK,
     ]
     if state in ignore_states:
@@ -2069,21 +2807,30 @@ async def handle_trigger_words(update: Update, context: ContextTypes.DEFAULT_TYP
                 end_time = datetime.strptime(end_str, "%H:%M").time()
                 is_working = start_time <= now <= end_time
             except Exception:
-                logger.error("❌ Ошибка в формате времени работы. Используем 10:00–20:00.")
+                logger.error(
+                    "❌ Ошибка в формате времени работы. Используем 10:00–20:00."
+                )
                 start_time = datetime_time(10, 0)
                 end_time = datetime_time(20, 0)
                 is_working = start_time <= now <= end_time
             if is_working:
-                await notify_admins(context, f"📞 Пользователь (ID скрыт): {update.message.text}")
+                await notify_admins(
+                    context, f"📞 Пользователь (ID скрыт): {update.message.text}"
+                )
                 await update.message.reply_text("✅ Администратор свяжется с вами.")
             else:
                 context.user_data["reverse_call_msg"] = update.message.text
                 context.user_data["state"] = AWAITING_PHONE_FOR_CALLBACK
-                await update.message.reply_text("⏰ Мы не работаем. Пожалуйста, укажите ваш номер телефона для обратной связи:")
+                await update.message.reply_text(
+                    "⏰ Мы не работаем. Пожалуйста, укажите ваш номер телефона для обратной связи:"
+                )
                 return
             break
 
+
 # --- NOTIFY ADMINS OF NEW CALLS — ОБНОВЛЕНО ПО ТЗ 9.5: ПОСЛЕ ОКОНЧАНИЯ ПРЕДЫДУЩЕГО РАБОЧЕГО ДНЯ ---
+
+
 async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         now = datetime.now(TIMEZONE)
@@ -2101,7 +2848,9 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
                 org_row = row
                 break
         if not org_row or len(org_row) < 8:
-            logger.error(f"❌ Не найдена строка '{org_name}' в 'График специалистов' или недостаточно данных.")
+            logger.error(
+                f"❌ Не найдена строка '{org_name}' в 'График специалистов' или недостаточно данных."
+            )
             return
 
         day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
@@ -2120,16 +2869,29 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
                     try:
                         _, end_str = cell.split("-", 1)
                         end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
-                        last_work_end = TIMEZONE.localize(datetime.combine(check_date, end_time))
-                        logger.info(f"✅ Последний рабочий день: {check_date} (окончание в {end_time})")
+                        last_work_end = TIMEZONE.localize(
+                            datetime.combine(check_date, end_time)
+                        )
+                        logger.info(
+                            f"✅ Последний рабочий день: {check_date} (окончание в {end_time})"
+                        )
                         break
                     except Exception as e:
-                        logger.warning(f"⚠️ Ошибка парсинга времени в ячейке {cell}: {e}")
+                        logger.warning(
+                            f"⚠️ Ошибка парсинга времени в ячейке {cell}: {e}"
+                        )
             days_back += 1
 
         if not last_work_end:
-            logger.warning("⚠️ Не удалось определить последний рабочий день. Используем вчерашний день 20:00.")
-            last_work_end = TIMEZONE.localize(datetime.combine(now.date() - timedelta(days=1), datetime.strptime("20:00", "%H:%M").time()))
+            logger.warning(
+                "⚠️ Не удалось определить последний рабочий день. Используем вчерашний день 20:00."
+            )
+            last_work_end = TIMEZONE.localize(
+                datetime.combine(
+                    now.date() - timedelta(days=1),
+                    datetime.strptime("20:00", "%H:%M").time(),
+                )
+            )
 
         # === ШАГ 2: Найти новые заявки ПОСЛЕ last_work_end ===
         calls = safe_get_sheet_data(SHEET_ID, "Обратные звонки!A3:J") or []
@@ -2141,13 +2903,17 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
                 call += [""] * (10 - len(call))
             try:
                 call_time_str = call[1]
-                call_time = TIMEZONE.localize(datetime.strptime(call_time_str, "%d.%m.%Y %H:%M"))
+                call_time = TIMEZONE.localize(
+                    datetime.strptime(call_time_str, "%d.%m.%Y %H:%M")
+                )
                 status = call[7] if len(call) > 7 else "ожидает"
                 if call_time > last_work_end and status == "ожидает":
                     new_calls.append(call)
                     calls_to_update.append(idx)
             except Exception as e:
-                logger.warning(f"⚠️ Неверный формат даты/статуса в заявке (строка {idx}): {call}. Ошибка: {e}")
+                logger.warning(
+                    f"⚠️ Неверный формат даты/статуса в заявке (строка {idx}): {call}. Ошибка: {e}"
+                )
 
         # === ШАГ 3: Уведомить и обновить ===
         if new_calls:
@@ -2165,26 +2931,35 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
                 text += f"... и ещё {count - max_in_msg} заявок\n"
             text += "📋 Полный список — в листе «Обратные звонки»."
             await notify_admins(context, text)
-            logger.info(f"✅ Уведомлено админов о {count} заявках (после {last_work_end.strftime('%d.%m.%Y %H:%M')})")
+            logger.info(
+                f"✅ Уведомлено админов о {count} заявках (после {last_work_end.strftime('%d.%m.%Y %H:%M')})"
+            )
 
             current_time_str = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
             for idx in calls_to_update:
                 try:
-                    full_row = safe_get_sheet_data(SHEET_ID, f"Обратные звонки!A{idx}:J{idx}")[0]
+                    full_row = safe_get_sheet_data(
+                        SHEET_ID, f"Обратные звонки!A{idx}:J{idx}"
+                    )[0]
                     while len(full_row) < 10:
                         full_row.append("")
                     full_row[6] = current_time_str  # G — Время уведомления
-                    full_row[7] = "уведомлен"        # H — Статус
+                    full_row[7] = "уведомлен"  # H — Статус
                     safe_update_sheet_row(SHEET_ID, "Обратные звонки", idx, full_row)
                 except Exception as e:
                     logger.error(f"❌ Не удалось обновить строку {idx}: {e}")
         else:
-            logger.info(f"📭 Новых заявок после {last_work_end.strftime('%d.%m.%Y %H:%M')} нет.")
+            logger.info(
+                f"📭 Новых заявок после {last_work_end.strftime('%d.%m.%Y %H:%M')} нет."
+            )
 
     except Exception as e:
         logger.error(f"❌ Ошибка в notify_admins_of_new_calls_job: {e}", exc_info=True)
 
+
 # --- GENERIC MESSAGE HANDLER ---
+
+
 async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if rate_limiter.is_limited(user_id):
@@ -2200,23 +2975,37 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
     handlers = {
         ENTER_NAME: enter_name,
         ENTER_PHONE: enter_phone,
-        AWAITING_ADMIN_MESSAGE: lambda u,c: (notify_admins(c, f"📞 Сообщение от клиента (ID скрыт): {u.message.text}"), u.message.reply_text("✅ Администратор свяжется с вами."), c.user_data.clear(), c.user_data.update({"state": MENU}) or MENU),
+        AWAITING_ADMIN_MESSAGE: lambda u, c: (
+            notify_admins(c, f"📞 Сообщение от клиента (ID скрыт): {u.message.text}"),
+            u.message.reply_text("✅ Администратор свяжется с вами."),
+            c.user_data.clear(),
+            c.user_data.update({"state": MENU}) or MENU,
+        ),
         AWAITING_WAITING_LIST_DETAILS: handle_waiting_list_input,
-            AWAITING_REPEAT_CONFIRMATION: lambda u,c: u.message.reply_text("❌ Пожалуйста, используйте кнопки для подтверждения или отмены.") or AWAITING_REPEAT_CONFIRMATION,
-            AWAITING_ADMIN_SEARCH: handle_admin_search,
-            AWAITING_MY_RECORDS_NAME: handle_my_records_input,
-            AWAITING_MY_RECORDS_PHONE: handle_my_records_input,
-            AWAITING_WL_CATEGORY: handle_waiting_list_input,
-            AWAITING_WL_SPECIALIST: handle_waiting_list_input,
-            AWAITING_WL_DATE: handle_waiting_list_input,
-            AWAITING_WL_TIME: select_time,
-            # AWAITING_WL_PRIORITY больше не обрабатывается через back_map
-            AWAITING_WL_PRIORITY_CHOICE: select_time, # Назад из "📋 Вы в листе ожидания." -> к выбору времени
-            AWAITING_CONFIRMATION: lambda u,c: u.message.reply_text("❌ Пожалуйста, используйте кнопки 'Подтвердить' или 'Отменить'.") or AWAITING_CONFIRMATION,
-        }
+        AWAITING_REPEAT_CONFIRMATION: lambda u, c: u.message.reply_text(
+            "❌ Пожалуйста, используйте кнопки для подтверждения или отмены."
+        )
+        or AWAITING_REPEAT_CONFIRMATION,
+        AWAITING_ADMIN_SEARCH: handle_admin_search,
+        AWAITING_MY_RECORDS_NAME: handle_my_records_input,
+        AWAITING_MY_RECORDS_PHONE: handle_my_records_input,
+        AWAITING_WL_CATEGORY: handle_waiting_list_input,
+        AWAITING_WL_SPECIALIST: handle_waiting_list_input,
+        AWAITING_WL_DATE: handle_waiting_list_input,
+        AWAITING_WL_TIME: handle_waiting_list_input,
+        # AWAITING_WL_PRIORITY больше не обрабатывается через back_map
+        # Назад из "📋 Вы в листе ожидания." -> к выбору времени
+        AWAITING_WL_PRIORITY_CHOICE: select_time,
+        AWAITING_CONFIRMATION: lambda u, c: u.message.reply_text(
+            "❌ Пожалуйста, используйте кнопки 'Подтвердить' или 'Отменить'."
+        )
+        or AWAITING_CONFIRMATION,
+    }
     if state in handlers:
         if state == AWAITING_ADMIN_MESSAGE:
-            await notify_admins(context, f"📞 Сообщение от клиента (ID скрыт): {update.message.text}")
+            await notify_admins(
+                context, f"📞 Сообщение от клиента (ID скрыт): {update.message.text}"
+            )
             await update.message.reply_text("✅ Администратор свяжется с вами.")
             context.user_data.clear()
             context.user_data["state"] = MENU
@@ -2226,11 +3015,16 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
     await handle_trigger_words(update, context)
     return None
 
+
 # --- HANDLE_PHONE_FOR_CALLBACK ---
+
+
 async def handle_phone_for_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = (update.message.text or "").strip()
     if not validate_phone(phone):
-        await update.message.reply_text("❌ Неверный формат телефона. Введите 10–15 цифр.")
+        await update.message.reply_text(
+            "❌ Неверный формат телефона. Введите 10–15 цифр."
+        )
         return AWAITING_PHONE_FOR_CALLBACK
 
     normalized = phone
@@ -2238,41 +3032,57 @@ async def handle_phone_for_callback(update: Update, context: ContextTypes.DEFAUL
         normalized = "8" + normalized[2:]
     elif normalized.startswith("7") and len(normalized) == 11:
         normalized = "8" + normalized[1:]
-    digits = ''.join(filter(str.isdigit, normalized))
+    digits = "".join(filter(str.isdigit, normalized))
     if len(digits) < 10:
-        await update.message.reply_text("❌ Слишком короткий номер. Введите 10–15 цифр.")
+        await update.message.reply_text(
+            "❌ Слишком короткий номер. Введите 10–15 цифр."
+        )
         return AWAITING_PHONE_FOR_CALLBACK
     normalized = digits
 
     user = update.effective_user
     msg = context.user_data.get("reverse_call_msg", "Не указано")
 
-    safe_append_to_sheet(SHEET_ID, "Обратные звонки", [
-        f"CALL-{int(time.time())}",
-        datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M"),
-        user.first_name or "Не указано",
-        normalized,
-        "",
-        "Telegram",
-        "",
-        "ожидает",
-        msg,
-        "1"
-    ])
+    safe_append_to_sheet(
+        SHEET_ID,
+        "Обратные звонки",
+        [
+            f"CALL-{int(time.time())}",
+            datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M"),
+            user.first_name or "Не указано",
+            normalized,
+            "",
+            "Telegram",
+            "",
+            "ожидает",
+            msg,
+            "1",
+        ],
+    )
 
-    await update.message.reply_text("✅ Ваш запрос и номер сохранены. Администратор перезвонит в рабочее время.")
+    await update.message.reply_text(
+        "✅ Ваш запрос и номер сохранены. Администратор перезвонит в рабочее время."
+    )
     context.user_data.clear()
     return MENU
 
+
 # --- REGISTER HANDLERS ---
+
+
 def register_handlers(application: Application):
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("record", handle_record_command))
     application.add_handler(CommandHandler("my_records", show_my_records))
     application.add_handler(CallbackQueryHandler(button_handler))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, generic_message_handler))
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, generic_message_handler)
+    )
+
 
 # --- ENTRYPOINT ---
+
+
 def main():
     persistence_file = "bot_data.pickle"
     try:
@@ -2308,17 +3118,29 @@ def main():
         return
     log_business_event("bot_started")
     persistence = PicklePersistence(filepath=persistence_file)
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).persistence(persistence).build()
+    application = (
+        ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).persistence(persistence).build()
+    )
     application.add_error_handler(global_error_handler)
-    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, global_activity_updater), group=-1)
+    application.add_handler(
+        MessageHandler(filters.ALL & ~filters.COMMAND, global_activity_updater),
+        group=-1,
+    )
     register_handlers(application)
     logger.info("✅ Обработчики зарегистрированы.")
-    application.job_queue.run_daily(cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time())
+    application.job_queue.run_daily(
+        cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time()
+    )
     application.job_queue.run_repeating(send_reminders, interval=60, first=10)
-    notify_time = datetime.strptime(get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M").time()
+    notify_time = datetime.strptime(
+        get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M"
+    ).time()
     application.job_queue.run_daily(notify_admins_of_new_calls_job, time=notify_time)
     application.job_queue.run_repeating(health_check_job, interval=300, first=10)
-    application.job_queue.run_repeating(cleanup_stuck_reservations_job, interval=900, first=60)
+    application.job_queue.run_repeating(
+        cleanup_stuck_reservations_job, interval=900, first=60
+    )
+
     def _handle_exit(signum, frame):
         logger.info(f"Получен системный сигнал {signum}, завершаем работу...")
         try:
@@ -2326,6 +3148,7 @@ def main():
         except Exception:
             pass
         sys.exit(0)
+
     try:
         signal.signal(signal.SIGTERM, _handle_exit)
         signal.signal(signal.SIGINT, _handle_exit)
@@ -2342,6 +3165,7 @@ def main():
     finally:
         remove_lock_file()
         logger.info("🔒 Бот остановлен и lock-файл удалён.")
+
 
 if __name__ == "__main__":
     main()
