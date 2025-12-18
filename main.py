@@ -1565,7 +1565,7 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-     slots = find_available_slots(
+    slots = find_available_slots(
         st, ss, date_str, specialist, context.user_data.get("priority", "date")
     )
     
@@ -3196,3 +3196,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
