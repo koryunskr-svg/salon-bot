@@ -1564,14 +1564,31 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Ошибка: не все данные для выбора времени выбраны."
         )
         return
-    slots = find_available_slots(
+    
+     slots = find_available_slots(
         st, ss, date_str, specialist, context.user_data.get("priority", "date")
     )
+    
+    # ДОБАВИТЬ ЭТУ СТРОКУ ДЛЯ ОТЛАДКИ:
+    logger.info(f"DEBUG: find_available_slots вернул {len(slots)} слотов. Параметры: дата={date_str}, специалист={specialist}, услуга={ss}/{st}")
+    
     if not slots:
-        await query.edit_message_text("❌ Свободных слотов нет.")
+        # ВРЕМЕННО для отладки - показываем параметры поиска
+        debug_msg = (
+            f"🟡 ДЕБАГ: Поиск слотов:\n"
+            f"• Дата: {date_str}\n"
+            f"• Специалист: {specialist or 'не выбран'}\n"
+            f"• Услуга: {ss} ({st})\n"
+            f"• Длительность: {calculate_service_step(ss)} мин\n\n"
+            f"Слотов не найдено.\n"
+            f"Проверьте:\n"
+            f"1. Работает ли специалист в эту дату?\n"
+            f"2. Есть ли у него свободное время в календаре?"
+        )
+        
+        await query.edit_message_text(debug_msg)
         kb = [
             [InlineKeyboardButton("📋 В лист ожидания", callback_data="waiting_list")],
-            # Добавлена кнопка "Обновить"
             [InlineKeyboardButton("🔄 Обновить", callback_data="refresh_time")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
         ]
