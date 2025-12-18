@@ -790,7 +790,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
             ENTER_NAME: select_time,
             ENTER_PHONE: enter_name,
+            AWAITING_WAITING_LIST_DETAILS: lambda u, c: select_time(u, c),
+            AWAITING_WL_PRIORITY_CHOICE: lambda u, c: select_time(u, c),
         }
+
         if state in back_map:
             return await back_map[state](update, context)
         elif state in (CONFIRM_RESERVATION, AWAITING_REPEAT_CONFIRMATION):
@@ -798,37 +801,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "❌ Возврат невозможен. Подтвердите или отмените запись."
             )
             return
-        elif state == AWAITING_WAITING_LIST_DETAILS:
-            # Возвращаемся к сообщению "📋 Вы в листе ожидания." с выбором "Только ...", "Любой"
-            st = context.user_data.get("service_type", "не указана")
-            ss = context.user_data.get("subservice", "не указана")
-            spec = context.user_data.get("selected_specialist", "любой")
-            date = context.user_data.get("date", "не указана")
-            user_time = context.user_data.get("time", "не указано")
 
-            msg = (
-                "📋 Вы в листе ожидания.\n\n"
-                f"✅ Услуга: <b>{ss}</b> ({st})\n"
-                f"📅 Дата: <b>{date}</b>\n"
-                f"⏰ Время: <b>{user_time}</b> (проверим ±30 мин)\n"
-                f"👩‍🦰 Предпочтение: <b>{spec}</b>\n\n"
-                "👉 Выберите, кого ждать:"
-            )
-            kb = [
-                [
-                    InlineKeyboardButton(
-                        f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific"
-                    )
-                ],
-                [InlineKeyboardButton("👥 Любой", callback_data="wl_prefer_any")],
-                [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
-                [InlineKeyboardButton("🏠 В меню", callback_data="start")],
-            ]
-            await query.edit_message_text(
-                msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML"
-            )
-            context.user_data["state"] = AWAITING_WL_PRIORITY_CHOICE
-            return AWAITING_WL_PRIORITY_CHOICE
         elif state == AWAITING_ADMIN_SEARCH:
             return await handle_record_command(update, context)
         else:
@@ -950,9 +923,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("specialist_"):
         context.user_data["selected_specialist"] = data.split("specialist_", 1)[1]
         if context.user_data.get("priority") == "specialist":
-            return await select_date(update, context)
+            return await select_date(update, context)  # Сценарий B
         else:
-            return await select_time(update, context)
+            return await select_time(update, context)  # Сценарий A
     if data.startswith("slot_"):
         parts = data.split("_", 2)
         if len(parts) == 3:
@@ -1298,7 +1271,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     days_ahead = int(get_setting("Количество дней генерации слотов", 30))
 
     # --- СЦЕНАРИЙ B: "Сначала специалист", потом дата (selected_specialist есть) ---
-    if selected_specialist:
+    if selected_specialist and selected_specialist != "любой":
         available_dates_for_specialist = []
         for days_offset in range(days_ahead + 1):
             target_date = (now + timedelta(days=days_offset)).date()
@@ -1572,6 +1545,10 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    # ДОБАВИТЬ ДЛЯ ОТЛАДКИ:
+    logger.info(
+        f"DEBUG select_time: дата={context.user_data.get('date')}, специалист={context.user_data.get('selected_specialist')}, приоритет={context.user_data.get('priority')}"
+    )
     # Сохраняем текущее состояние в историю
     current_state = context.user_data.get("state")
     if current_state:
