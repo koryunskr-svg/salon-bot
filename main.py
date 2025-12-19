@@ -1667,6 +1667,9 @@ async def reserve_slot(
     ss = context.user_data.get("subservice")
     logger.info(f"DEBUG reserve_slot: date='{date_str}', subservice='{ss}'")
 
+    # ВАЖНО: СОХРАНИТЬ ВРЕМЯ В context.user_data!
+    context.user_data["time"] = time_str
+
     step = calculate_service_step(ss)
     dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
     start_dt = TIMEZONE.localize(dt)
@@ -1770,8 +1773,10 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTER_NAME
     context.user_data["name"] = name
     kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
+
     await update.message.reply_text(
-        "📞 Теперь введите ваш телефон:", reply_markup=ReplyKeyboardRemove()
+        "📞 Теперь введите ваш телефон:",
+        reply_markup=InlineKeyboardMarkup(kb),  # ← ИЗМЕНИТЬ НА ЭТО
     )
     context.user_data["state"] = ENTER_PHONE
     return ENTER_PHONE
