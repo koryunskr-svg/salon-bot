@@ -768,7 +768,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
     if data == "back":
+        # ДОБАВИТЬ ОТЛАДКУ
         state = context.user_data.get("state")
+        logger.info(f"DEBUG back: state={state}, back_map keys={list(back_map.keys())}")
+
+        if state in back_map:
+            logger.info(f"DEBUG back: нашли обработчик для состояния {state}")
+            return await back_map[state](update, context)
         back_map = {
             SELECT_SUBSERVICE: select_service_type,
             SHOW_PRICE_INFO: select_subservice,
@@ -780,7 +786,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             SELECT_SPECIALIST: lambda u, c: (
                 select_date(u, c)
                 if c.user_data.get("priority") == "date"
-                # ← ИСПРАВЛЕНО: возвращаем в выбор приоритета
                 else show_price_info(u, c)
             ),
             SELECT_TIME: lambda u, c: (
