@@ -1613,18 +1613,19 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 current_hour += 1
                 current_minute = 0
 
-            kb = []
-            for s in test_slots:
-                t = s.get("time", "N/A")
-                m = s.get("specialist", "N/A")
-                # ВАЖНО: использовать specialist из контекста, а не из test_slots
-                kb.append(
-                    [
-                        InlineKeyboardButton(
-                            f"{t} — {m}", callback_data=f"slot_{specialist}_{t}"
-                        )
-                    ]
-                )
+        kb = []
+        for s in test_slots:
+            t = s.get("time", "N/A")
+            m = s.get("specialist", "N/A")
+            # ВАЖНО: использовать specialist из контекста, а не из
+            # test_slots
+            kb.append(
+                [
+                    InlineKeyboardButton(
+                        f"{t} — {m}", callback_data=f"slot_{specialist}_{t}"
+                    )
+                ]
+            )
 
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
 
