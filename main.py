@@ -927,6 +927,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             return await select_time(update, context)  # Сценарий A
     if data.startswith("slot_"):
+        # ДОБАВИТЬ ОТЛАДКУ:
+        logger.info(f"DEBUG button_handler: data='{data}'")
+        parts = data.split("_", 2)
+        logger.info(f"DEBUG button_handler: parts={parts}")
+        if len(parts) == 3:
+            return await reserve_slot(update, context, parts[1], parts[2])
         parts = data.split("_", 2)
         if len(parts) == 3:
             return await reserve_slot(update, context, parts[1], parts[2])
@@ -1574,11 +1580,6 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             specialist = "Тест"
             logger.warning(f"⚠️ specialist=None, используем '{specialist}'")
 
-        # Тестовые слоты для отладки - учитываем длительность услуги
-        service_duration = calculate_service_step(
-            ss
-        )  # получаем длительность услуги в минутах
-
         # Генерируем слоты с учетом времени работы (10:00-20:00)
         start_hour = 10
         end_hour = 20
@@ -1768,6 +1769,7 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ENTER_NAME
     context.user_data["name"] = name
+    kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
     await update.message.reply_text(
         "📞 Теперь введите ваш телефон:", reply_markup=ReplyKeyboardRemove()
     )
@@ -3242,4 +3244,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
