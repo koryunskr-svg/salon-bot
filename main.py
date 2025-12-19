@@ -1560,61 +1560,77 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(
         f"DEBUG: find_available_slots вернул {len(slots)} слотов. Параметры: дата={date_str}, специалист={specialist}, услуга={ss}/{st}"
     )
-    service_duration = calculate_service_step(ss)  # получаем длительность услуги в минутах
+    service_duration = calculate_service_step(
+        ss
+    )  # получаем длительность услуги в минутах
     logger.info(f"DEBUG: Длительность услуги '{ss}' = {service_duration} мин")
 
     if not slots:
         # ВРЕМЕННО: показываем тестовые слоты вместо ошибки
         logger.warning(f"⚠️ Реальных слотов не найдено. Показываем тестовые.")
-        
+
+        # Проверяем что specialist определен
+        if not specialist:
+            specialist = "Тест"
+            logger.warning(f"⚠️ specialist=None, используем '{specialist}'")
+
         # Тестовые слоты для отладки - учитываем длительность услуги
-        service_duration = calculate_service_step(ss)  # получаем длительность услуги в минутах
-        
+        service_duration = calculate_service_step(
+            ss
+        )  # получаем длительность услуги в минутах
+
         # Генерируем слоты с учетом времени работы (10:00-20:00)
         start_hour = 10
         end_hour = 20
         slot_interval = 30  # интервал между слотами в минутах
-        
+
         test_slots = []
         current_hour = start_hour
         current_minute = 0
-        
+
         while True:
             # Рассчитываем время окончания слота
             end_hour_slot = current_hour
             end_minute_slot = current_minute + service_duration
-            
+
             # Корректируем если минуты > 60
             while end_minute_slot >= 60:
                 end_hour_slot += 1
                 end_minute_slot -= 60
-            
+
             # Проверяем, что слот заканчивается до закрытия
-            if end_hour_slot > end_hour or (end_hour_slot == end_hour and end_minute_slot > 0):
+            if end_hour_slot > end_hour or (
+                end_hour_slot == end_hour and end_minute_slot > 0
+            ):
                 break  # слот выходит за время работы
-            
+
             time_str = f"{current_hour:02d}:{current_minute:02d}"
             test_slots.append({"time": time_str, "specialist": specialist or "Тест"})
-            
+
             # Увеличиваем время
             current_minute += slot_interval
             if current_minute >= 60:
                 current_hour += 1
                 current_minute = 0
-        
-        kb = []
-        for s in test_slots:
-            t = s.get("time", "N/A")
-            m = s.get("specialist", "N/A")
-            # Используем настоящее имя специалиста или "Тест" если None
-            specialist_name = specialist if specialist else "Тест"
-            kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{specialist_name}_{t}")])
-        
+
+            kb = []
+            for s in test_slots:
+                t = s.get("time", "N/A")
+                m = s.get("specialist", "N/A")
+                # ВАЖНО: использовать specialist из контекста, а не из test_slots
+                kb.append(
+                    [
+                        InlineKeyboardButton(
+                            f"{t} — {m}", callback_data=f"slot_{specialist}_{t}"
+                        )
+                    ]
+                )
+
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-        
+
         await query.edit_message_text(
             f"🟡 ТЕСТ: Доступное время для услуги '{ss}' ({service_duration} мин):",
-            reply_markup=InlineKeyboardMarkup(kb)
+            reply_markup=InlineKeyboardMarkup(kb),
         )
         context.user_data["state"] = SELECT_TIME
         return SELECT_TIME
@@ -1640,13 +1656,15 @@ async def reserve_slot(
 ):
     query = update.callback_query
     await query.answer()
-    
+
     # ДОБАВИТЬ ОТЛАДКУ (ЭТИ 4 СТРОКИ):
-    logger.info(f"DEBUG reserve_slot: получен specialist='{specialist}', time='{time_str}'")
+    logger.info(
+        f"DEBUG reserve_slot: получен specialist='{specialist}', time='{time_str}'"
+    )
     date_str = context.user_data.get("date")
     ss = context.user_data.get("subservice")
     logger.info(f"DEBUG reserve_slot: date='{date_str}', subservice='{ss}'")
-    
+
     step = calculate_service_step(ss)
     dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
     start_dt = TIMEZONE.localize(dt)
@@ -3223,4 +3241,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
