@@ -1563,7 +1563,7 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     service_duration = calculate_service_step(ss)  # получаем длительность услуги в минутах
     logger.info(f"DEBUG: Длительность услуги '{ss}' = {service_duration} мин")
 
-        if not slots:
+    if not slots:
         # ВРЕМЕННО: показываем тестовые слоты вместо ошибки
         logger.warning(f"⚠️ Реальных слотов не найдено. Показываем тестовые.")
         
@@ -3223,3 +3223,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
