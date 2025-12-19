@@ -981,7 +981,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # ← в select_time
             [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
             # ← в /start
-            [InlineKeyboardButton("🏠 В меню", callback_data="start")],
         ]
         await query.edit_message_text(
             msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML"
@@ -1448,13 +1447,7 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
             )
 
-        kb.append(
-            [
-                InlineKeyboardButton(
-                    "👥 Любой специалист", callback_data="any_specialist"
-                )
-            ]
-        )
+        kb.append([InlineKeyboardButton("👥 Любой", callback_data="any_specialist")])
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
 
         await query.edit_message_text(
@@ -1522,13 +1515,7 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
             )
 
-        kb.append(
-            [
-                InlineKeyboardButton(
-                    "👥 Любой специалист", callback_data="any_specialist"
-                )
-            ]
-        )
+        kb.append([InlineKeyboardButton("👥 Любой", callback_data="any_specialist")])
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
 
         await query.edit_message_text(
@@ -1564,40 +1551,44 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Ошибка: не все данные для выбора времени выбраны."
         )
         return
-    
+
     slots = find_available_slots(
         st, ss, date_str, specialist, context.user_data.get("priority", "date")
     )
-    
+
     # ДОБАВИТЬ ЭТУ СТРОКУ ДЛЯ ОТЛАДКИ:
-    logger.info(f"DEBUG: find_available_slots вернул {len(slots)} слотов. Параметры: дата={date_str}, специалист={specialist}, услуга={ss}/{st}")
-    
-    if not slots:
-        # ВРЕМЕННО для отладки - показываем параметры поиска
-        debug_msg = (
-            f"🟡 ДЕБАГ: Поиск слотов:\n"
-            f"• Дата: {date_str}\n"
-            f"• Специалист: {specialist or 'не выбран'}\n"
-            f"• Услуга: {ss} ({st})\n"
-            f"• Длительность: {calculate_service_step(ss)} мин\n\n"
-            f"Слотов не найдено.\n"
-            f"Проверьте:\n"
-            f"1. Работает ли специалист в эту дату?\n"
-            f"2. Есть ли у него свободное время в календаре?"
-        )
+    logger.info(
+        f"DEBUG: find_available_slots вернул {len(slots)} слотов. Параметры: дата={date_str}, специалист={specialist}, услуга={ss}/{st}"
+    )
+
+        if not slots:
+        # ВРЕМЕННО: показываем тестовые слоты вместо ошибки
+        logger.warning(f"⚠️ Реальных слотов не найдено. Показываем тестовые.")
         
-        await query.edit_message_text(debug_msg)
-        kb = [
-            [InlineKeyboardButton("📋 В лист ожидания", callback_data="waiting_list")],
-            [InlineKeyboardButton("🔄 Обновить", callback_data="refresh_time")],
-            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+        # Тестовые слоты для отладки
+        test_slots = [
+            {"time": "10:00", "specialist": specialist or "Тест"},
+            {"time": "11:30", "specialist": specialist or "Тест"},
+            {"time": "13:00", "specialist": specialist or "Тест"},
+            {"time": "14:30", "specialist": specialist or "Тест"},
+            {"time": "16:00", "specialist": specialist or "Тест"},
         ]
-        try:
-            await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(kb))
-        except Exception:
-            pass
+        
+        kb = []
+        for s in test_slots:
+            t = s.get("time", "N/A")
+            m = s.get("specialist", "N/A")
+            kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
+        
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+        
+        await query.edit_message_text(
+            "🟡 ТЕСТ: Доступное время (реальные слоты не найдены):",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
         context.user_data["state"] = SELECT_TIME
         return SELECT_TIME
+
     kb = []
     for s in slots:
         t = s.get("time", "N/A")
@@ -3196,4 +3187,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
