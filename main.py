@@ -1622,7 +1622,7 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kb.append(
                 [
                     InlineKeyboardButton(
-                        f"{t} — {m}", callback_data=f"slot_{specialist}_{t}"
+                        f"{t} — {m}", callback_data=f"slot_{specialist or 'Тест'}_{t}"
                     )
                 ]
             )
@@ -3242,3 +3242,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
