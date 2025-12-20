@@ -1769,6 +1769,8 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"=== ВЫЗВАНА enter_name ===")
+    print(f"Состояние: {context.user_data.get('state')}, имя: '{update.message.text}'")
     logger.info(
         f"DEBUG enter_name: state={context.user_data.get('state')}, expected={ENTER_NAME}"
     )
@@ -1796,6 +1798,8 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"=== ВЫЗВАНА enter_phone ===")
+    print(f"Сообщение пользователя: '{update.message.text}'")
     chat_id = update.effective_chat.id
     logger.info(
         f"DEBUG enter_phone: state={context.user_data.get('state')}, expected={ENTER_PHONE}"
@@ -3280,16 +3284,16 @@ def main():
     )
     register_handlers(application)
     logger.info("✅ Обработчики зарегистрированы.")
-    application.job_queue.run_daily(
+    # application.job_queue.run_daily(
         cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time()
     )
-    application.job_queue.run_repeating(send_reminders, interval=60, first=10)
+    # application.job_queue.run_repeating(send_reminders, interval=60, first=10)
     notify_time = datetime.strptime(
         get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M"
     ).time()
-    application.job_queue.run_daily(notify_admins_of_new_calls_job, time=notify_time)
-    application.job_queue.run_repeating(health_check_job, interval=300, first=10)
-    application.job_queue.run_repeating(
+    # application.job_queue.run_daily(notify_admins_of_new_calls_job, time=notify_time)
+    # application.job_queue.run_repeating(health_check_job, interval=300, first=10)
+    # application.job_queue.run_repeating(
         cleanup_stuck_reservations_job, interval=900, first=60
     )
 
