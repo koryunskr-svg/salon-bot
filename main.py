@@ -768,9 +768,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
 
-    print("=== НАЖАТА КНОПКА ===")
-    print(f"Кнопка: {data}")
-    print(f"Состояние пользователя: {context.user_data.get('state')}")
+    logger.info("=== НАЖАТА КНОПКА ===")
+    logger.info(f"Кнопка: {data}")
+    logger.info(f"Состояние пользователя: {context.user_data.get('state')}")
+    logger.info(f"Все данные user_data: {context.user_data}")
 
     back_map = {
         SELECT_SUBSERVICE: select_service_type,
@@ -963,9 +964,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cancel_record_from_list(
             update, context, data.split("cancel_record_", 1)[1]
         )
-    if data == "confirm":
+    if data == "confirm_booking":
         return await confirm_booking(update, context)
-    if data == "cancel_reserve":
+    if data == "cancel_booking":
         return await cancel_reservation(update, context)
     if data == "confirm_repeat":
         return await finalize_booking(update, context)
@@ -1773,8 +1774,14 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(
+        f"DEBUG enter_name: state={context.user_data.get('state')}, expected={ENTER_NAME}"
+    )
     if context.user_data.get("state") != ENTER_NAME:
-        return
+        logger.warning(
+            f"DEBUG: enter_name вызвана в неправильном состоянии: {context.user_data.get('state')}"
+        )
+        return ENTER_NAME
     name = (update.message.text or "").strip()
     if not validate_name(name):
         await update.message.reply_text(
@@ -1794,8 +1801,14 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(
+        f"DEBUG enter_phone: state={context.user_data.get('state')}, expected={ENTER_PHONE}"
+    )
     if context.user_data.get("state") != ENTER_PHONE:
-        return
+        logger.warning(
+            f"DEBUG: enter_phone вызвана в неправильном состоянии: {context.user_data.get('state')}"
+        )
+        return ENTER_PHONE
     phone = (update.message.text or "").strip()
     if not validate_phone(phone):
         await update.message.reply_text(
@@ -1934,11 +1947,14 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
     return await finalize_booking(update, context)
 
 
 async def cancel_reservation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
     temp = context.user_data.get("temp_booking")
     if temp and temp.get("event_id"):
         try:
@@ -1951,6 +1967,8 @@ async def cancel_reservation(update: Update, context: ContextTypes.DEFAULT_TYPE)
             logger.error(f"❌ Ошибка при отмене резерва: {e}")
     await query.edit_message_text("❌ Резерв отменён. Слот освобождён.")
     context.user_data.clear()
+    await start(update, context)
+    return MENU
 
 
 # --- SHOW MY RECORDS ---
