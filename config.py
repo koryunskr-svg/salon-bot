@@ -1848,6 +1848,10 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    # ОТЛАДКА: что в user_data?
+    print("=== ОТЛАДКА finalize_booking ===")
+    print(f"user_data: {context.user_data}")
+
     # 1. Отменяем все таймеры
     chat_id = update.effective_chat.id
     job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
@@ -1856,6 +1860,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_jobs = context.job_queue.get_jobs_by_name(job_name)
         for job in current_jobs:
             job.schedule_removal()
+            print(f"✅ Отменен job: {job_name}")
 
     # 2. Проверяем данные
     st = context.user_data.get("service_type")
@@ -1866,8 +1871,13 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = context.user_data.get("name")
     phone = context.user_data.get("phone")
 
-    # 3. Если чего-то нет - ошибка
+    print(
+        f"Данные: st={st}, ss={ss}, specialist={specialist}, date={date_str}, time={time_str}, name={name}, phone={phone}"
+    )
+
+    # 3. Проверяем что все данные есть
     if not all([st, ss, specialist, date_str, time_str, name, phone]):
+        print("❌ ОШИБКА: Не все данные заполнены!")
         await query.edit_message_text(
             "❌ Не все данные для записи заполнены. Пожалуйста, начните сначала."
         )
