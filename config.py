@@ -1,5 +1,6 @@
 # main.py-Q-2608-17.12.25-D-экспер.
 import logging
+logging.basicConfig(level=logging.DEBUG)
 import logging.handlers
 import os
 import time
