@@ -767,40 +767,41 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     await update_last_activity(update, context)
     data = query.data
+
+    back_map = {
+        SELECT_SUBSERVICE: select_service_type,
+        SHOW_PRICE_INFO: select_subservice,
+        SELECT_DATE: lambda u, c: (
+            select_specialist(u, c)
+            if c.user_data.get("priority") == "specialist"
+            else show_price_info(u, c)
+        ),
+        SELECT_SPECIALIST: lambda u, c: (
+            select_date(u, c)
+            if c.user_data.get("priority") == "date"
+            else show_price_info(u, c)
+        ),
+        SELECT_TIME: lambda u, c: (
+            select_specialist(u, c)
+            if c.user_data.get("priority") == "date"
+            else select_date(u, c)
+        ),
+        ENTER_NAME: select_time,
+        ENTER_PHONE: enter_name,
+        AWAITING_WAITING_LIST_DETAILS: lambda u, c: select_time(u, c),
+        AWAITING_WL_PRIORITY_CHOICE: lambda u, c: select_time(u, c),
+        AWAITING_CONFIRMATION: lambda u, c: select_time(u, c),  # ← если нужно
+        AWAITING_REPEAT_CONFIRMATION: lambda u, c: select_time(u, c),  # ← если нужно
+    }
+
     if data == "back":
-        # ДОБАВИТЬ ОТЛАДКУ
         state = context.user_data.get("state")
         logger.info(f"DEBUG back: state={state}, back_map keys={list(back_map.keys())}")
 
         if state in back_map:
             logger.info(f"DEBUG back: нашли обработчик для состояния {state}")
             return await back_map[state](update, context)
-        back_map = {
-            SELECT_SUBSERVICE: select_service_type,
-            SHOW_PRICE_INFO: select_subservice,
-            SELECT_DATE: lambda u, c: (
-                select_specialist(u, c)
-                if c.user_data.get("priority") == "specialist"
-                else show_price_info(u, c)
-            ),
-            SELECT_SPECIALIST: lambda u, c: (
-                select_date(u, c)
-                if c.user_data.get("priority") == "date"
-                else show_price_info(u, c)
-            ),
-            SELECT_TIME: lambda u, c: (
-                select_specialist(u, c)
-                if c.user_data.get("priority") == "date"
-                else select_date(u, c)
-            ),
-            ENTER_NAME: select_time,
-            ENTER_PHONE: enter_name,
-            AWAITING_WAITING_LIST_DETAILS: lambda u, c: select_time(u, c),
-            AWAITING_WL_PRIORITY_CHOICE: lambda u, c: select_time(u, c),
-        }
 
-        if state in back_map:
-            return await back_map[state](update, context)
         elif state in (CONFIRM_RESERVATION, AWAITING_REPEAT_CONFIRMATION):
             await query.edit_message_text(
                 "❌ Возврат невозможен. Подтвердите или отмените запись."
@@ -1777,11 +1778,12 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ENTER_NAME
     context.user_data["name"] = name
+
     kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
 
     await update.message.reply_text(
         "📞 Теперь введите ваш телефон:",
-        reply_markup=InlineKeyboardMarkup(kb),  # ← ИЗМЕНИТЬ НА ЭТО
+        reply_markup=InlineKeyboardMarkup(kb),
     )
     context.user_data["state"] = ENTER_PHONE
     return ENTER_PHONE
