@@ -10,6 +10,7 @@ import signal
 import sys
 import threading
 import re
+import asyncio
 from typing import Dict, Any
 
 from telegram import (
@@ -1682,7 +1683,6 @@ async def reserve_slot(
     ss = context.user_data.get("subservice")
     logger.info(f"DEBUG reserve_slot: date='{date_str}', subservice='{ss}'")
 
-    # ВАЖНО: СОХРАНИТЬ ВРЕМЯ В context.user_data!
     context.user_data["time"] = time_str
 
     step = calculate_service_step(ss)
@@ -1707,22 +1707,6 @@ async def reserve_slot(
         "subservice": ss,
         "created_at": datetime.now(TIMEZONE).isoformat(),
     }
-
-    # ВРЕМЕННО КОММЕНТИРУЕМ ТАЙМАУТЫ - они вызывают сообщения
-    # context.job_queue.run_once(
-    #     release_reservation,
-    #     RESERVATION_TIMEOUT,
-    #     chat_id=update.effective_chat.id,
-    #     name=f"reservation_timeout_{update.effective_chat.id}",
-    #     data={"user_id": update.effective_user.id},
-    # )
-    # context.job_queue.run_once(
-    #     warn_reservation,
-    #     WARNING_TIMEOUT,
-    #     chat_id=update.effective_chat.id,
-    #     name=f"reservation_warn_{update.effective_chat.id}",
-    #     data={"user_id": update.effective_user.id},
-    # )
 
     kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
     await query.edit_message_text(
@@ -1864,9 +1848,16 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    # 1. Отменяем все таймеры
     chat_id = update.effective_chat.id
-    logger.info("=== ОТЛАДКА finalize_booking ===")
-    logger.info(f"user_data: {context.user_data}")
+    job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
+
+    for job_name in job_names:
+        current_jobs = context.job_queue.get_jobs_by_name(job_name)
+        for job in current_jobs:
+            job.schedule_removal()
+
+    # 2. Проверяем данные
     st = context.user_data.get("service_type")
     ss = context.user_data.get("subservice")
     specialist = context.user_data.get("selected_specialist")
@@ -1875,43 +1866,23 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = context.user_data.get("name")
     phone = context.user_data.get("phone")
 
-    logger.info(
-        f"Проверяемые данные: st={st}, ss={ss}, specialist={specialist}, date={date_str}, time={time_str}, name={name}, phone={phone}"
-    )
-
+    # 3. Если чего-то нет - ошибка
     if not all([st, ss, specialist, date_str, time_str, name, phone]):
-        missing = []
-        if not st:
-            missing.append("service_type")
-        if not ss:
-            missing.append("subservice")
-        if not specialist:
-            missing.append("selected_specialist")
-        if not date_str:
-            missing.append("date")
-        if not time_str:
-            missing.append("time")
-        if not name:
-            missing.append("name")
-        if not phone:
-            missing.append("phone")
-
-        logger.error(f"❌ Отсутствуют данные: {missing}")
         await query.edit_message_text(
             "❌ Не все данные для записи заполнены. Пожалуйста, начните сначала."
         )
         context.user_data.clear()
         return MENU
+
+    # 4. Проверяем на конфликты
     check_result, error_msg = await _validate_booking_checks(
         context, name, phone, date_str, time_str, st
     )
+
     if check_result is False:
         temp = context.user_data.get("temp_booking")
         if temp and temp.get("event_id"):
-            try:
-                safe_delete_calendar_event(CALENDAR_ID, temp["event_id"])
-            except Exception as e:
-                logger.error(f"❌ Ошибка удаления события при отмене: {e}")
+            safe_delete_calendar_event(CALENDAR_ID, temp["event_id"])
         await query.edit_message_text(error_msg)
         context.user_data.clear()
         return MENU
@@ -1931,8 +1902,11 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data["state"] = AWAITING_REPEAT_CONFIRMATION
         return AWAITING_REPEAT_CONFIRMATION
+
+    # 5. Создаем/обновляем событие в календаре
     temp = context.user_data.get("temp_booking")
     event_id = temp.get("event_id") if temp else None
+
     if not event_id:
         step = calculate_service_step(ss)
         dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
@@ -1954,6 +1928,8 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "10",
             f"Клиент: {name}, тел.: {phone}",
         )
+
+    # 6. Сохраняем в таблицу
     record_id = f"ЗАП-{len(safe_get_sheet_data(SHEET_ID, 'Записи!A:A') or []) + 1:03d}"
     new_record = [
         record_id,
@@ -1973,12 +1949,16 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         event_id,
     ]
     safe_append_to_sheet(SHEET_ID, "Записи", [new_record])
+
+    # 7. Очищаем и завершаем
     context.user_data.clear()
     success = (
         f"✅ Вы записаны!\nУслуга: {ss}\nСпециалист: {specialist}\nДата: {date_str}\nВремя: {time_str}\n"
         f"Стоимость: {get_setting('Стоимость', 'уточняйте')}"
     )
     await query.edit_message_text(success)
+
+    # 8. Уведомляем админов
     admin_msg = f"📢 Новая запись: <b>{ss}</b> к <b>{specialist}</b> {date_str} в {time_str} — <b>{name}</b>"
     await notify_admins(context, admin_msg)
     logger.info(f"✅ Новая запись: {name} ({phone}) -> {ss} ({date_str} {time_str})")
@@ -1997,6 +1977,16 @@ async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_reservation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    # Отмена таймеров
+    chat_id = update.effective_chat.id
+    job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
+
+    for job_name in job_names:
+        current_jobs = context.job_queue.get_jobs_by_name(job_name)
+        for job in current_jobs:
+            job.schedule_removal()
+
     temp = context.user_data.get("temp_booking")
     if temp and temp.get("event_id"):
         try:
@@ -2008,8 +1998,9 @@ async def cancel_reservation(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except Exception as e:
             logger.error(f"❌ Ошибка при отмене резерва: {e}")
     await query.edit_message_text("❌ Резерв отменён. Слот освобождён.")
-    context.user_data.clear()
+    await asyncio.sleep(2)
     await start(update, context)
+    context.user_data.clear()
     return MENU
 
 
