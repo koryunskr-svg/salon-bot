@@ -1,4 +1,4 @@
-# main.py-Q-2608-17.12.25-D-для изм.
+# main.py-Q-2608-17.12.25-D-экспер.
 import logging
 import logging.handlers
 import os
@@ -1847,26 +1847,15 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- FINALIZE BOOKING ---
 
-
 async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
-    # ОТЛАДКА: что в user_data?
-    print("=== ОТЛАДКА finalize_booking ===")
-    print(f"user_data: {context.user_data}")
-
-    # 1. Отменяем все таймеры
-    chat_id = update.effective_chat.id
-    job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
-
-    for job_name in job_names:
-        current_jobs = context.job_queue.get_jobs_by_name(job_name)
-        for job in current_jobs:
-            job.schedule_removal()
-            print(f"✅ Отменен job: {job_name}")
-
-    # 2. Проверяем данные
+    
+    print("="*50)
+    print("ДИАГНОСТИКА: почему нет записи")
+    print(f"1. Все данные: {context.user_data}")
+    
+    # Получаем данные
     st = context.user_data.get("service_type")
     ss = context.user_data.get("subservice")
     specialist = context.user_data.get("selected_specialist")
@@ -1874,110 +1863,49 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     time_str = context.user_data.get("time")
     name = context.user_data.get("name")
     phone = context.user_data.get("phone")
-
-    print(
-        f"Данные: st={st}, ss={ss}, specialist={specialist}, date={date_str}, time={time_str}, name={name}, phone={phone}"
-    )
-
-    # 3. Проверяем что все данные есть
-    if not all([st, ss, specialist, date_str, time_str, name, phone]):
-        print("❌ ОШИБКА: Не все данные заполнены!")
-        await query.edit_message_text(
-            "❌ Не все данные для записи заполнены. Пожалуйста, начните сначала."
-        )
-        context.user_data.clear()
-        return MENU
-
-    # 4. Проверяем на конфликты
-    check_result, error_msg = await _validate_booking_checks(
-        context, name, phone, date_str, time_str, st
-    )
-
-    if check_result is False:
-        temp = context.user_data.get("temp_booking")
-        if temp and temp.get("event_id"):
-            safe_delete_calendar_event(CALENDAR_ID, temp["event_id"])
-        await query.edit_message_text(error_msg)
-        context.user_data.clear()
-        return MENU
-    elif check_result == "CONFIRM_REPEAT":
-        conflict = context.user_data.get("repeat_booking_conflict", {})
-        kb = [
-            [InlineKeyboardButton("✅ Да, хочу", callback_data="confirm_repeat")],
-            [InlineKeyboardButton("❌ Отменить", callback_data="start")],
-        ]
-        msg = (
-            f"⚠️ У вас уже есть запись на <b>{conflict.get('category', 'N/A')}</b>\n"
-            f"{conflict.get('date', 'N/A')} в {conflict.get('time', 'N/A')} к {conflict.get('specialist', 'N/A')}.\n\n"
-            "Вы уверены, что хотите записаться ещё раз?"
-        )
-        await query.edit_message_text(
-            msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML"
-        )
-        context.user_data["state"] = AWAITING_REPEAT_CONFIRMATION
-        return AWAITING_REPEAT_CONFIRMATION
-
-    # 5. Создаем/обновляем событие в календаре
-    temp = context.user_data.get("temp_booking")
-    event_id = temp.get("event_id") if temp else None
-
-    if not event_id:
-        step = calculate_service_step(ss)
-        dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
-        start_dt = TIMEZONE.localize(dt)
-        end_dt = start_dt + timedelta(minutes=step)
-        event_id = safe_create_calendar_event(
-            CALENDAR_ID,
-            f"{name} - {ss}",
-            start_dt.isoformat(),
-            end_dt.isoformat(),
-            "10",
-            f"Клиент: {name}, тел.: {phone}",
-        )
-    else:
-        safe_update_calendar_event(
-            CALENDAR_ID,
-            event_id,
-            f"{name} - {ss}",
-            "10",
-            f"Клиент: {name}, тел.: {phone}",
-        )
-
-    # 6. Сохраняем в таблицу
-    record_id = f"ЗАП-{len(safe_get_sheet_data(SHEET_ID, 'Записи!A:A') or []) + 1:03d}"
-    new_record = [
-        record_id,
-        name,
-        phone,
-        st,
-        ss,
-        specialist,
-        date_str,
-        time_str,
-        "подтверждено",
+    
+    print(f"2. Ключевые данные:")
+    print(f"   - Услуга: {ss} ({st})")
+    print(f"   - Специалист: {specialist}")
+    print(f"   - Дата/время: {date_str} {time_str}")
+    print(f"   - Клиент: {name} ({phone})")
+    
+    # Проверяем safe_append_to_sheet
+    print(f"3. Пробуем записать в таблицу...")
+    
+    test_record = [
+        "ТЕСТ-001",
+        name or "Тест",
+        phone or "0000000000",
+        st or "Тест",
+        ss or "Тест",
+        specialist or "Тест",
+        date_str or "01.01.2024",
+        time_str or "12:00",
+        "тест",
         datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M"),
         "",
         "❌",
         "❌",
         str(update.effective_chat.id),
-        event_id,
+        "test_id"
     ]
-    safe_append_to_sheet(SHEET_ID, "Записи", [new_record])
-
-    # 7. Очищаем и завершаем
-    context.user_data.clear()
-    success = (
-        f"✅ Вы записаны!\nУслуга: {ss}\nСпециалист: {specialist}\nДата: {date_str}\nВремя: {time_str}\n"
-        f"Стоимость: {get_setting('Стоимость', 'уточняйте')}"
-    )
-    await query.edit_message_text(success)
-
-    # 8. Уведомляем админов
-    admin_msg = f"📢 Новая запись: <b>{ss}</b> к <b>{specialist}</b> {date_str} в {time_str} — <b>{name}</b>"
-    await notify_admins(context, admin_msg)
-    logger.info(f"✅ Новая запись: {name} ({phone}) -> {ss} ({date_str} {time_str})")
+    
+    try:
+        print(f"4. Вызываю safe_append_to_sheet...")
+        result = safe_append_to_sheet(SHEET_ID, "Записи", [test_record])
+        print(f"5. Результат safe_append_to_sheet: {result}")
+        
+        if result:
+            await query.edit_message_text("✅ ТЕСТ: Запись создана! Проверьте таблицу.")
+        else:
+            await query.edit_message_text("❌ safe_append_to_sheet вернул False")
+    except Exception as e:
+        print(f"6. ОШИБКА: {e}")
+        await query.edit_message_text(f"❌ Исключение: {str(e)[:100]}")
+    
+    print("="*50)
     return MENU
-
 
 # --- CONFIRM / CANCEL BOOKING ---
 
