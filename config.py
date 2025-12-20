@@ -771,7 +771,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ПРОСТАЯ ОТЛАДКА - только в консоль
     print(f"=== НАЖАТА КНОПКА: {data} ===")
     print(f"Состояние пользователя: {context.user_data.get('state')}")
-    
+
     # Если кнопка "back" - логируем подробнее
     if data == "back":
         print(f"=== BACK КНОПКА ===")
@@ -1675,7 +1675,6 @@ async def reserve_slot(
     query = update.callback_query
     await query.answer()
 
-    # ДОБАВИТЬ ОТЛАДКУ (ЭТИ 4 СТРОКИ):
     logger.info(
         f"DEBUG reserve_slot: получен specialist='{specialist}', time='{time_str}'"
     )
@@ -1708,20 +1707,22 @@ async def reserve_slot(
         "subservice": ss,
         "created_at": datetime.now(TIMEZONE).isoformat(),
     }
-    context.job_queue.run_once(
-        release_reservation,
-        RESERVATION_TIMEOUT,
-        chat_id=update.effective_chat.id,
-        name=f"reservation_timeout_{update.effective_chat.id}",
-        data={"user_id": update.effective_user.id},
-    )
-    context.job_queue.run_once(
-        warn_reservation,
-        WARNING_TIMEOUT,
-        chat_id=update.effective_chat.id,
-        name=f"reservation_warn_{update.effective_chat.id}",
-        data={"user_id": update.effective_user.id},
-    )
+
+    # ВРЕМЕННО КОММЕНТИРУЕМ ТАЙМАУТЫ - они вызывают сообщения
+    # context.job_queue.run_once(
+    #     release_reservation,
+    #     RESERVATION_TIMEOUT,
+    #     chat_id=update.effective_chat.id,
+    #     name=f"reservation_timeout_{update.effective_chat.id}",
+    #     data={"user_id": update.effective_user.id},
+    # )
+    # context.job_queue.run_once(
+    #     warn_reservation,
+    #     WARNING_TIMEOUT,
+    #     chat_id=update.effective_chat.id,
+    #     name=f"reservation_warn_{update.effective_chat.id}",
+    #     data={"user_id": update.effective_user.id},
+    # )
 
     kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
     await query.edit_message_text(
@@ -1820,18 +1821,26 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"DEBUG: enter_phone вызвана в неправильном состоянии: {context.user_data.get('state')}"
         )
         return ENTER_PHONE
-    
+
     phone = (update.message.text or "").strip()
     if not validate_phone(phone):
-        kb_back = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
         await update.message.reply_text(
             "❌ Неверный формат номера телефона. Введите номер длиной 10-15 цифр."
-            reply_markup=InlineKeyboardMarkup(kb_back)
         )
         return ENTER_PHONE
-    
+
     context.user_data["phone"] = phone
-    kb_back = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
+
+    kb = [
+        [
+            InlineKeyboardButton(
+                "✅ Подтвердить запись", callback_data="confirm_booking"
+            )
+        ],
+        [InlineKeyboardButton("❌ Отменить", callback_data="cancel_booking")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+    ]
+
     await update.message.reply_text(
         "📋 Пожалуйста, подтвердите запись:\n\n"
         f"Услуга: {context.user_data.get('subservice', 'N/A')} ({context.user_data.get('service_type', 'N/A')})\n"
@@ -1840,23 +1849,13 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Время: {context.user_data.get('time', 'N/A')}\n"
         f"Имя: {context.user_data.get('name', 'N/A')}\n"
         f"Телефон: {context.user_data.get('phone', 'N/A')}\n\n"
-        "Всё верно?"
-        reply_markup=InlineKeyboardMarkup(kb_back)
+        "Всё верно? Выберите действие:",
+        reply_markup=InlineKeyboardMarkup(kb),
     )
-    kb_confirm = [
-        [
-            InlineKeyboardButton(
-                "✅ Подтвердить запись", callback_data="confirm_booking"
-            )
-        ],
-        [InlineKeyboardButton("❌ Отменить", callback_data="cancel_booking")],
-    ]
-    await update.message.reply_text(
-        "Выберите действие:",
-        reply_markup=InlineKeyboardMarkup(kb_confirm)
-    )
+
     context.user_data["state"] = AWAITING_CONFIRMATION
     return AWAITING_CONFIRMATION
+
 
 # --- FINALIZE BOOKING ---
 
