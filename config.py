@@ -768,10 +768,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
 
-    logger.info("=== НАЖАТА КНОПКА ===")
-    logger.info(f"Кнопка: {data}")
-    logger.info(f"Состояние пользователя: {context.user_data.get('state')}")
-    logger.info(f"Все данные user_data: {context.user_data}")
+    # ПРОСТАЯ ОТЛАДКА - только в консоль
+    print(f"=== НАЖАТА КНОПКА: {data} ===")
+    print(f"Состояние пользователя: {context.user_data.get('state')}")
+    
+    # Если кнопка "back" - логируем подробнее
+    if data == "back":
+        print(f"=== BACK КНОПКА ===")
+        print(f"Текущее состояние: {context.user_data.get('state')}")
+        print(f"Доступные состояния в back_map: {list(back_map.keys())}")
 
     back_map = {
         SELECT_SUBSERVICE: select_service_type,
