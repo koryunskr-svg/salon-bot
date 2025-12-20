@@ -768,6 +768,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
 
+    print("=== НАЖАТА КНОПКА ===")
+    print(f"Кнопка: {data}")
+    print(f"Состояние пользователя: {context.user_data.get('state')}")
+
     back_map = {
         SELECT_SUBSERVICE: select_service_type,
         SHOW_PRICE_INFO: select_subservice,
