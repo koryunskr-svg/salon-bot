@@ -1,7 +1,9 @@
 # main.py-Q-3256-21.12.25-D-экспер.
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 from dotenv import load_dotenv
+
 load_dotenv()
 import logging.handlers
 import os
@@ -3258,8 +3260,24 @@ def _handle_exit(signum, frame):
         remove_lock_file()
         logger.info("🔒 Бот остановлен и lock-файл удалён.")
 
+    try:
+        signal.signal(signal.SIGTERM, _handle_exit)
+        signal.signal(signal.SIGINT, _handle_exit)
+        logger.info("✅ Обработчики сигналов зарегистрированы.")
+    except Exception as _err:
+        logger.debug(f"Не удалось установить signal handlers: {_err}")
+
+    try:
+        logger.info("🚀 Бот запущен в режиме long polling.")
+        application.run_polling()
+    except KeyboardInterrupt:
+        logger.info("⚠️ Получен сигнал остановки (Ctrl+C).")
+    except Exception as e:
+        logger.critical(f"❌ Критическая ошибка при работе бота: {e}", exc_info=True)
+    finally:
+        remove_lock_file()
+        logger.info("🔒 Бот остановлен и lock-файл удалён.")
+
 
 if __name__ == "__main__":
     main()
-
-
