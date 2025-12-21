@@ -1,6 +1,5 @@
 # main.py-Q-3256-21.12.25-D-экспер.
 import logging
-
 logging.basicConfig(level=logging.DEBUG)
 import logging.handlers
 import os
@@ -3260,3 +3259,4 @@ def _handle_exit(signum, frame):
 
 if __name__ == "__main__":
     main()
+
