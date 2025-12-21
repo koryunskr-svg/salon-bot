@@ -3212,22 +3212,22 @@ def main():
         group=-1,
     )
     register_handlers(application)
-    logger.info("✅ Обработчики зарегистрированы.")
-    # application.job_queue.run_daily(
-        cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time()
-    )
-    # application.job_queue.run_repeating(send_reminders, interval=60, first=10)
-    notify_time = datetime.strptime(
-        get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M"
-    ).time()
-    # application.job_queue.run_daily(notify_admins_of_new_calls_job, time=notify_time)
-    # application.job_queue.run_repeating(health_check_job, interval=300, first=10)
-    # application.job_queue.run_repeating(
-        cleanup_stuck_reservations_job, interval=900, first=60
-    )
+logger.info("✅ Обработчики зарегистрированы.")
+# application.job_queue.run_daily(
+#    cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time()
+# )
+# application.job_queue.run_repeating(send_reminders, interval=60, first=10)
+# notify_time = datetime.strptime(
+#     get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M"
+# ).time()
+# application.job_queue.run_daily(notify_admins_of_new_calls_job, time=notify_time)
+# application.job_queue.run_repeating(health_check_job, interval=300, first=10)
+# application.job_queue.run_repeating(
+#     cleanup_stuck_reservations_job, interval=900, first=60
+# )
 
-    def _handle_exit(signum, frame):
-        logger.info(f"Получен системный сигнал {signum}, завершаем работу...")
+def _handle_exit(signum, frame):
+    logger.info(f"Получен системный сигнал {signum}, завершаем работу...")
         try:
             remove_lock_file()
         except Exception:
@@ -3254,4 +3254,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
