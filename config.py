@@ -1,5 +1,6 @@
 # main.py-Q-3256-21.12.25-D-экспер.
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 import logging.handlers
 import os
@@ -1848,14 +1849,15 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- FINALIZE BOOKING ---
 
+
 async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
-    print("="*50)
+
+    print("=" * 50)
     print("ДИАГНОСТИКА: почему нет записи")
     print(f"1. Все данные: {context.user_data}")
-    
+
     # Получаем данные
     st = context.user_data.get("service_type")
     ss = context.user_data.get("subservice")
@@ -1864,16 +1866,16 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     time_str = context.user_data.get("time")
     name = context.user_data.get("name")
     phone = context.user_data.get("phone")
-    
+
     print(f"2. Ключевые данные:")
     print(f"   - Услуга: {ss} ({st})")
     print(f"   - Специалист: {specialist}")
     print(f"   - Дата/время: {date_str} {time_str}")
     print(f"   - Клиент: {name} ({phone})")
-    
+
     # Проверяем safe_append_to_sheet
     print(f"3. Пробуем записать в таблицу...")
-    
+
     test_record = [
         "ТЕСТ-001",
         name or "Тест",
@@ -1889,14 +1891,14 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "❌",
         "❌",
         str(update.effective_chat.id),
-        "test_id"
+        "test_id",
     ]
-    
+
     try:
         print(f"4. Вызываю safe_append_to_sheet...")
         result = safe_append_to_sheet(SHEET_ID, "Записи", [test_record])
         print(f"5. Результат safe_append_to_sheet: {result}")
-        
+
         if result:
             await query.edit_message_text("✅ ТЕСТ: Запись создана! Проверьте таблицу.")
         else:
@@ -1904,9 +1906,10 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"6. ОШИБКА: {e}")
         await query.edit_message_text(f"❌ Исключение: {str(e)[:100]}")
-    
-    print("="*50)
+
+    print("=" * 50)
     return MENU
+
 
 # --- CONFIRM / CANCEL BOOKING ---
 
@@ -3212,6 +3215,8 @@ def main():
         group=-1,
     )
     register_handlers(application)
+
+
 logger.info("✅ Обработчики зарегистрированы.")
 # application.job_queue.run_daily(
 #    cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time()
@@ -3226,13 +3231,14 @@ logger.info("✅ Обработчики зарегистрированы.")
 #     cleanup_stuck_reservations_job, interval=900, first=60
 # )
 
+
 def _handle_exit(signum, frame):
     logger.info(f"Получен системный сигнал {signum}, завершаем работу...")
-        try:
-            remove_lock_file()
-        except Exception:
-            pass
-        sys.exit(0)
+    try:
+        remove_lock_file()
+    except Exception:
+        pass
+    sys.exit(0)
 
     try:
         signal.signal(signal.SIGTERM, _handle_exit)
