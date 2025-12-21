@@ -3182,13 +3182,17 @@ def main():
             logger.info("🧹 Старый файл persistence удалён при старте.")
     except Exception:
         logger.exception("Не удалось удалить старый persistence файл при старте.")
+
     if not create_lock_file():
         return
+
     setup_production_logging()
     logger.info("🔄 Запуск бота...")
+
     if not validate_configuration():
         remove_lock_file()
         return
+
     try:
         load_settings_from_table()
         logger.info("✅ Настройки загружены и закэшированы при старте")
@@ -3200,6 +3204,7 @@ def main():
         logger.critical(f"❌ Не удалось загрузить настройки: {e}")
         remove_lock_file()
         return
+
     try:
         load_admins()
         logger.info("✅ Администраторы загружены.")
@@ -3207,32 +3212,83 @@ def main():
         logger.critical(f"❌ Не удалось загрузить администраторов: {e}")
         remove_lock_file()
         return
+
     log_business_event("bot_started")
     persistence = PicklePersistence(filepath=persistence_file)
-    application = (
-        ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).persistence(persistence).build()
-    )
+
+    try:
+        application = (
+            ApplicationBuilder()
+            .token(TELEGRAM_BOT_TOKEN)
+            .persistence(persistence)
+            .build()
+        )
+    except Exception as e:
+        logger.critical(f"❌ Не удалось создать Application: {e}")
+        remove_lock_file()
+        return
+
     application.add_error_handler(global_error_handler)
     application.add_handler(
         MessageHandler(filters.ALL & ~filters.COMMAND, global_activity_updater),
         group=-1,
     )
+
     register_handlers(application)
 
+    logger.info("✅ Обработчики зарегистрированы.")
 
-logger.info("✅ Обработчики зарегистрированы.")
-# application.job_queue.run_daily(
-#    cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time()
-# )
-# application.job_queue.run_repeating(send_reminders, interval=60, first=10)
-# notify_time = datetime.strptime(
-#     get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M"
-# ).time()
-# application.job_queue.run_daily(notify_admins_of_new_calls_job, time=notify_time)
-# application.job_queue.run_repeating(health_check_job, interval=300, first=10)
-# application.job_queue.run_repeating(
-#     cleanup_stuck_reservations_job, interval=900, first=60
-# )
+    # Раскомментируем и настроим jobs
+    try:
+        # Очистка старых сессий в 3:00
+        application.job_queue.run_daily(
+            cleanup_old_sessions_job,
+            time=datetime.strptime("03:00", "%H:%M").time(),
+            days=(0, 1, 2, 3, 4, 5, 6),
+        )
+
+        # Напоминания каждые 60 секунд
+        application.job_queue.run_repeating(send_reminders, interval=60, first=10)
+
+        # Уведомления о новых заявках в 09:00
+        notify_time = datetime.strptime(
+            get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M"
+        ).time()
+        application.job_queue.run_daily(
+            notify_admins_of_new_calls_job, time=notify_time, days=(0, 1, 2, 3, 4, 5, 6)
+        )
+
+        # Health check каждые 5 минут
+        application.job_queue.run_repeating(health_check_job, interval=300, first=10)
+
+        # Очистка зависших бронирований каждые 15 минут
+        application.job_queue.run_repeating(
+            cleanup_stuck_reservations_job, interval=900, first=60
+        )
+
+        logger.info("✅ Фоновые задачи зарегистрированы.")
+    except Exception as e:
+        logger.error(f"⚠️ Ошибка при регистрации фоновых задач: {e}")
+
+    # Установка обработчиков сигналов
+    try:
+        signal.signal(signal.SIGTERM, _handle_exit)
+        signal.signal(signal.SIGINT, _handle_exit)
+        logger.info("✅ Обработчики сигналов зарегистрированы.")
+    except Exception as e:
+        logger.debug(f"⚠️ Не удалось установить signal handlers: {e}")
+
+    # Запуск бота
+    try:
+        logger.info("🚀 Бот запущен в режиме long polling.")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except KeyboardInterrupt:
+        logger.info("⚠️ Получен сигнал остановки (Ctrl+C).")
+    except Exception as e:
+        logger.critical(f"❌ Критическая ошибка при работе бота: {e}", exc_info=True)
+    finally:
+        remove_lock_file()
+        logger.info("🔒 Бот остановлен и lock-файл удалён.")
 
 
 def _handle_exit(signum, frame):
