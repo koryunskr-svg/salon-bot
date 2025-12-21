@@ -1,5 +1,10 @@
-# main.py-Q-2608-17.12.25-D-для изм.
+# main.py-Q-3256-21.12.25-D-экспер.
 import logging
+
+logging.basicConfig(level=logging.DEBUG)
+from dotenv import load_dotenv
+
+load_dotenv()
 import logging.handlers
 import os
 import time
@@ -10,6 +15,7 @@ import signal
 import sys
 import threading
 import re
+import asyncio
 from typing import Dict, Any
 
 from telegram import (
@@ -768,10 +774,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
 
-    logger.info("=== НАЖАТА КНОПКА ===")
-    logger.info(f"Кнопка: {data}")
-    logger.info(f"Состояние пользователя: {context.user_data.get('state')}")
-    logger.info(f"Все данные user_data: {context.user_data}")
+    # ПРОСТАЯ ОТЛАДКА - только в консоль
+    print(f"=== НАЖАТА КНОПКА: {data} ===")
+    print(f"Состояние пользователя: {context.user_data.get('state')}")
+
+    # Если кнопка "back" - логируем подробнее
+    if data == "back":
+        print(f"=== BACK КНОПКА ===")
+        print(f"Текущее состояние: {context.user_data.get('state')}")
+        print(f"Доступные состояния в back_map: {list(back_map.keys())}")
 
     back_map = {
         SELECT_SUBSERVICE: select_service_type,
@@ -1670,7 +1681,6 @@ async def reserve_slot(
     query = update.callback_query
     await query.answer()
 
-    # ДОБАВИТЬ ОТЛАДКУ (ЭТИ 4 СТРОКИ):
     logger.info(
         f"DEBUG reserve_slot: получен specialist='{specialist}', time='{time_str}'"
     )
@@ -1678,7 +1688,6 @@ async def reserve_slot(
     ss = context.user_data.get("subservice")
     logger.info(f"DEBUG reserve_slot: date='{date_str}', subservice='{ss}'")
 
-    # ВАЖНО: СОХРАНИТЬ ВРЕМЯ В context.user_data!
     context.user_data["time"] = time_str
 
     step = calculate_service_step(ss)
@@ -1703,21 +1712,12 @@ async def reserve_slot(
         "subservice": ss,
         "created_at": datetime.now(TIMEZONE).isoformat(),
     }
-    context.job_queue.run_once(
-        release_reservation,
-        RESERVATION_TIMEOUT,
-        chat_id=update.effective_chat.id,
-        name=f"reservation_timeout_{update.effective_chat.id}",
-        data={"user_id": update.effective_user.id},
+
+    kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
+    await query.edit_message_text(
+        "⏳ Слот зарезервирован! Введите ваше имя:",
+        reply_markup=InlineKeyboardMarkup(kb),
     )
-    context.job_queue.run_once(
-        warn_reservation,
-        WARNING_TIMEOUT,
-        chat_id=update.effective_chat.id,
-        name=f"reservation_warn_{update.effective_chat.id}",
-        data={"user_id": update.effective_user.id},
-    )
-    await query.edit_message_text("⏳ Слот зарезервирован! Введите ваше имя:")
     context.user_data["state"] = ENTER_NAME
     return ENTER_NAME
 
@@ -1774,6 +1774,8 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"=== ВЫЗВАНА enter_name ===")
+    print(f"Состояние: {context.user_data.get('state')}, имя: '{update.message.text}'")
     logger.info(
         f"DEBUG enter_name: state={context.user_data.get('state')}, expected={ENTER_NAME}"
     )
@@ -1801,6 +1803,9 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"=== ВЫЗВАНА enter_phone ===")
+    print(f"Сообщение пользователя: '{update.message.text}'")
+    chat_id = update.effective_chat.id
     logger.info(
         f"DEBUG enter_phone: state={context.user_data.get('state')}, expected={ENTER_PHONE}"
     )
@@ -1809,13 +1814,26 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"DEBUG: enter_phone вызвана в неправильном состоянии: {context.user_data.get('state')}"
         )
         return ENTER_PHONE
+
     phone = (update.message.text or "").strip()
     if not validate_phone(phone):
         await update.message.reply_text(
             "❌ Неверный формат номера телефона. Введите номер длиной 10-15 цифр."
         )
         return ENTER_PHONE
+
     context.user_data["phone"] = phone
+
+    kb = [
+        [
+            InlineKeyboardButton(
+                "✅ Подтвердить запись", callback_data="confirm_booking"
+            )
+        ],
+        [InlineKeyboardButton("❌ Отменить", callback_data="cancel_booking")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+    ]
+
     await update.message.reply_text(
         "📋 Пожалуйста, подтвердите запись:\n\n"
         f"Услуга: {context.user_data.get('subservice', 'N/A')} ({context.user_data.get('service_type', 'N/A')})\n"
@@ -1824,19 +1842,10 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Время: {context.user_data.get('time', 'N/A')}\n"
         f"Имя: {context.user_data.get('name', 'N/A')}\n"
         f"Телефон: {context.user_data.get('phone', 'N/A')}\n\n"
-        "Всё верно?"
+        "Всё верно? Выберите действие:",
+        reply_markup=InlineKeyboardMarkup(kb),
     )
-    kb = [
-        [
-            InlineKeyboardButton(
-                "✅ Подтвердить запись", callback_data="confirm_booking"
-            )
-        ],
-        [InlineKeyboardButton("❌ Отменить", callback_data="cancel_booking")],
-    ]
-    await update.message.reply_text(
-        "Выберите действие:", reply_markup=InlineKeyboardMarkup(kb)
-    )
+
     context.user_data["state"] = AWAITING_CONFIRMATION
     return AWAITING_CONFIRMATION
 
@@ -1847,100 +1856,145 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    st = context.user_data.get("service_type")
-    ss = context.user_data.get("subservice")
-    specialist = context.user_data.get("selected_specialist")
-    date_str = context.user_data.get("date")
-    time_str = context.user_data.get("time")
-    name = context.user_data.get("name")
-    phone = context.user_data.get("phone")
-    if not all([st, ss, specialist, date_str, time_str, name, phone]):
-        await query.edit_message_text(
-            "❌ Не все данные для записи заполнены. Пожалуйста, начните сначала."
-        )
-        context.user_data.clear()
+
+    # === 1. ОТМЕНА ТАЙМЕРОВ РЕЗЕРВИРОВАНИЯ ===
+    chat_id = update.effective_chat.id
+    job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
+    for job_name in job_names:
+        current_jobs = context.job_queue.get_jobs_by_name(job_name)
+        for job in current_jobs:
+            job.schedule_removal()
+    # === /ОТМЕНА ТАЙМЕРОВ ===
+
+    # === 2. ПОЛУЧАЕМ ДАННЫЕ ===
+    temp_booking = context.user_data.get("temp_booking", {})
+    if not temp_booking:
+        await query.edit_message_text("❌ Ошибка: данные бронирования не найдены.")
         return MENU
-    check_result, error_msg = await _validate_booking_checks(
-        context, name, phone, date_str, time_str, st
-    )
-    if check_result is False:
-        temp = context.user_data.get("temp_booking")
-        if temp and temp.get("event_id"):
-            try:
-                safe_delete_calendar_event(CALENDAR_ID, temp["event_id"])
-            except Exception as e:
-                logger.error(f"❌ Ошибка удаления события при отмене: {e}")
-        await query.edit_message_text(error_msg)
-        context.user_data.clear()
-        return MENU
-    elif check_result == "CONFIRM_REPEAT":
-        conflict = context.user_data.get("repeat_booking_conflict", {})
-        kb = [
-            [InlineKeyboardButton("✅ Да, хочу", callback_data="confirm_repeat")],
-            [InlineKeyboardButton("❌ Отменить", callback_data="start")],
+
+    st = context.user_data.get("service_type", "Неизвестно")
+    ss = context.user_data.get("subservice", "Неизвестно")
+    specialist = context.user_data.get("selected_specialist", "любой")
+    date_str = context.user_data.get("date", "Неизвестно")
+    time_str = context.user_data.get("time", "Неизвестно")
+    name = context.user_data.get("name", "Неизвестно")
+    phone = context.user_data.get("phone", "Неизвестно")
+    event_id = temp_booking.get("event_id")
+
+    # === 3. ОБНОВЛЯЕМ СОБЫТИЕ В КАЛЕНДАРЕ ===
+    if event_id:
+        try:
+            # Получаем цену услуги для описания
+            services = get_cached_services()
+            price_info = "цена не указана"
+            for row in services:
+                if len(row) > 1 and row[1] == ss:
+                    price_info = safe_parse_price(row[5] if len(row) > 5 else "")
+                    break
+
+            new_summary = f"{name} - {ss}"
+            new_description = (
+                f"Клиент: {name}\n"
+                f"Телефон: {phone}\n"
+                f"Услуга: {ss} ({st})\n"
+                f"Стоимость: {price_info}"
+            )
+            safe_update_calendar_event(
+                CALENDAR_ID,
+                event_id,
+                summary=new_summary,
+                description=new_description,
+                color_id="10",  # Зелёный цвет для подтверждённых
+            )
+            logger.info(f"✅ Календарь обновлён: {event_id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка обновления календаря: {e}")
+
+    # === 4. ЗАПИСЫВАЕМ В ТАБЛИЦУ "ЗАПИСИ" ===
+    try:
+        record_id = f"REC-{int(time.time())}"
+        created_at = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
+
+        # Формируем полную запись
+        full_record = [
+            record_id,  # A: ID записи
+            name,  # B: Имя
+            phone,  # C: Телефон
+            st,  # D: Категория услуги
+            ss,  # E: Услуга
+            specialist,  # F: Специалист
+            date_str,  # G: Дата
+            time_str,  # H: Время
+            "подтверждено",  # I: Статус
+            created_at,  # J: Дата создания
+            "",  # K: Комментарий
+            "❌",  # L: Напоминание 24ч
+            "❌",  # M: Напоминание 1ч
+            str(chat_id),  # N: Chat ID
+            event_id or "",  # O: Event ID
         ]
-        msg = (
-            f"⚠️ У вас уже есть запись на <b>{conflict.get('category', 'N/A')}</b>\n"
-            f"{conflict.get('date', 'N/A')} в {conflict.get('time', 'N/A')} к {conflict.get('specialist', 'N/A')}.\n\n"
-            "Вы уверены, что хотите записаться ещё раз?"
-        )
+
+        # Добавляем в таблицу
+        success = safe_append_to_sheet(SHEET_ID, "Записи", [full_record])
+        if not success:
+            raise Exception("safe_append_to_sheet вернул False")
+
+        logger.info(f"✅ Запись сохранена в таблицу: {record_id}")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка записи в таблицу: {e}")
         await query.edit_message_text(
-            msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML"
+            "❌ Ошибка при сохранении записи. Попробуйте позже или свяжитесь с администратором."
         )
-        context.user_data["state"] = AWAITING_REPEAT_CONFIRMATION
-        return AWAITING_REPEAT_CONFIRMATION
-    temp = context.user_data.get("temp_booking")
-    event_id = temp.get("event_id") if temp else None
-    if not event_id:
-        step = calculate_service_step(ss)
-        dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
-        start_dt = TIMEZONE.localize(dt)
-        end_dt = start_dt + timedelta(minutes=step)
-        event_id = safe_create_calendar_event(
-            CALENDAR_ID,
-            f"{name} - {ss}",
-            start_dt.isoformat(),
-            end_dt.isoformat(),
-            "10",
-            f"Клиент: {name}, тел.: {phone}",
-        )
-    else:
-        safe_update_calendar_event(
-            CALENDAR_ID,
-            event_id,
-            f"{name} - {ss}",
-            "10",
-            f"Клиент: {name}, тел.: {phone}",
-        )
-    record_id = f"ЗАП-{len(safe_get_sheet_data(SHEET_ID, 'Записи!A:A') or []) + 1:03d}"
-    new_record = [
-        record_id,
-        name,
-        phone,
-        st,
-        ss,
-        specialist,
-        date_str,
-        time_str,
-        "подтверждено",
-        datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M"),
-        "",
-        "❌",
-        "❌",
-        str(update.effective_chat.id),
-        event_id,
-    ]
-    safe_append_to_sheet(SHEET_ID, "Записи", [new_record])
-    context.user_data.clear()
-    success = (
-        f"✅ Вы записаны!\nУслуга: {ss}\nСпециалист: {specialist}\nДата: {date_str}\nВремя: {time_str}\n"
-        f"Стоимость: {get_setting('Стоимость', 'уточняйте')}"
+        return MENU
+
+    # === 5. УВЕДОМЛЯЕМ АДМИНИСТРАТОРОВ ===
+    admin_message = (
+        f"📢 <b>Новая запись</b>\n"
+        f"👤 Клиент: {name}\n"
+        f"📞 Телефон: {phone}\n"
+        f"💅 Услуга: {ss} ({st})\n"
+        f"👩‍💼 Специалист: {specialist}\n"
+        f"📅 Дата: {date_str}\n"
+        f"⏰ Время: {time_str}\n"
+        f"🆔 ID записи: {record_id}"
     )
-    await query.edit_message_text(success)
-    admin_msg = f"📢 Новая запись: <b>{ss}</b> к <b>{specialist}</b> {date_str} в {time_str} — <b>{name}</b>"
-    await notify_admins(context, admin_msg)
-    logger.info(f"✅ Новая запись: {name} ({phone}) -> {ss} ({date_str} {time_str})")
+    try:
+        await notify_admins(context, admin_message)
+        logger.info(f"✅ Админы уведомлены о записи {record_id}")
+    except Exception as e:
+        logger.error(f"⚠️ Не удалось уведомить админов: {e}")
+
+    # === 6. ОТПРАВЛЯЕМ ПОЛЬЗОВАТЕЛЮ ФИНАЛЬНОЕ СООБЩЕНИЕ ===
+    user_message = (
+        f"✅ <b>Вы успешно записаны!</b>\n\n"
+        f"<b>Детали записи:</b>\n"
+        f"• Услуга: {ss}\n"
+        f"• Специалист: {specialist}\n"
+        f"• Дата: {date_str}\n"
+        f"• Время: {time_str}\n"
+        f"• Ваше имя: {name}\n\n"
+        f"<i>ID записи: {record_id}</i>\n\n"
+        f"Мы напомним вам о визите за 24 часа и за 1 час."
+    )
+
+    # Клавиатура для возврата в меню
+    menu_keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("🏠 В главное меню", callback_data="start")]]
+    )
+
+    await query.edit_message_text(
+        user_message, reply_markup=menu_keyboard, parse_mode="HTML"
+    )
+
+    # === 7. ОЧИЩАЕМ ВРЕМЕННЫЕ ДАННЫЕ ===
+    context.user_data.clear()
+    logger.info(f"✅ Запись {record_id} полностью завершена для пользователя {chat_id}")
+
     return MENU
+
+
+# --- /FINALIZE BOOKING ---
 
 
 # --- CONFIRM / CANCEL BOOKING ---
@@ -1955,6 +2009,16 @@ async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_reservation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    # Отмена таймеров
+    chat_id = update.effective_chat.id
+    job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
+
+    for job_name in job_names:
+        current_jobs = context.job_queue.get_jobs_by_name(job_name)
+        for job in current_jobs:
+            job.schedule_removal()
+
     temp = context.user_data.get("temp_booking")
     if temp and temp.get("event_id"):
         try:
@@ -1966,8 +2030,9 @@ async def cancel_reservation(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except Exception as e:
             logger.error(f"❌ Ошибка при отмене резерва: {e}")
     await query.edit_message_text("❌ Резерв отменён. Слот освобождён.")
-    context.user_data.clear()
+    await asyncio.sleep(2)
     await start(update, context)
+    context.user_data.clear()
     return MENU
 
 
@@ -3200,13 +3265,17 @@ def main():
             logger.info("🧹 Старый файл persistence удалён при старте.")
     except Exception:
         logger.exception("Не удалось удалить старый persistence файл при старте.")
+
     if not create_lock_file():
         return
+
     setup_production_logging()
     logger.info("🔄 Запуск бота...")
+
     if not validate_configuration():
         remove_lock_file()
         return
+
     try:
         load_settings_from_table()
         logger.info("✅ Настройки загружены и закэшированы при старте")
@@ -3218,6 +3287,7 @@ def main():
         logger.critical(f"❌ Не удалось загрузить настройки: {e}")
         remove_lock_file()
         return
+
     try:
         load_admins()
         logger.info("✅ Администраторы загружены.")
@@ -3225,38 +3295,92 @@ def main():
         logger.critical(f"❌ Не удалось загрузить администраторов: {e}")
         remove_lock_file()
         return
+
     log_business_event("bot_started")
     persistence = PicklePersistence(filepath=persistence_file)
-    application = (
-        ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).persistence(persistence).build()
-    )
+
+    try:
+        application = (
+            ApplicationBuilder()
+            .token(TELEGRAM_BOT_TOKEN)
+            .persistence(persistence)
+            .build()
+        )
+    except Exception as e:
+        logger.critical(f"❌ Не удалось создать Application: {e}")
+        remove_lock_file()
+        return
+
     application.add_error_handler(global_error_handler)
     application.add_handler(
         MessageHandler(filters.ALL & ~filters.COMMAND, global_activity_updater),
         group=-1,
     )
-    register_handlers(application)
-    logger.info("✅ Обработчики зарегистрированы.")
-    application.job_queue.run_daily(
-        cleanup_old_sessions_job, time=datetime.strptime("03:00", "%H:%M").time()
-    )
-    application.job_queue.run_repeating(send_reminders, interval=60, first=10)
-    notify_time = datetime.strptime(
-        get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M"
-    ).time()
-    application.job_queue.run_daily(notify_admins_of_new_calls_job, time=notify_time)
-    application.job_queue.run_repeating(health_check_job, interval=300, first=10)
-    application.job_queue.run_repeating(
-        cleanup_stuck_reservations_job, interval=900, first=60
-    )
 
-    def _handle_exit(signum, frame):
-        logger.info(f"Получен системный сигнал {signum}, завершаем работу...")
-        try:
-            remove_lock_file()
-        except Exception:
-            pass
-        sys.exit(0)
+    register_handlers(application)
+
+    logger.info("✅ Обработчики зарегистрированы.")
+
+    # Раскомментируем и настроим jobs
+    try:
+        # Очистка старых сессий в 3:00
+        application.job_queue.run_daily(
+            cleanup_old_sessions_job,
+            time=datetime.strptime("03:00", "%H:%M").time(),
+            days=(0, 1, 2, 3, 4, 5, 6),
+        )
+
+        # Напоминания каждые 60 секунд
+        application.job_queue.run_repeating(send_reminders, interval=60, first=10)
+
+        # Уведомления о новых заявках в 09:00
+        notify_time = datetime.strptime(
+            get_setting("Время утреннего уведомления о заявках", "09:00"), "%H:%M"
+        ).time()
+        application.job_queue.run_daily(
+            notify_admins_of_new_calls_job, time=notify_time, days=(0, 1, 2, 3, 4, 5, 6)
+        )
+
+        # Health check каждые 5 минут
+        application.job_queue.run_repeating(health_check_job, interval=300, first=10)
+
+        # Очистка зависших бронирований каждые 15 минут
+        application.job_queue.run_repeating(
+            cleanup_stuck_reservations_job, interval=900, first=60
+        )
+
+        logger.info("✅ Фоновые задачи зарегистрированы.")
+    except Exception as e:
+        logger.error(f"⚠️ Ошибка при регистрации фоновых задач: {e}")
+
+    # Установка обработчиков сигналов
+    try:
+        signal.signal(signal.SIGTERM, _handle_exit)
+        signal.signal(signal.SIGINT, _handle_exit)
+        logger.info("✅ Обработчики сигналов зарегистрированы.")
+    except Exception as e:
+        logger.debug(f"⚠️ Не удалось установить signal handlers: {e}")
+
+    # Запуск бота
+    try:
+        logger.info("🚀 Бот запущен в режиме long polling.")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except KeyboardInterrupt:
+        logger.info("⚠️ Получен сигнал остановки (Ctrl+C).")
+    except Exception as e:
+        logger.critical(f"❌ Критическая ошибка при работе бота: {e}", exc_info=True)
+    finally:
+        remove_lock_file()
+        logger.info("🔒 Бот остановлен и lock-файл удалён.")
+
+
+def _handle_exit(signum, frame):
+    logger.info(f"Получен системный сигнал {signum}, завершаем работу...")
+    try:
+        remove_lock_file()
+    except Exception:
+        pass
+    sys.exit(0)
 
     try:
         signal.signal(signal.SIGTERM, _handle_exit)
@@ -3264,6 +3388,24 @@ def main():
         logger.info("✅ Обработчики сигналов зарегистрированы.")
     except Exception as _err:
         logger.debug(f"Не удалось установить signal handlers: {_err}")
+    try:
+        logger.info("🚀 Бот запущен в режиме long polling.")
+        application.run_polling()
+    except KeyboardInterrupt:
+        logger.info("⚠️ Получен сигнал остановки (Ctrl+C).")
+    except Exception as e:
+        logger.critical(f"❌ Критическая ошибка при работе бота: {e}", exc_info=True)
+    finally:
+        remove_lock_file()
+        logger.info("🔒 Бот остановлен и lock-файл удалён.")
+
+    try:
+        signal.signal(signal.SIGTERM, _handle_exit)
+        signal.signal(signal.SIGINT, _handle_exit)
+        logger.info("✅ Обработчики сигналов зарегистрированы.")
+    except Exception as _err:
+        logger.debug(f"Не удалось установить signal handlers: {_err}")
+
     try:
         logger.info("🚀 Бот запущен в режиме long polling.")
         application.run_polling()
