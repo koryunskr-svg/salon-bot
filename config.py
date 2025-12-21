@@ -1,6 +1,8 @@
 # main.py-Q-3256-21.12.25-D-экспер.
 import logging
 logging.basicConfig(level=logging.DEBUG)
+from dotenv import load_dotenv
+load_dotenv()
 import logging.handlers
 import os
 import time
@@ -3259,4 +3261,5 @@ def _handle_exit(signum, frame):
 
 if __name__ == "__main__":
     main()
+
 
