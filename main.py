@@ -1934,8 +1934,12 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             event_id or "",  # O: Event ID
         ]
 
+        # ОТЛАДКА: выводим, что собираемся записать
+        print(f"DEBUG: Пытаюсь записать в таблицу: {full_record}")
+
         # Добавляем в таблицу
         success = safe_append_to_sheet(SHEET_ID, "Записи", [full_record])
+        print(f"DEBUG: Результат safe_append_to_sheet: {success}")
         if not success:
             raise Exception("safe_append_to_sheet вернул False")
 
@@ -3420,4 +3424,3 @@ def _handle_exit(signum, frame):
 
 if __name__ == "__main__":
     main()
-
