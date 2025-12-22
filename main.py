@@ -980,8 +980,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"=== DEBUG button_handler: confirm_booking вызван (первый обработчик) ===")
         return await confirm_booking(update, context)
     
-    if data == "confirm_booking":
-        return await confirm_booking(update, context)
     if data == "cancel_booking":
         return await cancel_reservation(update, context)
     if data == "confirm_repeat":
@@ -1722,11 +1720,8 @@ async def reserve_slot(
         "created_at": datetime.now(TIMEZONE).isoformat(),
     }
 
-    kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
-    await query.edit_message_text(
-        "⏳ Слот зарезервирован! Введите ваше имя:",
-        reply_markup=InlineKeyboardMarkup(kb),
-    )
+    # kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]  # ← ЗАКОММЕНТИРУЙТЕ
+    await query.edit_message_text("⏳ Слот зарезервирован! Введите ваше имя:")
     context.user_data["state"] = ENTER_NAME
     return ENTER_NAME
 
@@ -1801,7 +1796,6 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTER_NAME
     context.user_data["name"] = name
 
-    kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
 
     await update.message.reply_text(
         "📞 Теперь введите ваш телефон:",
@@ -1956,10 +1950,20 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # ОТЛАДКА: выводим, что собираемся записать
         print(f"DEBUG: Пытаюсь записать в таблицу: {full_record}")
+        print(f"=== DEBUG: SHEET_ID = {SHEET_ID}")
+        print(f"=== DEBUG: full_record длина = {len(full_record)}")
+        print(f"=== DEBUG: Первые 5 элементов = {full_record[:5]}")
 
         # Добавляем в таблицу
         success = safe_append_to_sheet(SHEET_ID, "Записи", [full_record])
+
+        if success:
+            print(f"=== DEBUG: safe_append_to_sheet вернул True")
+        else:
+            print(f"=== DEBUG: safe_append_to_sheet вернул False")
+
         print(f"DEBUG: Результат safe_append_to_sheet: {success}")
+
         if not success:
             raise Exception("safe_append_to_sheet вернул False")
 
