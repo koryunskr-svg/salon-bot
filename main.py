@@ -975,6 +975,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cancel_record_from_list(
             update, context, data.split("cancel_record_", 1)[1]
         )
+    
+    if data == "confirm_booking":
+    print(f"=== DEBUG button_handler: confirm_booking вызван (первый обработчик) ===")
+    return await confirm_booking(update, context)
+    
     if data == "confirm_booking":
         return await confirm_booking(update, context)
     if data == "cancel_booking":
@@ -2013,7 +2018,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- CONFIRM / CANCEL BOOKING ---
-
 
 async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
