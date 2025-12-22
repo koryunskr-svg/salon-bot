@@ -1881,6 +1881,12 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = context.user_data.get("phone", "Неизвестно")
     event_id = temp_booking.get("event_id")
 
+    print(f"=== DEBUG finalize_booking: Начало ===")
+    print(f"ID чата: {chat_id}")
+    print(f"Данные из context.user_data: {list(context.user_data.keys())}")
+    print(f"ID временного события: {event_id}")
+    print(f"Имя клиента: {name}")
+
     # === 3. ОБНОВЛЯЕМ СОБЫТИЕ В КАЛЕНДАРЕ ===
     if event_id:
         try:
@@ -1933,6 +1939,11 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             str(chat_id),  # N: Chat ID
             event_id or "",  # O: Event ID
         ]
+
+        print(f"=== DEBUG: Формирую запись для таблицы ===")
+        print(f"Запись выглядит так: {full_record}")
+        print(f"Колонок в записи: {len(full_record)}")
+        print(f"ID листа: {SHEET_ID}, Имя листа: 'Записи'")
 
         # ОТЛАДКА: выводим, что собираемся записать
         print(f"DEBUG: Пытаюсь записать в таблицу: {full_record}")
