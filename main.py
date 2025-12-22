@@ -1078,6 +1078,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return AWAITING_WAITING_LIST_DETAILS
 
     if data == "confirm_booking":
+    print(f"=== DEBUG button_handler: confirm_booking вызван (второй обработчик) ===")
+    return await confirm_booking(update, context)
+    
+    if data == "confirm_booking":
         return await finalize_booking(update, context)
 
     if data == "cancel_booking":
