@@ -19,8 +19,8 @@ TIMEZONE = pytz.timezone(os.getenv("TZ", "Europe/Moscow"))
 WORK_HOURS_START = "10:00"  # Пример из ТЗ
 WORK_HOURS_END = "20:00"  # Пример из ТЗ
 SLOT_GENERATION_DAYS = 10  # Пример из ТЗ
-RESERVATION_TIMEOUT = 600  # Секунды
-WARNING_TIMEOUT = 540  # Секунды
+RESERVATION_TIMEOUT = 120  # Секунды
+WARNING_TIMEOUT = 60  # Секунды
 TIMEZONE_NAME = "Europe/Moscow"  # Может быть загружено из таблицы
 
 # --- Пример загрузки настроек (реализация в utils/settings.py) ---
@@ -47,3 +47,4 @@ if missing:
     )
 
 print("✅ Конфигурация загружена.")
+
