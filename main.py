@@ -802,8 +802,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if c.user_data.get("priority") == "date"
             else select_date(u, c)
         ),
-        ENTER_NAME: select_time,
-        ENTER_PHONE: enter_name,
+        # ENTER_NAME: select_time,
+        # ENTER_PHONE: enter_name,
         AWAITING_WAITING_LIST_DETAILS: lambda u, c: select_time(u, c),
         AWAITING_WL_PRIORITY_CHOICE: lambda u, c: select_time(u, c),
         AWAITING_CONFIRMATION: lambda u, c: select_time(u, c),  # ← если нужно
@@ -3420,3 +3420,4 @@ def _handle_exit(signum, frame):
 
 if __name__ == "__main__":
     main()
+
