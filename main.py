@@ -774,16 +774,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
 
-    # ПРОСТАЯ ОТЛАДКА - только в консоль
-    print(f"=== НАЖАТА КНОПКА: {data} ===")
-    print(f"Состояние пользователя: {context.user_data.get('state')}")
-
-    # Если кнопка "back" - логируем подробнее
-    if data == "back":
-        print(f"=== BACK КНОПКА ===")
-        print(f"Текущее состояние: {context.user_data.get('state')}")
-        print(f"Доступные состояния в back_map: {list(back_map.keys())}")
-
     back_map = {
         SELECT_SUBSERVICE: select_service_type,
         SHOW_PRICE_INFO: select_subservice,
@@ -809,6 +799,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         AWAITING_CONFIRMATION: lambda u, c: select_time(u, c),  # ← если нужно
         AWAITING_REPEAT_CONFIRMATION: lambda u, c: select_time(u, c),  # ← если нужно
     }
+
+    # ПРОСТАЯ ОТЛАДКА - только в консоль
+    print(f"=== НАЖАТА КНОПКА: {data} ===")
+    print(f"Состояние пользователя: {context.user_data.get('state')}")
+
+    # Если кнопка "back" - логируем подробнее
+    if data == "back":
+        print(f"=== BACK КНОПКА ===")
+        print(f"Текущее состояние: {context.user_data.get('state')}")
+        print(f"Доступные состояния в back_map: {list(back_map.keys())}")
 
     if data == "back":
         state = context.user_data.get("state")
@@ -975,11 +975,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cancel_record_from_list(
             update, context, data.split("cancel_record_", 1)[1]
         )
-    
+
     if data == "confirm_booking":
-        print(f"=== DEBUG button_handler: confirm_booking вызван (первый обработчик) ===")
+        print(
+            f"=== DEBUG button_handler: confirm_booking вызван (первый обработчик) ==="
+        )
         return await confirm_booking(update, context)
-    
+
     if data == "cancel_booking":
         return await cancel_reservation(update, context)
     if data == "confirm_repeat":
@@ -1075,10 +1077,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["state"] = AWAITING_WAITING_LIST_DETAILS
     return AWAITING_WAITING_LIST_DETAILS
 
-    if data == "confirm_booking":
-        print(f"=== DEBUG button_handler: confirm_booking вызван (второй обработчик) ===")
-        return await confirm_booking(update, context)
-    
     if data == "confirm_booking":
         return await finalize_booking(update, context)
 
@@ -1720,8 +1718,11 @@ async def reserve_slot(
         "created_at": datetime.now(TIMEZONE).isoformat(),
     }
 
-    # kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]  # ← ЗАКОММЕНТИРУЙТЕ
-    await query.edit_message_text("⏳ Слот зарезервирован! Введите ваше имя:")
+    kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
+    await query.edit_message_text(
+        "⏳ Слот зарезервирован! Введите ваше имя:",
+        reply_markup=InlineKeyboardMarkup(kb),
+    )
     context.user_data["state"] = ENTER_NAME
     return ENTER_NAME
 
@@ -1796,6 +1797,9 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTER_NAME
     context.user_data["name"] = name
 
+    kb = []  # Пустая клавиатура, чтобы не было ошибки
+
+    kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
 
     await update.message.reply_text(
         "📞 Теперь введите ваш телефон:",
@@ -1950,20 +1954,10 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # ОТЛАДКА: выводим, что собираемся записать
         print(f"DEBUG: Пытаюсь записать в таблицу: {full_record}")
-        print(f"=== DEBUG: SHEET_ID = {SHEET_ID}")
-        print(f"=== DEBUG: full_record длина = {len(full_record)}")
-        print(f"=== DEBUG: Первые 5 элементов = {full_record[:5]}")
 
         # Добавляем в таблицу
         success = safe_append_to_sheet(SHEET_ID, "Записи", [full_record])
-
-        if success:
-            print(f"=== DEBUG: safe_append_to_sheet вернул True")
-        else:
-            print(f"=== DEBUG: safe_append_to_sheet вернул False")
-
         print(f"DEBUG: Результат safe_append_to_sheet: {success}")
-
         if not success:
             raise Exception("safe_append_to_sheet вернул False")
 
@@ -2027,9 +2021,11 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- CONFIRM / CANCEL BOOKING ---
 
+
 async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    print(f"=== DEBUG: Функция confirm_booking вызвана ===")
     return await finalize_booking(update, context)
 
 
