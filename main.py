@@ -792,11 +792,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if c.user_data.get("priority") == "date"
             else select_date(u, c)
         ),
-        # ENTER_NAME: select_time,
-        # ENTER_PHONE: enter_name,
+        ENTER_NAME: lambda u, c: select_time(u, c),
+        ENTER_PHONE: lambda u, c: enter_name(u, c),
         AWAITING_WAITING_LIST_DETAILS: lambda u, c: select_time(u, c),
         AWAITING_WL_PRIORITY_CHOICE: lambda u, c: select_time(u, c),
-        AWAITING_CONFIRMATION: lambda u, c: select_time(u, c),  # ← если нужно
+        AWAITING_CONFIRMATION: lambda u, c: enter_phone(u, c),
         AWAITING_REPEAT_CONFIRMATION: lambda u, c: select_time(u, c),  # ← если нужно
     }
 
