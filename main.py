@@ -1779,6 +1779,18 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.callback_query:
+        # Это нажатие кнопки "Назад" из состояния ENTER_PHONE
+        query = update.callback_query
+        await query.answer()
+        name = context.user_data.get("name", "")
+        # Показываем текущее имя и просим ввести новое
+        await query.edit_message_text(
+            f"⏳ Слот зарезервирован! Введите ваше имя: (текущее: {name})\n\n"
+            f"Введите новое имя или оставьте текущее:"
+        )
+        return ENTER_NAME
+
     print(f"=== ВЫЗВАНА enter_name ===")
     print(f"Состояние: {context.user_data.get('state')}, имя: '{update.message.text}'")
     logger.info(
@@ -1797,8 +1809,6 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTER_NAME
     context.user_data["name"] = name
 
-    kb = []  # Пустая клавиатура, чтобы не было ошибки
-
     kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
 
     await update.message.reply_text(
@@ -1810,6 +1820,17 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.callback_query:
+        # Это нажатие кнопки "Назад" из состояния AWAITING_CONFIRMATION
+        query = update.callback_query
+        await query.answer()
+        phone = context.user_data.get("phone", "")
+        await query.edit_message_text(
+            f"📞 Теперь введите ваш телефон: (текущий: {phone})\n\n"
+            f"Введите новый номер или оставьте текущий:"
+        )
+        return ENTER_PHONE
+
     print(f"=== ВЫЗВАНА enter_phone ===")
     print(f"Сообщение пользователя: '{update.message.text}'")
     chat_id = update.effective_chat.id
@@ -2002,7 +2023,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Клавиатура для возврата в меню
     menu_keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("🏠 В главное меню", callback_data="start")]]
+        [[InlineKeyboardButton("🏠 В меню", callback_data="start")]]
     )
 
     await query.edit_message_text(
