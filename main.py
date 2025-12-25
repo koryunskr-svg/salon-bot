@@ -1300,9 +1300,9 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Функция для сортировки дат
     def sort_date_str(date_str):
         try:
-            return datetime.datetime.strptime(date_str, "%d.%m.%Y")
+            return datetime.strptime(date_str, "%d.%m.%Y")
         except:
-            return datetime.datetime.now()
+            return datetime.now()
 
     # --- СЦЕНАРИЙ B: "Сначала специалист", потом дата (selected_specialist есть) ---
     if selected_specialist and selected_specialist != "любой":
