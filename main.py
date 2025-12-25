@@ -1701,9 +1701,12 @@ async def reserve_slot(
         "⏳ Бронь (в процессе)",
         start_dt.isoformat(),
         end_dt.isoformat(),
-        "7",
+        "7",  # Жёлтый цвет
         f"Бронь: {ss} к {specialist}. В процессе оформления...",
     )
+
+    print(f"=== DEBUG reserve_slot: создано событие с ID: {event_id}")  
+
     context.user_data["temp_booking"] = {
         "specialist": specialist,
         "time": time_str,
