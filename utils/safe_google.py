@@ -144,24 +144,39 @@ def safe_create_calendar_event(calendar_id, summary, start_time, end_time, color
         logger.error(f"❌ Ошибка при создании события в календаре: {e}")
         return None
 
-def safe_update_calendar_event(calendar_id, event_id, summary, color_id=None, description=""):
-    credentials = get_google_credentials()
-    if not credentials:
-        return False
+
+@retry_google_api()
+def safe_update_calendar_event(calendar_id, event_id, summary=None, start_time=None, end_time=None, color_id=None, description=None):
+    """Обновляет событие в Google Календаре."""
+    creds = get_google_credentials()
+    if not creds:
+        return None
     try:
-        service = build('calendar', 'v3', credentials=credentials)
-        event = {
-            'summary': summary,
-            'description': description,
-        }
+        service = build('calendar', 'v3', credentials=creds)
+        
+        # Сначала получаем текущее событие
+        event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        
+        # Обновляем поля если они переданы
+        if summary:
+            event['summary'] = summary
         if color_id:
             event['colorId'] = color_id
+        if description:
+            event['description'] = description
+        if start_time:
+            event['start']['dateTime'] = start_time
+            event['start']['timeZone'] = str(TIMEZONE)
+        if end_time:
+            event['end']['dateTime'] = end_time
+            event['end']['timeZone'] = str(TIMEZONE)
+        
+        # Отправляем обновление
         service.events().update(calendarId=calendar_id, eventId=event_id, body=event).execute()
-        logger.info(f"✅ Событие {event_id} обновлено")
         return True
     except Exception as e:
-        logger.error(f"❌ Ошибка при обновлении события {event_id}: {e}")
-        return False
+        logger.error(f'❌ Ошибка обновления события: {e}')
+        return None
 
 def safe_delete_calendar_event(calendar_id, event_id):
     credentials = get_google_credentials()
