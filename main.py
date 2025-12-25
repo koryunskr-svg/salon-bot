@@ -1915,7 +1915,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"Имя клиента: {name}")
 
     # === 3. ОБНОВЛЯЕМ СОБЫТИЕ В КАЛЕНДАРЕ ===
-   
+
     if event_id:
         try:
             # Получаем цену услуги для описания
@@ -1933,26 +1933,28 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Услуга: {ss} ({st})\n"
                 f"Стоимость: {price_info}"
             )
-            # Получаем start_dt и end_dt из temp_booking (добавляем эти две строки)
+            # Получаем start_dt и end_dt из temp_booking
             start_dt = temp_booking.get("start_dt")
             end_dt = temp_booking.get("end_dt")
         
-        if start_dt and end_dt:
-            # Полный вызов с ВСЕМИ необходимыми параметрами:
-            safe_update_calendar_event(
-                CALENDAR_ID,
-                event_id,
-                summary=new_summary,
-                description=new_description,
-                color_id="10",  # Зелёный цвет для подтверждённых
-            )
-            logger.info(f"✅ Календарь обновлён: {event_id}")
-        else:
-            logger.error(f"❌ Не найдены start_dt или end_dt в temp_booking: {temp_booking}")
-            print(f"ERROR: Missing start_dt or end_dt in temp_booking")
-    except Exception as e:
-        logger.error(f"❌ Ошибка обновления календаря: {e}")
-        print(f"ERROR updating calendar: {e}")
+            if start_dt and end_dt:
+                # Полный вызов с ВСЕМИ необходимыми параметрами:
+                safe_update_calendar_event(
+                    CALENDAR_ID,
+                    event_id,
+                    summary=new_summary,
+                    start_time=start_dt.isoformat(),
+                    end_time=end_dt.isoformat(),
+                    description=new_description,
+                    color_id="10",  # Зелёный цвет для подтверждённых
+                )
+                logger.info(f"✅ Календарь обновлён: {event_id}")
+            else:
+                logger.error(f"❌ Не найдены start_dt или end_dt в temp_booking: {temp_booking}")
+                print(f"ERROR: Missing start_dt or end_dt in temp_booking")
+        except Exception as e:
+            logger.error(f"❌ Ошибка обновления календаря: {e}")
+            print(f"ERROR updating calendar: {e}")
 
     # === 4. ЗАПИСЫВАЕМ В ТАБЛИЦУ "ЗАПИСИ" ===
     try:
