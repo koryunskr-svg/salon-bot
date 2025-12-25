@@ -1889,13 +1889,15 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTER_PHONE
 
     phone = (update.message.text or "").strip()
-    if not validate_phone(phone):
+    normalized_phone = validate_phone(phone)  # ← теперь возвращает строку или ""
+
+    if not normalized_phone:  # если пустая строка - ошибка
         await update.message.reply_text(
             "❌ Неверный формат номера телефона. Введите номер длиной 10-15 цифр."
         )
         return ENTER_PHONE
 
-    context.user_data["phone"] = phone
+    context.user_data["phone"] = normalized_phone  # ← сохраняем нормализованный
 
     kb = [
         [
