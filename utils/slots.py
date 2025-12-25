@@ -140,16 +140,166 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     Находит доступные слоты на основе типа услуги, подуслуги, даты, специалиста и приоритета.
     Возвращает список словарей с ключами: date, time, specialist.
     """
-    # Заглушка - реализация будет зависеть от логики поиска в календаре и таблице
-    # и сопоставления с графиком специалистов.
-    # 1. Получить 'Шаг' для услуги из 'Услуги'
-    # 2. Получить график специалистов на date_str
-    # 3. Получить события из календаря на date_str
-    # 4. Найти интервалы длиной 'Шаг', где нет событий и специалист работает.
-    # 5. Отфильтровать по selected_specialist, если указан.
-    # 6. Отсортировать в зависимости от priority (date -> по времени, specialist -> сгруппировать по специалисту?)
-    # Пока возвращаем пустой список.
-    logger.debug(f"🔍 Поиск слотов: Тип={service_type}, Услуга={subservice}, Дата={date_str}, специалист={selected_specialist}, Приоритет={priority}")
-    return []
+   
+    logger.info(f"🔍 Поиск слотов: Тип={service_type}, Услуга={subservice}, Дата={date_str}, специалист={selected_specialist}")
+
+    # 1. Получаем шаг (длительность + буфер) для услуги
+    services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
+    step_minutes = 60  # значение по умолчанию
+    
+    for service in services:
+        if len(service) > 1 and service[1] == subservice:
+            try:
+                duration = int(service[2]) if service[2] else 0
+                buffer = int(service[3]) if service[3] else 0
+                step_minutes = duration + buffer
+                break
+            except (ValueError, TypeError):
+                continue
+    
+    logger.info(f"📏 Шаг для услуги '{subservice}': {step_minutes} мин")
+    
+    if not date_str:
+        logger.error("❌ Не указана дата для поиска слотов")
+        return []
+    
+    # 2. Преобразуем дату
+    try:
+        target_date = datetime.strptime(date_str, "%d.%m.%Y").date()
+    except ValueError:
+        logger.error(f"❌ Неверный формат даты: {date_str}")
+        return []
+    
+    # 3. Получаем день недели
+    day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    day_index = target_date.weekday()
+    target_day_name = day_names[day_index]
+    
+    # 4. Загружаем график специалистов
+    specialists_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
+    
+    # 5. Получаем занятые слоты из календаря
+    time_min = TIMEZONE.localize(datetime.combine(target_date, datetime.min.time())).isoformat()
+    time_max = TIMEZONE.localize(datetime.combine(target_date, datetime.max.time())).isoformat()
+    
+    events = safe_get_calendar_events(CALENDAR_ID, time_min, time_max) or []
+    busy_slots = {}
+    
+    for event in events:
+        start = event.get("start", {}).get("dateTime")
+        if start:
+            try:
+                # Убираем 'Z' и парсим время
+                if start.endswith('Z'):
+                    start = start[:-1] + "+00:00"
+                
+                event_dt = datetime.fromisoformat(start)
+                if event_dt.tzinfo is None:
+                    event_dt = TIMEZONE.localize(event_dt)
+                else:
+                    event_dt = event_dt.astimezone(TIMEZONE)
+                
+                # Извлекаем специалиста из summary или description
+                summary = event.get("summary", "")
+                specialist = "неизвестно"
+                
+                # Пытаемся найти специалиста в summary
+                if "к " in summary:
+                    specialist = summary.split("к ")[-1].strip()
+                else:
+                    # Пробуем в описании
+                    description = event.get("description", "")
+                    if "к " in description:
+                        specialist = description.split("к ")[-1].split()[0].strip()
+                
+                # Добавляем в занятые слоты
+                time_key = event_dt.strftime("%H:%M")
+                if specialist not in busy_slots:
+                    busy_slots[specialist] = set()
+                busy_slots[specialist].add(time_key)
+                
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка парсинга события: {e}")
+    
+    # 6. Находим доступные слоты для каждого специалиста
+    available_slots = []
+    
+    for row in specialists_data:
+        if len(row) < 9:  # Нужны колонки A-I
+            continue
+            
+        specialist_name = row[0].strip()
+        
+        # Фильтруем по выбранному специалисту
+        if selected_specialist and selected_specialist != "любой" and specialist_name != selected_specialist:
+            continue
+        
+        # Проверяем категорию специалиста (колонка B)
+        if len(row) > 1:
+            specialist_categories = [cat.strip().lower() for cat in str(row[1]).split(",") if cat.strip()]
+            if service_type.lower() not in specialist_categories:
+                continue
+        
+        # Получаем расписание на нужный день
+        day_col_index = 2 + day_index  # A=0, B=1, C=2 (Пн), D=3 (Вт)...
+        if day_col_index >= len(row):
+            continue
+            
+        schedule = str(row[day_col_index]).strip()
+        
+        if schedule.lower() == "выходной" or not schedule:
+            continue
+        
+        # Парсим время работы
+        if "-" not in schedule:
+            logger.warning(f"⚠️ Неверный формат расписания у {specialist_name}: {schedule}")
+            continue
+            
+        start_work_str, end_work_str = schedule.split("-")
+        start_work_str = start_work_str.strip()
+        end_work_str = end_work_str.strip()
+        
+        try:
+            start_dt = TIMEZONE.localize(datetime.combine(target_date, datetime.strptime(start_work_str, "%H:%M").time()))
+            end_dt = TIMEZONE.localize(datetime.combine(target_date, datetime.strptime(end_work_str, "%H:%M").time()))
+        except ValueError as e:
+            logger.error(f"❌ Ошибка парсинга времени у {specialist_name}: {e}")
+            continue
+        
+        # Генерируем слоты
+        current_dt = start_dt
+        
+        while current_dt + timedelta(minutes=step_minutes) <= end_dt:
+            slot_time_str = current_dt.strftime("%H:%M")
+            
+            # Проверяем, свободен ли слот
+            is_busy = False
+            if specialist_name in busy_slots and slot_time_str in busy_slots[specialist_name]:
+                is_busy = True
+            
+            # Также проверяем общие события (без указания специалиста)
+            if "неизвестно" in busy_slots and slot_time_str in busy_slots["неизвестно"]:
+                is_busy = True
+            
+            if not is_busy:
+                available_slots.append({
+                    "time": slot_time_str,
+                    "specialist": specialist_name,
+                    "date": date_str
+                })
+                logger.debug(f"✅ Найден слот: {specialist_name} в {slot_time_str}")
+            
+            current_dt += timedelta(minutes=step_minutes)
+    
+    # 7. Сортируем слоты
+    if priority == "date":
+        # Сначала по времени, потом по специалисту
+        available_slots.sort(key=lambda x: (x["time"], x["specialist"]))
+    else:  # priority == "specialist"
+        # Сначала по специалисту, потом по времени
+        available_slots.sort(key=lambda x: (x["specialist"], x["time"]))
+    
+    logger.info(f"✅ Найдено {len(available_slots)} доступных слотов")
+    return available_slots
 
 print("✅ Модуль slots.py загружен.")
