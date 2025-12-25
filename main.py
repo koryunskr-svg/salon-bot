@@ -1,7 +1,9 @@
 # main.py-Q-3256-21.12.25-D-экспер.
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 from dotenv import load_dotenv
+
 load_dotenv()
 import logging.handlers
 import os
@@ -1553,8 +1555,10 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = SELECT_SPECIALIST
         return SELECT_SPECIALIST  # ← ВОЗВРАЩАЕМ СОСТОЯНИЕ
 
+
 # --- /ПОЛНАЯ ЗАМЕНА select_specialist ---
 # --- SELECT TIME ---
+
 
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1669,7 +1673,9 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["state"] = SELECT_TIME
     return SELECT_TIME
 
+
 # --- RESERVE SLOT ---
+
 
 async def reserve_slot(
     update: Update, context: ContextTypes.DEFAULT_TYPE, specialist: str, time_str: str
@@ -1717,7 +1723,9 @@ async def reserve_slot(
     context.user_data["state"] = ENTER_NAME
     return ENTER_NAME
 
+
 # --- WARN / RELEASE RESERVATION ---
+
 
 async def warn_reservation(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
@@ -1732,6 +1740,7 @@ async def warn_reservation(context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"📤 Предупреждение отправлено (chat_id: {job.chat_id})")
     except Exception as e:
         logger.error(f"❌ Ошибка предупреждения: {e}")
+
 
 async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
@@ -1762,7 +1771,9 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
     if uid in context.application.user_data:
         context.application.user_data[uid].clear()
 
+
 # --- ENTER NAME / PHONE ---
+
 
 async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query:
@@ -1865,7 +1876,9 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["state"] = AWAITING_CONFIRMATION
     return AWAITING_CONFIRMATION
 
+
 # --- FINALIZE BOOKING ---
+
 
 async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1937,9 +1950,10 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             logger.error(f"❌ Не найдены start_dt или end_dt в temp_booking: {temp_booking}")
             print(f"ERROR: Missing start_dt or end_dt in temp_booking")
-        except Exception as e:
-            logger.error(f"❌ Ошибка обновления календаря: {e}")
-            print(f"ERROR updating calendar: {e}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка обновления календаря: {e}")
+        print(f"ERROR updating calendar: {e}")
+
     # === 4. ЗАПИСЫВАЕМ В ТАБЛИЦУ "ЗАПИСИ" ===
     try:
         record_id = f"REC-{int(time.time())}"
@@ -1982,6 +1996,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"❌ Ошибка записи в таблицу: {e}")
+        print(f"ERROR writing to sheet: {e}")
         await query.edit_message_text(
             "❌ Ошибка при сохранении записи. Попробуйте позже или свяжитесь с администратором."
         )
@@ -2032,9 +2047,12 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return MENU
 
+
 # --- /FINALIZE BOOKING ---
 
+
 # --- CONFIRM / CANCEL BOOKING ---
+
 
 async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2072,7 +2090,9 @@ async def cancel_reservation(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data.clear()
     return MENU
 
+
 # --- SHOW MY RECORDS ---
+
 
 async def show_my_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2114,7 +2134,9 @@ async def show_my_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _display_records(update, context, found, "Ваши активные записи:")
     return MENU
 
+
 # --- CANCEL RECORD FROM LIST ---
+
 
 async def cancel_record_from_list(
     update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
@@ -2142,7 +2164,9 @@ async def cancel_record_from_list(
             return
     await query.edit_message_text("❌ Запись не найдена.")
 
+
 # --- HANDLE MY RECORDS INPUT ---
+
 
 async def handle_my_records_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = context.user_data.get("state")
@@ -2186,7 +2210,9 @@ async def handle_my_records_input(update: Update, context: ContextTypes.DEFAULT_
         return MENU
     return MENU
 
+
 # --- WAITING LIST INPUT ---
+
 
 async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -2339,7 +2365,9 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
         context.user_data.pop("state", None)
         return MENU
 
+
 # --- АДМИНИСТРАТИВНЫЕ ФУНКЦИИ ---
+
 
 async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -2373,6 +2401,7 @@ async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TY
         await update.callback_query.edit_message_text(
             text, reply_markup=InlineKeyboardMarkup(kb)
         )
+
 
 async def admin_book_for_client(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2426,6 +2455,7 @@ async def handle_admin_search(update: Update, context: ContextTypes.DEFAULT_TYPE
         reply_markup=InlineKeyboardMarkup(kb),
     )
 
+
 async def admin_show_record_details(
     update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
 ):
@@ -2467,6 +2497,7 @@ async def admin_show_record_details(
             return
     await query.edit_message_text("❌ Запись не найдена.")
 
+
 async def admin_cancel_record(
     update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
 ):
@@ -2499,7 +2530,9 @@ async def admin_cancel_record(
             return
     await query.edit_message_text("❌ Запись не найдена.")
 
+
 # --- ADMIN RESCHEDULE RECORD (ПОЛНАЯ РЕАЛИЗАЦИЯ) ---
+
 
 async def admin_reschedule_record(
     update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
@@ -2560,6 +2593,7 @@ async def admin_reschedule_record(
         msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML"
     )
 
+
 async def admin_change_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -2605,6 +2639,7 @@ async def admin_change_specialist(update: Update, context: ContextTypes.DEFAULT_
         "👩‍💼 Выберите нового cпециалиста:", reply_markup=InlineKeyboardMarkup(kb)
     )
 
+
 async def admin_change_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -2646,6 +2681,7 @@ async def admin_change_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
     )
 
+
 async def admin_change_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await admin_change_date(update, context)
 
@@ -2675,6 +2711,7 @@ async def admin_process_new_date(
         reply_markup=InlineKeyboardMarkup(kb),
         parse_mode="HTML",
     )
+
 
 async def admin_process_new_specialist(
     update: Update, context: ContextTypes.DEFAULT_TYPE, specialist: str
@@ -2711,6 +2748,7 @@ async def admin_process_new_specialist(
         reply_markup=InlineKeyboardMarkup(kb),
         parse_mode="HTML",
     )
+
 
 async def admin_skip_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2801,6 +2839,7 @@ async def admin_process_new_slot(
         msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML"
     )
 
+
 async def _admin_save_reschedule(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -2882,6 +2921,7 @@ async def _admin_save_reschedule(
             return
     await query.edit_message_text("❌ Запись не найдена.")
 
+
 async def admin_confirm_reschedule(
     update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
 ):
@@ -2954,7 +2994,9 @@ async def _get_available_slots_for_admin(
         logger.error(f"Ошибка при поиске доступных слотов: {e}")
         return None, "❌ Ошибка при поиске доступных слотов."
 
+
 # --- TRIGGER WORDS ---
+
 
 async def handle_trigger_words(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -3014,7 +3056,9 @@ async def handle_trigger_words(update: Update, context: ContextTypes.DEFAULT_TYP
                 return
             break
 
+
 # --- NOTIFY ADMINS OF NEW CALLS — ОБНОВЛЕНО ПО ТЗ 9.5: ПОСЛЕ ОКОНЧАНИЯ ПРЕДЫДУЩЕГО РАБОЧЕГО ДНЯ ---
+
 
 async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -3141,7 +3185,9 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"❌ Ошибка в notify_admins_of_new_calls_job: {e}", exc_info=True)
 
+
 # --- GENERIC MESSAGE HANDLER ---
+
 
 async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -3198,7 +3244,9 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
     await handle_trigger_words(update, context)
     return None
 
+
 # --- HANDLE_PHONE_FOR_CALLBACK ---
+
 
 async def handle_phone_for_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = (update.message.text or "").strip()
@@ -3247,7 +3295,9 @@ async def handle_phone_for_callback(update: Update, context: ContextTypes.DEFAUL
     context.user_data.clear()
     return MENU
 
+
 # --- REGISTER HANDLERS ---
+
 
 def register_handlers(application: Application):
     application.add_handler(CommandHandler("start", start))
@@ -3258,7 +3308,9 @@ def register_handlers(application: Application):
         MessageHandler(filters.TEXT & ~filters.COMMAND, generic_message_handler)
     )
 
+
 # --- ENTRYPOINT ---
+
 
 def main():
     persistence_file = "bot_data.pickle"
@@ -3375,6 +3427,7 @@ def main():
     finally:
         remove_lock_file()
         logger.info("🔒 Бот остановлен и lock-файл удалён.")
+
 
 def _handle_exit(signum, frame):
     logger.info(f"Получен системный сигнал {signum}, завершаем работу...")
