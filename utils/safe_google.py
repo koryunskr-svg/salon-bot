@@ -123,7 +123,7 @@ def safe_get_calendar_events(calendar_id, time_min, time_max):
         logger.error(f"❌ Ошибка при чтении событий из календаря: {e}")
         return None
 
-def safe_create_calendar_event(calendar_id, start_time, end_time, summary, description="", color_id=None):
+def safe_create_calendar_event(calendar_id, summary, start_time, end_time, color_id=None, description=None):
     credentials = get_google_credentials()
     if not credentials:
         return None
@@ -131,9 +131,9 @@ def safe_create_calendar_event(calendar_id, start_time, end_time, summary, descr
         service = build('calendar', 'v3', credentials=credentials)
         event = {
             'summary': summary,
+            'start': {'dateTime': start_time, 'timeZone': str(TIMEZONE)},  # start_time уже строка!
+            'end': {'dateTime': end_time, 'timeZone': str(TIMEZONE)},      # end_time уже строка!
             'description': description,
-            'start': {'dateTime': start_time.isoformat(), 'timeZone': str(TIMEZONE)},
-            'end': {'dateTime': end_time.isoformat(), 'timeZone': str(TIMEZONE)},
         }
         if color_id:
             event['colorId'] = color_id
