@@ -1,6 +1,6 @@
 # utils/validation.py
-import logging
 import re
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -22,18 +22,42 @@ def validate_name(name_str: str) -> bool:
     # Проверяем, нет ли двойных пробелов или дефисов
     if '  ' in name_str or '--' in name_str or '- ' in name_str or ' -' in name_str:
         return False
-
     return True
 
-def validate_phone(phone_str: str) -> bool:
+def validate_phone(phone_str: str) -> str:
     """
-    Проверяет телефон: 10-15 цифр.
+    Проверяет телефон и нормализует к формату 8XXXXXXXXXX.
+    Возвращает нормализованный номер или пустую строку при ошибке.
     """
     if not phone_str:
-        return False
+        return ""
+    
     # Извлекаем только цифры
     digits_only = re.sub(r'\D', '', phone_str)
+    
     # Проверяем длину
-    return 10 <= len(digits_only) <= 15
+    if not (10 <= len(digits_only) <= 15):
+        return ""
+    
+    # Нормализуем российский номер
+    if digits_only.startswith('7') and len(digits_only) == 11:
+        # 7XXXXXXXXXX → 8XXXXXXXXXX
+        normalized = '8' + digits_only[1:]
+    elif digits_only.startswith('8') and len(digits_only) == 11:
+        # 8XXXXXXXXXX - уже нормализован
+        normalized = digits_only
+    elif len(digits_only) == 10:
+        # XXXXXXXXXX → 8XXXXXXXXXX
+        normalized = '8' + digits_only
+    else:
+        # Международный формат - оставляем как есть
+        normalized = digits_only
+    
+    return normalized
+
+# Для обратной совместимости (если где-то используется bool версия)
+def validate_phone_bool(phone_str: str) -> bool:
+    """Совместимость: возвращает bool вместо строки"""
+    return bool(validate_phone(phone_str))
 
 print("✅ Модуль validation.py загружен.")
