@@ -1571,25 +1571,37 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- /ПОЛНАЯ ЗАМЕНА select_specialist ---
-# --- SELECT TIME ---
 
+# --- SELECT TIME ---
 
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    # ДОБАВИТЬ ДЛЯ ОТЛАДКИ:
-    logger.info(
-        f"DEBUG select_time: дата={context.user_data.get('date')}, специалист={context.user_data.get('selected_specialist')}, приоритет={context.user_data.get('priority')}"
-    )
+    await query.answer()
+    await update_last_activity(update, context)
+    
+    # === ДЕТАЛЬНАЯ ОТЛАДКА ===
+    logger.info(f"=== DEBUG select_time вызвана ===")
+    logger.info(f"user_data keys: {list(context.user_data.keys())}")
+    logger.info(f"Дата: {context.user_data.get('date')}")
+    logger.info(f"Специалист: {context.user_data.get('selected_specialist')}")
+    logger.info(f"Услуга: {context.user_data.get('subservice')}")
+    logger.info(f"Категория: {context.user_data.get('service_type')}")
+    logger.info(f"Приоритет: {context.user_data.get('priority')}")
+    logger.info(f"Текущее состояние: {context.user_data.get('state')}")
+    # === КОНЕЦ ОТЛАДКИ ===
+    
     # Сохраняем текущее состояние в историю
     current_state = context.user_data.get("state")
     if current_state:
         state_history = context.user_data.get("state_history", [])
         state_history.append(current_state)
         context.user_data["state_history"] = state_history
+    
     date_str = context.user_data.get("date")
     specialist = context.user_data.get("selected_specialist")
     st = context.user_data.get("service_type")
     ss = context.user_data.get("subservice")
+    
     if not all([date_str, st, ss]):
         await query.edit_message_text(
             "❌ Ошибка: не все данные для выбора времени выбраны."
@@ -1600,52 +1612,50 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         st, ss, date_str, specialist, context.user_data.get("priority", "date")
     )
 
-    # ДОБАВИТЬ ЭТУ СТРОКУ ДЛЯ ОТЛАДКИ:
-    logger.info(
-        f"DEBUG: find_available_slots вернул {len(slots)} слотов. Параметры: дата={date_str}, специалист={specialist}, услуга={ss}/{st}"
-    )
-    service_duration = calculate_service_step(
-        ss
-    )  # получаем длительность услуги в минутах
+    # Отладка результата
+    logger.info(f"DEBUG: find_available_slots вернул {len(slots)} слотов")
+    if slots:
+        logger.info(f"DEBUG: Первые 3 слота: {slots[:3]}")
+    
+    service_duration = calculate_service_step(ss)
     logger.info(f"DEBUG: Длительность услуги '{ss}' = {service_duration} мин")
 
     if not slots:
-        logger.info(f"Нет доступных слотов для {date_str}, специалист {specialist}")
+        logger.warning(f"⚠️ Нет доступных слотов для {date_str}, специалист {specialist}")
+        logger.warning(f"⚠️ Проверьте: работает ли {specialist} в этот день? Есть ли события в календаре?")
         
-        # Сохраняем данные для листа ожидания
-        context.user_data["waiting_list_data"] = {
-            "service_type": st,
-            "subservice": ss,
-            "date": date_str,
-            "specialist": specialist,
-            "priority": context.user_data.get("priority", "date")
-        }
-    
-        kb = [
-            [InlineKeyboardButton("📋 В лист ожидания", callback_data="waiting_list")],
-            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
-        ]
-    
+        # Показываем сообщение и кнопку "Назад"
+        kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
+        
         await query.edit_message_text(
-            f"❌ К сожалению, нет свободного времени на {date_str} у специалиста {specialist}.\n\n"
-            f"Хотите встать в лист ожидания? Мы уведомим вас, если время освободится.",
-            reply_markup=InlineKeyboardMarkup(kb)
+            f"❌ К сожалению, нет свободного времени на {date_str} "
+            f"{'у специалиста ' + specialist if specialist and specialist != 'любой' else ''}.\n\n"
+            f"<b>Что можно сделать:</b>\n"
+            f"1. Нажмите 'Назад' и выберите другую дату\n"
+            f"2. Нажмите 'Назад' и выберите другого специалиста\n"
+            f"3. Свяжитесь с администратором для уточнения расписания",
+            reply_markup=InlineKeyboardMarkup(kb),
+            parse_mode="HTML"
         )
         context.user_data["state"] = SELECT_TIME
-        return SELECT_TIME  # ← ТОЛЬКО ОДИН return в этом блоке
+        return SELECT_TIME
 
+    # Если слоты ЕСТЬ - показываем их
     kb = []
     for s in slots:
         t = s.get("time", "N/A")
         m = s.get("specialist", "N/A")
         kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
+    
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+    
     await query.edit_message_text(
-        "Выберите время:", reply_markup=InlineKeyboardMarkup(kb)
+        f"🕒 Выберите время для услуги <b>{ss}</b> на <b>{date_str}</b>:",
+        reply_markup=InlineKeyboardMarkup(kb),
+        parse_mode="HTML"
     )
     context.user_data["state"] = SELECT_TIME
     return SELECT_TIME
-
 
 # --- RESERVE SLOT ---
 
