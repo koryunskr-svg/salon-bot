@@ -1247,8 +1247,6 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- SELECT DATE ---
-# --- ПОЛНАЯ ЗАМЕНА select_date ---
-
 
 async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1299,6 +1297,13 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(tz)
     days_ahead = int(get_setting("Количество дней генерации слотов", 30))
 
+    # Функция для сортировки дат
+    def sort_date_str(date_str):
+        try:
+            return datetime.datetime.strptime(date_str, "%d.%m.%Y")
+        except:
+            return datetime.datetime.now()
+
     # --- СЦЕНАРИЙ B: "Сначала специалист", потом дата (selected_specialist есть) ---
     if selected_specialist and selected_specialist != "любой":
         available_dates_for_specialist = []
@@ -1332,6 +1337,10 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # УПРОЩЕНИЕ: считаем, что если он работает, то дата доступна.
                     # TODO: Проверить реальную доступность специалиста в день по его календарю и расписанию
                     available_dates_for_specialist.append(target_date_str)
+
+        # ↓↓↓ ДОБАВЛЕНО: СОРТИРОВКА ↓↓↓
+        available_dates_sorted = sorted(available_dates_for_specialist, key=sort_date_str)
+        # ↑↑↑ ДОБАВЛЕНО: СОРТИРОВКА ↑↑↑
 
         kb = []
         for date_str in sorted(available_dates_for_specialist):
@@ -1385,6 +1394,10 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 # Нашли хотя бы одного подходящего специалиста с потенциальным временем, можно перейти к следующей дате
                                 break
 
+        # ↓↓↓ ДОБАВЛЕНО: СОРТИРОВКА ↓↓↓
+        available_dates_list = sorted(list(available_dates), key=sort_date_str)
+        # ↑↑↑ ДОБАВЛЕНО: СОРТИРОВКА ↑↑↑
+
         # Формируем клавиатуру с доступными датами
         kb = []
         for date_str in sorted(available_dates):
@@ -1402,7 +1415,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
-# --- /ПОЛНАЯ ЗАМЕНА select_date ---
+# --- /SELECT DATE ---
 
 # --- SELECT SPECIALIST ---
 # --- ПОЛНАЯ ЗАМЕНА select_specialist ---
@@ -1710,6 +1723,21 @@ async def reserve_slot(
         "7",  # Жёлтый цвет
         f"Бронь: {ss} к {specialist}. В процессе оформления...",
     )
+
+    # ↓↓↓ ВСТАВЬТЕ ЗДЕСЬ ↓↓↓
+    print(f"=== ДЕТАЛЬНАЯ ОТЛАДКА КАЛЕНДАРЯ ===")
+    print(f"Функция safe_create_calendar_event вызвана с:")
+    print(f"  calendar_id: {CALENDAR_ID}")
+    print(f"  summary: ⏳ Бронь (в процессе)")
+    print(f"  start_time: {start_dt.isoformat()}")
+    print(f"  end_time: {end_dt.isoformat()}")
+    print(f"  color_id: 7")
+    print(f"  description: Бронь: {ss} к {specialist}. В процессе оформления...")
+    print(f"Возвращен event_id: '{event_id}'")
+    print(f"Тип event_id: {type(event_id)}")
+    print(f"Длина event_id: {len(event_id) if event_id else 0}")
+    print(f"=== КОНЕЦ ОТЛАДКИ ===")
+    # ↑↑↑ ВСТАВЬТЕ ЗДЕСЬ ↑↑↑
 
     print(f"=== DEBUG reserve_slot: создано событие с ID: {event_id}")  
 
