@@ -1990,8 +1990,11 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Добавляем в таблицу
         success = safe_append_to_sheet(SHEET_ID, "Записи!A3:O", [full_record])
         print(f"DEBUG: Результат safe_append_to_sheet: {success}")
+        if success is None:
+            print("ERROR: safe_append_to_sheet вернул None (возможно ошибка API)")
+            success = False
         if not success:
-            raise Exception("safe_append_to_sheet вернул False")
+            raise Exception("safe_append_to_sheet вернул False или None")
 
         logger.info(f"✅ Запись сохранена в таблицу: {record_id}")
 
@@ -3476,4 +3479,3 @@ def _handle_exit(signum, frame):
 
 if __name__ == "__main__":
     main()
-
