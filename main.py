@@ -207,7 +207,7 @@ def invalidate_services_cache():
 
 def setup_production_logging():
     root = logging.getLogger()
-    root.setLevel(logging.INFO)
+    root.setLevel(logging.DEBUG)
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s - [%(filename)s:%(lineno)d]"
     )
@@ -1696,6 +1696,12 @@ async def reserve_slot(
     dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
     start_dt = TIMEZONE.localize(dt)
     end_dt = start_dt + timedelta(minutes=step)
+    
+    print(f"=== DEBUG: Создаю событие в календаре ===")
+    print(f"Календарь ID: {CALENDAR_ID}")
+    print(f"Начало: {start_dt.isoformat()}")
+    print(f"Конец: {end_dt.isoformat()}")
+
     event_id = safe_create_calendar_event(
         CALENDAR_ID,
         "⏳ Бронь (в процессе)",
@@ -1706,6 +1712,14 @@ async def reserve_slot(
     )
 
     print(f"=== DEBUG reserve_slot: создано событие с ID: {event_id}")  
+
+    if not event_id:
+        print(f"❌ ОШИБКА: safe_create_calendar_event вернула None или пустую строку!")
+        print(f"Возможные причины:")
+        print(f"1. Неверный CALENDAR_ID: {CALENDAR_ID}")
+        print(f"2. Нет прав у сервисного аккаунта")
+        print(f"3. Ошибка Google API")
+        event_id = "ERROR_NO_EVENT_CREATED"
 
     context.user_data["temp_booking"] = {
         "specialist": specialist,
