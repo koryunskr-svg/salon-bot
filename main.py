@@ -1974,7 +1974,8 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === 4. ЗАПИСЫВАЕМ В ТАБЛИЦУ "ЗАПИСИ" ===
     try:
-        record_id = f"REC-{int(time.time())}"
+        all_records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+        record_id = str(len(all_records) + 1)  # "1", "2", "3"...
         created_at = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
 
         # Формируем полную запись
