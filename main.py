@@ -1784,6 +1784,7 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
         name = context.user_data.get("name", "")
+        context.user_data["state"] = ENTER_NAME
         # Показываем текущее имя и просим ввести новое
         await query.edit_message_text(
             f"⏳ Слот зарезервирован! Введите ваше имя: (текущее: {name})\n\n"
@@ -1825,6 +1826,7 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
         phone = context.user_data.get("phone", "")
+        context.user_data["state"] = ENTER_PHONE
         await query.edit_message_text(
             f"📞 Теперь введите ваш телефон: (текущий: {phone})\n\n"
             f"Введите новый номер или оставьте текущий:"
