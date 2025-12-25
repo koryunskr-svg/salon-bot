@@ -1,4 +1,4 @@
-# main.py-Q-3256-21.12.25-D-экспер.
+# main.py-Q-3256-25.12.25-D-экспер.
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -1610,70 +1610,29 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"DEBUG: Длительность услуги '{ss}' = {service_duration} мин")
 
     if not slots:
-        # ВРЕМЕННО: показываем тестовые слоты вместо ошибки
-        logger.warning(f"⚠️ Реальных слотов не найдено. Показываем тестовые.")
-
-        # Проверяем что specialist определен
-        if not specialist:
-            specialist = "Тест"
-            logger.warning(f"⚠️ specialist=None, используем '{specialist}'")
-
-        # Генерируем слоты с учетом времени работы (10:00-20:00)
-        start_hour = 10
-        end_hour = 20
-        slot_interval = 30  # интервал между слотами в минутах
-
-        test_slots = []
-        current_hour = start_hour
-        current_minute = 0
-
-        while True:
-            # Рассчитываем время окончания слота
-            end_hour_slot = current_hour
-            end_minute_slot = current_minute + service_duration
-
-            # Корректируем если минуты > 60
-            while end_minute_slot >= 60:
-                end_hour_slot += 1
-                end_minute_slot -= 60
-
-            # Проверяем, что слот заканчивается до закрытия
-            if end_hour_slot > end_hour or (
-                end_hour_slot == end_hour and end_minute_slot > 0
-            ):
-                break  # слот выходит за время работы
-
-            time_str = f"{current_hour:02d}:{current_minute:02d}"
-            test_slots.append({"time": time_str, "specialist": specialist or "Тест"})
-
-            # Увеличиваем время
-            current_minute += slot_interval
-            if current_minute >= 60:
-                current_hour += 1
-                current_minute = 0
-
-        kb = []
-        for s in test_slots:
-            t = s.get("time", "N/A")
-            m = s.get("specialist", "N/A")
-            # ВАЖНО: использовать specialist из контекста, а не из
-            # test_slots
-            kb.append(
-                [
-                    InlineKeyboardButton(
-                        f"{t} — {m}", callback_data=f"slot_{specialist or 'Тест'}_{t}"
-                    )
-                ]
-            )
-
-        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-
+        logger.info(f"Нет доступных слотов для {date_str}, специалист {specialist}")
+        
+        # Сохраняем данные для листа ожидания
+        context.user_data["waiting_list_data"] = {
+            "service_type": st,
+            "subservice": ss,
+            "date": date_str,
+            "specialist": specialist,
+            "priority": context.user_data.get("priority", "date")
+        }
+    
+        kb = [
+            [InlineKeyboardButton("📋 В лист ожидания", callback_data="waiting_list")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+        ]
+    
         await query.edit_message_text(
-            f"🟡 ТЕСТ: Доступное время для услуги '{ss}' ({service_duration} мин):",
-            reply_markup=InlineKeyboardMarkup(kb),
+            f"❌ К сожалению, нет свободного времени на {date_str} у специалиста {specialist}.\n\n"
+            f"Хотите встать в лист ожидания? Мы уведомим вас, если время освободится.",
+            reply_markup=InlineKeyboardMarkup(kb)
         )
         context.user_data["state"] = SELECT_TIME
-        return SELECT_TIME
+        return SELECT_TIME  # ← ТОЛЬКО ОДИН return в этом блоке
 
     kb = []
     for s in slots:
@@ -1711,10 +1670,7 @@ async def reserve_slot(
     start_dt = TIMEZONE.localize(dt)
     end_dt = start_dt + timedelta(minutes=step)
     
-    print(f"=== DEBUG: Создаю событие в календаре ===")
-    print(f"Календарь ID: {CALENDAR_ID}")
-    print(f"Начало: {start_dt.isoformat()}")
-    print(f"Конец: {end_dt.isoformat()}")
+    logger.debug(f"Создание события в календаре {CALENDAR_ID}: {start_dt.isoformat()} - {end_dt.isoformat()}")
 
     event_id = safe_create_calendar_event(
         CALENDAR_ID,
@@ -1725,29 +1681,11 @@ async def reserve_slot(
         f"Бронь: {ss} к {specialist}. В процессе оформления...",
     )
 
-    # ↓↓↓ ВСТАВЬТЕ ЗДЕСЬ ↓↓↓
-    print(f"=== ДЕТАЛЬНАЯ ОТЛАДКА КАЛЕНДАРЯ ===")
-    print(f"Функция safe_create_calendar_event вызвана с:")
-    print(f"  calendar_id: {CALENDAR_ID}")
-    print(f"  summary: ⏳ Бронь (в процессе)")
-    print(f"  start_time: {start_dt.isoformat()}")
-    print(f"  end_time: {end_dt.isoformat()}")
-    print(f"  color_id: 7")
-    print(f"  description: Бронь: {ss} к {specialist}. В процессе оформления...")
-    print(f"Возвращен event_id: '{event_id}'")
-    print(f"Тип event_id: {type(event_id)}")
-    print(f"Длина event_id: {len(event_id) if event_id else 0}")
-    print(f"=== КОНЕЦ ОТЛАДКИ ===")
-    # ↑↑↑ ВСТАВЬТЕ ЗДЕСЬ ↑↑↑
-
-    print(f"=== DEBUG reserve_slot: создано событие с ID: {event_id}")  
+    logger.debug(f"Событие создано с ID: {event_id}")
 
     if not event_id:
-        print(f"❌ ОШИБКА: safe_create_calendar_event вернула None или пустую строку!")
-        print(f"Возможные причины:")
-        print(f"1. Неверный CALENDAR_ID: {CALENDAR_ID}")
-        print(f"2. Нет прав у сервисного аккаунта")
-        print(f"3. Ошибка Google API")
+        logger.error(f"ОШИБКА: safe_create_calendar_event вернула None!")
+        logger.error(f"Возможные причины: неверный CALENDAR_ID, нет прав сервисного аккаунта или ошибка Google API")
         event_id = "ERROR_NO_EVENT_CREATED"
 
     context.user_data["temp_booking"] = {
@@ -1992,8 +1930,9 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     summary=new_summary,
                     start_time=start_dt.isoformat(),
                     end_time=end_dt.isoformat(),
-                    description=new_description,
                     color_id="10",  # Зелёный цвет для подтверждённых
+                    description=new_description,
+                    
                 )
                 logger.info(f"✅ Календарь обновлён: {event_id}")
             else:
