@@ -1936,7 +1936,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Получаем start_dt и end_dt из temp_booking
             start_dt = temp_booking.get("start_dt")
             end_dt = temp_booking.get("end_dt")
-        
             if start_dt and end_dt:
                 # Полный вызов с ВСЕМИ необходимыми параметрами:
                 safe_update_calendar_event(
@@ -3477,3 +3476,4 @@ def _handle_exit(signum, frame):
 
 if __name__ == "__main__":
     main()
+
