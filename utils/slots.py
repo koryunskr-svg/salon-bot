@@ -160,6 +160,7 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                 break
             except (ValueError, TypeError):
                 continue
+
     logger.info(f"2. Длительность услуги определена: {service_duration} мин")
     
     if not date_str:
@@ -179,6 +180,11 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     
     # 4. Загружаем специалистов
     specialists_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
+
+    logger.info(f"3. Загружено {len(specialists_data)} строк из графика специалистов")
+    for i, row in enumerate(specialists_data[:5]):  # Покажем первые 5 строк
+        if len(row) > 0:
+            logger.info(f"   Строка {i}: специалист='{row[0]}', категория='{row[1] if len(row) > 1 else 'нет'}'")
     
     # 5. Получаем ВСЕ события на эту дату из календаря
     start_of_day = TIMEZONE.localize(datetime.combine(target_date, datetime.min.time()))
@@ -319,4 +325,3 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
 
 print("✅ Модуль slots.py загружен.")
 
-print("✅ Модуль slots.py загружен.")
