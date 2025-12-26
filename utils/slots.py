@@ -234,21 +234,30 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                 continue
         
         # Ищем расписание на нужный день
+        # В таблице колонки: A=специалист, B=категория, C=Пн, D=Вт, E=Ср, F=Чт, G=Пт, H=Сб, I=Вс
         day_found = False
         schedule = ""
         
-        for i in range(7):
-            col_idx = i + 2  # C=2, D=3, ..., I=8
-            if col_idx < len(row):
-                cell_value = str(row[col_idx]).strip()
-                if cell_value and "-" in cell_value and cell_value.lower() != "выходной":
-                    # Нашли ячейку с расписанием
-                    day_found = True
-                    schedule = cell_value
-                    break
+        # Маппинг дня недели на индекс колонки
+        day_to_index = {
+            "Пн": 2,  # колонка C
+            "Вт": 3,  # колонка D  
+            "Ср": 4,  # колонка E
+            "Чт": 5,  # колонка F
+            "Пт": 6,  # колонка G
+            "Сб": 7,  # колонка H
+            "Вс": 8   # колонка I
+        }
         
-        if not day_found or not schedule:
-            continue
+        col_idx = day_to_index.get(target_day_name)
+        
+        if col_idx is not None and col_idx < len(row):
+            schedule = str(row[col_idx]).strip()
+            if schedule and schedule.lower() != "выходной":
+                day_found = True
+                logger.info(f"📅 Нашли расписание: {specialist_name} работает в {target_day_name}: {schedule}")
+            else:
+                logger.info(f"📅 {specialist_name} выходной в {target_day_name}")
         
         # Парсим время работы
         try:
