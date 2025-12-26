@@ -192,3 +192,4 @@ def safe_delete_calendar_event(calendar_id, event_id):
         return False
 
 print("✅ Модуль safe_google.py загружен.")
+
