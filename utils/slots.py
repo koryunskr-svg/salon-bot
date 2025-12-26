@@ -259,6 +259,9 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
             else:
                 logger.info(f"📅 {specialist_name} выходной в {target_day_name}")
         
+        if not day_found or not schedule:
+            continue
+        
         # Парсим время работы
         try:
             start_work_str, end_work_str = schedule.split("-")
