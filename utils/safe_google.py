@@ -129,10 +129,21 @@ def safe_create_calendar_event(calendar_id, summary, start_time, end_time, color
         return None
     try:
         service = build('calendar', 'v3', credentials=credentials)
+        
+        # Убедимся, что время в правильном формате с часовым поясом
+        # Если пришло datetime object, конвертируем в строку с часовым поясом
+        tz_str = str(TIMEZONE)
+        
         event = {
             'summary': summary,
-            'start': {'dateTime': start_time, 'timeZone': str(TIMEZONE)},  # start_time уже строка!
-            'end': {'dateTime': end_time, 'timeZone': str(TIMEZONE)},      # end_time уже строка!
+            'start': {
+                'dateTime': start_time if isinstance(start_time, str) else start_time.isoformat(),
+                'timeZone': tz_str
+            },
+            'end': {
+                'dateTime': end_time if isinstance(end_time, str) else end_time.isoformat(),
+                'timeZone': tz_str
+            },
             'description': description,
         }
         if color_id:
