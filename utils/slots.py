@@ -142,7 +142,10 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     3. Длительности услуги (длительность + буфер)
     """
     logger.info(f"🔍 Динамический поиск слотов: {subservice} на {date_str}, специалист={selected_specialist}")
-    
+
+    logger.info(f"=== DEBUG НАЧАЛО ПОИСКА ===")
+    logger.info(f"1. Параметры: услуга='{subservice}', тип='{service_type}', дата='{date_str}', специалист='{selected_specialist}'")    
+
     # 1. Получаем длительность услуги
     services = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
     service_duration = 60  # по умолчанию 60 минут
@@ -157,6 +160,7 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                 break
             except (ValueError, TypeError):
                 continue
+    logger.info(f"2. Длительность услуги определена: {service_duration} мин")
     
     if not date_str:
         logger.error("❌ Не указана дата")
