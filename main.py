@@ -1608,9 +1608,24 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # === ДОБАВЛЕНИЕ ПЕРЕД find_available_slots ===
+    logger.info(f"=== DEBUG: ВЫЗЫВАЮ find_available_slots ===")
+    logger.info(f"Параметры: st='{st}', ss='{ss}', date_str='{date_str}', specialist='{specialist}'")
+    logger.info(f"Длительность услуги (calculate_service_step): {calculate_service_step(ss)} мин")
+    # === КОНЕЦ ДОБАВЛЕНИЯ ===
+
     slots = find_available_slots(
         st, ss, date_str, specialist, context.user_data.get("priority", "date")
     )
+
+    # === ДОБАВЛЕНИЕ ПОСЛЕ find_available_slots ===
+    logger.info(f"=== DEBUG: РЕЗУЛЬТАТ find_available_slots ===")
+    logger.info(f"Найдено слотов: {len(slots) if slots else 0}")
+    if slots and len(slots) > 0:
+        logger.info(f"Первые 3 слота: {slots[:3]}")
+    else:
+        logger.warning(f"⚠️ find_available_slots вернула пустой список!")
+    # === КОНЕЦ ДОБАВЛЕНИЯ ===
 
     # Отладка результата
     logger.info(f"DEBUG: find_available_slots вернул {len(slots)} слотов")
