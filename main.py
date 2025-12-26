@@ -1726,26 +1726,24 @@ async def reserve_slot(
     event_id = safe_create_calendar_event(
         CALENDAR_ID,
         "⏳ Бронь (в процессе)",
-        start_dt.isoformat(),
+        start_dt.isoformat(),  
         end_dt.isoformat(),
         "5",  # Жёлтый цвет
         f"Бронь: {ss} к {specialist}. В процессе оформления...",
     )
 
-    # ↓↓↓ ВСТАВЬТЕ ЗДЕСЬ ↓↓↓
     print(f"=== ДЕТАЛЬНАЯ ОТЛАДКА КАЛЕНДАРЯ ===")
     print(f"Функция safe_create_calendar_event вызвана с:")
     print(f"  calendar_id: {CALENDAR_ID}")
     print(f"  summary: ⏳ Бронь (в процессе)")
-    print(f"  start_time: {start_dt.isoformat()}")
-    print(f"  end_time: {end_dt.isoformat()}")
-    print(f"  color_id: 7")
+    print(f"  start_time: {start_time_str}")
+    print(f"  end_time: {end_time_str}")
+    print(f"  color_id: 5")
     print(f"  description: Бронь: {ss} к {specialist}. В процессе оформления...")
     print(f"Возвращен event_id: '{event_id}'")
     print(f"Тип event_id: {type(event_id)}")
     print(f"Длина event_id: {len(event_id) if event_id else 0}")
     print(f"=== КОНЕЦ ОТЛАДКИ ===")
-    # ↑↑↑ ВСТАВЬТЕ ЗДЕСЬ ↑↑↑
 
     print(f"=== DEBUG reserve_slot: создано событие с ID: {event_id}")  
 
@@ -2966,10 +2964,19 @@ async def _admin_save_reschedule(
                 name = r[1] if len(r) > 1 else ""
                 phone = r[2] if len(r) > 2 else ""
                 step = calculate_service_step(ss)
-                dt = datetime.strptime(f"{new_date} {new_time}", "%d.%m.%Y %H:%M")
+                dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
                 start_dt = TIMEZONE.localize(dt)
                 end_dt = start_dt + timedelta(minutes=step)
-                safe_update_calendar_event(
+    
+                # Форматируем время БЕЗ миллисекунд
+                start_time_str = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
+                end_time_str = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
+    
+                print(f"=== DEBUG TIME FORMAT ===")
+                print(f"Original start_dt: {start_dt}")
+                print(f"Formatted start: {start_time_str}")
+                print(f"Original end_dt: {end_dt}")
+                print(f"Formatted end: {end_time_str}")
                     CALENDAR_ID,
                     event_id,
                     f"{name} - {ss}",
