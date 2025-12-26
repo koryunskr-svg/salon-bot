@@ -1,9 +1,7 @@
-# main.py-Q-3256-25.12.25-D-экспер.
+# main.py-Q-3256-24.12.25-D.
 import logging
-
 logging.basicConfig(level=logging.DEBUG)
 from dotenv import load_dotenv
-
 load_dotenv()
 import logging.handlers
 import os
@@ -1571,106 +1569,131 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- /ПОЛНАЯ ЗАМЕНА select_specialist ---
-
 # --- SELECT TIME ---
+
 
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-    await update_last_activity(update, context)
-    
-    # === ДЕТАЛЬНАЯ ОТЛАДКА ===
-    logger.info(f"=== DEBUG select_time вызвана ===")
-    logger.info(f"user_data keys: {list(context.user_data.keys())}")
-    logger.info(f"Дата: {context.user_data.get('date')}")
-    logger.info(f"Специалист: {context.user_data.get('selected_specialist')}")
-    logger.info(f"Услуга: {context.user_data.get('subservice')}")
-    logger.info(f"Категория: {context.user_data.get('service_type')}")
-    logger.info(f"Приоритет: {context.user_data.get('priority')}")
-    logger.info(f"Текущее состояние: {context.user_data.get('state')}")
-    # === КОНЕЦ ОТЛАДКИ ===
-    
+    # ДОБАВИТЬ ДЛЯ ОТЛАДКИ:
+    logger.info(
+        f"DEBUG select_time: дата={context.user_data.get('date')}, специалист={context.user_data.get('selected_specialist')}, приоритет={context.user_data.get('priority')}"
+    )
     # Сохраняем текущее состояние в историю
     current_state = context.user_data.get("state")
     if current_state:
         state_history = context.user_data.get("state_history", [])
         state_history.append(current_state)
         context.user_data["state_history"] = state_history
-    
     date_str = context.user_data.get("date")
     specialist = context.user_data.get("selected_specialist")
     st = context.user_data.get("service_type")
     ss = context.user_data.get("subservice")
-    
     if not all([date_str, st, ss]):
         await query.edit_message_text(
             "❌ Ошибка: не все данные для выбора времени выбраны."
         )
         return
 
-    # === ДОБАВЛЕНИЕ ПЕРЕД find_available_slots ===
-    logger.info(f"=== DEBUG: ВЫЗЫВАЮ find_available_slots ===")
-    logger.info(f"Параметры: st='{st}', ss='{ss}', date_str='{date_str}', specialist='{specialist}'")
-    logger.info(f"Длительность услуги (calculate_service_step): {calculate_service_step(ss)} мин")
-    # === КОНЕЦ ДОБАВЛЕНИЯ ===
-
     slots = find_available_slots(
         st, ss, date_str, specialist, context.user_data.get("priority", "date")
     )
 
-    # === ДОБАВЛЕНИЕ ПОСЛЕ find_available_slots ===
-    logger.info(f"=== DEBUG: РЕЗУЛЬТАТ find_available_slots ===")
-    logger.info(f"Найдено слотов: {len(slots) if slots else 0}")
-    if slots and len(slots) > 0:
-        logger.info(f"Первые 3 слота: {slots[:3]}")
-    else:
-        logger.warning(f"⚠️ find_available_slots вернула пустой список!")
-    # === КОНЕЦ ДОБАВЛЕНИЯ ===
-
-    # Отладка результата
-    logger.info(f"DEBUG: find_available_slots вернул {len(slots)} слотов")
-    if slots:
-        logger.info(f"DEBUG: Первые 3 слота: {slots[:3]}")
-    
-    service_duration = calculate_service_step(ss)
+    # ДОБАВИТЬ ЭТУ СТРОКУ ДЛЯ ОТЛАДКИ:
+    logger.info(
+        f"DEBUG: find_available_slots вернул {len(slots)} слотов. Параметры: дата={date_str}, специалист={specialist}, услуга={ss}/{st}"
+    )
+    service_duration = calculate_service_step(
+        ss
+    )  # получаем длительность услуги в минутах
     logger.info(f"DEBUG: Длительность услуги '{ss}' = {service_duration} мин")
 
     if not slots:
-        logger.warning(f"⚠️ Нет доступных слотов для {date_str}, специалист {specialist}")
-        logger.warning(f"⚠️ Проверьте: работает ли {specialist} в этот день? Есть ли события в календаре?")
-        
-        # Показываем сообщение и кнопку "Назад"
-        kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
-        
+        logger.info(f"Нет доступных слотов для {date_str}, специалист {specialist}")
+        kb = [
+            [InlineKeyboardButton("📋 В лист ожидания", callback_data="waiting_list")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+        ]
         await query.edit_message_text(
-            f"❌ К сожалению, нет свободного времени на {date_str} "
-            f"{'у специалиста ' + specialist if specialist and specialist != 'любой' else ''}.\n\n"
-            f"<b>Что можно сделать:</b>\n"
-            f"1. Нажмите 'Назад' и выберите другую дату\n"
-            f"2. Нажмите 'Назад' и выберите другого специалиста\n"
-            f"3. Свяжитесь с администратором для уточнения расписания",
+            f"❌ К сожалению, нет свободного времени на {date_str} у специалиста {specialist}.\n\n"
+            f"Хотите встать в лист ожидания? Мы уведомим вас, если время освободится.",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+        return SELECT_TIME
+
+        # Проверяем что specialist определен
+        if not specialist:
+            specialist = "Тест"
+            logger.warning(f"⚠️ specialist=None, используем '{specialist}'")
+
+        # Генерируем слоты с учетом времени работы (10:00-20:00)
+        start_hour = 10
+        end_hour = 20
+        slot_interval = 30  # интервал между слотами в минутах
+
+        test_slots = []
+        current_hour = start_hour
+        current_minute = 0
+
+        while True:
+            # Рассчитываем время окончания слота
+            end_hour_slot = current_hour
+            end_minute_slot = current_minute + service_duration
+
+            # Корректируем если минуты > 60
+            while end_minute_slot >= 60:
+                end_hour_slot += 1
+                end_minute_slot -= 60
+
+            # Проверяем, что слот заканчивается до закрытия
+            if end_hour_slot > end_hour or (
+                end_hour_slot == end_hour and end_minute_slot > 0
+            ):
+                break  # слот выходит за время работы
+
+            time_str = f"{current_hour:02d}:{current_minute:02d}"
+            test_slots.append({"time": time_str, "specialist": specialist or "Тест"})
+
+            # Увеличиваем время
+            current_minute += slot_interval
+            if current_minute >= 60:
+                current_hour += 1
+                current_minute = 0
+
+        kb = []
+        for s in test_slots:
+            t = s.get("time", "N/A")
+            m = s.get("specialist", "N/A")
+            # ВАЖНО: использовать specialist из контекста, а не из
+            # test_slots
+            kb.append(
+                [
+                    InlineKeyboardButton(
+                        f"{t} — {m}", callback_data=f"slot_{specialist or 'Тест'}_{t}"
+                    )
+                ]
+            )
+
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+
+        await query.edit_message_text(
+            f"🟡 ТЕСТ: Доступное время для услуги '{ss}' ({service_duration} мин):",
             reply_markup=InlineKeyboardMarkup(kb),
-            parse_mode="HTML"
         )
         context.user_data["state"] = SELECT_TIME
         return SELECT_TIME
 
-    # Если слоты ЕСТЬ - показываем их
     kb = []
     for s in slots:
         t = s.get("time", "N/A")
         m = s.get("specialist", "N/A")
         kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
-    
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-    
     await query.edit_message_text(
-        f"🕒 Выберите время для услуги <b>{ss}</b> на <b>{date_str}</b>:",
-        reply_markup=InlineKeyboardMarkup(kb),
-        parse_mode="HTML"
+        "Выберите время:", reply_markup=InlineKeyboardMarkup(kb)
     )
     context.user_data["state"] = SELECT_TIME
     return SELECT_TIME
+
 
 # --- RESERVE SLOT ---
 
@@ -1695,7 +1718,10 @@ async def reserve_slot(
     start_dt = TIMEZONE.localize(dt)
     end_dt = start_dt + timedelta(minutes=step)
     
-    logger.debug(f"Создание события в календаре {CALENDAR_ID}: {start_dt.isoformat()} - {end_dt.isoformat()}")
+    print(f"=== DEBUG: Создаю событие в календаре ===")
+    print(f"Календарь ID: {CALENDAR_ID}")
+    print(f"Начало: {start_dt.isoformat()}")
+    print(f"Конец: {end_dt.isoformat()}")
 
     event_id = safe_create_calendar_event(
         CALENDAR_ID,
@@ -1706,11 +1732,29 @@ async def reserve_slot(
         f"Бронь: {ss} к {specialist}. В процессе оформления...",
     )
 
-    logger.debug(f"Событие создано с ID: {event_id}")
+    # ↓↓↓ ВСТАВЬТЕ ЗДЕСЬ ↓↓↓
+    print(f"=== ДЕТАЛЬНАЯ ОТЛАДКА КАЛЕНДАРЯ ===")
+    print(f"Функция safe_create_calendar_event вызвана с:")
+    print(f"  calendar_id: {CALENDAR_ID}")
+    print(f"  summary: ⏳ Бронь (в процессе)")
+    print(f"  start_time: {start_dt.isoformat()}")
+    print(f"  end_time: {end_dt.isoformat()}")
+    print(f"  color_id: 7")
+    print(f"  description: Бронь: {ss} к {specialist}. В процессе оформления...")
+    print(f"Возвращен event_id: '{event_id}'")
+    print(f"Тип event_id: {type(event_id)}")
+    print(f"Длина event_id: {len(event_id) if event_id else 0}")
+    print(f"=== КОНЕЦ ОТЛАДКИ ===")
+    # ↑↑↑ ВСТАВЬТЕ ЗДЕСЬ ↑↑↑
+
+    print(f"=== DEBUG reserve_slot: создано событие с ID: {event_id}")  
 
     if not event_id:
-        logger.error(f"ОШИБКА: safe_create_calendar_event вернула None!")
-        logger.error(f"Возможные причины: неверный CALENDAR_ID, нет прав сервисного аккаунта или ошибка Google API")
+        print(f"❌ ОШИБКА: safe_create_calendar_event вернула None или пустую строку!")
+        print(f"Возможные причины:")
+        print(f"1. Неверный CALENDAR_ID: {CALENDAR_ID}")
+        print(f"2. Нет прав у сервисного аккаунта")
+        print(f"3. Ошибка Google API")
         event_id = "ERROR_NO_EVENT_CREATED"
 
     context.user_data["temp_booking"] = {
@@ -1955,9 +1999,8 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     summary=new_summary,
                     start_time=start_dt.isoformat(),
                     end_time=end_dt.isoformat(),
-                    color_id="10",  # Зелёный цвет для подтверждённых
                     description=new_description,
-                    
+                    color_id="10",  # Зелёный цвет для подтверждённых
                 )
                 logger.info(f"✅ Календарь обновлён: {event_id}")
             else:
