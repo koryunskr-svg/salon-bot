@@ -1728,7 +1728,7 @@ async def reserve_slot(
         "⏳ Бронь (в процессе)",
         start_dt.isoformat(),
         end_dt.isoformat(),
-        "7",  # Жёлтый цвет
+        "5",  # Жёлтый цвет
         f"Бронь: {ss} к {specialist}. В процессе оформления...",
     )
 
@@ -1756,6 +1756,36 @@ async def reserve_slot(
         print(f"2. Нет прав у сервисного аккаунта")
         print(f"3. Ошибка Google API")
         event_id = "ERROR_NO_EVENT_CREATED"
+
+    # === ДОБАВЛЯЕМ ТАЙМЕРЫ ДЛЯ АВТОМАТИЧЕСКОГО ОСВОБОЖДЕНИЯ ===
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    
+    # Удаляем старые таймеры, если есть
+    job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
+    for job_name in job_names:
+        current_jobs = context.job_queue.get_jobs_by_name(job_name)
+        for job in current_jobs:
+            job.schedule_removal()
+    
+    # Добавляем предупреждение через 1 минуту
+    context.job_queue.run_once(
+        warn_reservation,
+        when=WARNING_TIMEOUT,
+        data={"user_id": user_id, "chat_id": chat_id},
+        name=f"reservation_warn_{chat_id}"
+    )
+    
+    # Добавляем освобождение через 2 минуты
+    context.job_queue.run_once(
+        release_reservation,
+        when=RESERVATION_TIMEOUT,
+        data={"user_id": user_id, "chat_id": chat_id},
+        name=f"reservation_timeout_{chat_id}"
+    )
+    
+    logger.info(f"⏰ Таймеры установлены: предупреждение через {WARNING_TIMEOUT}с, освобождение через {RESERVATION_TIMEOUT}с")
+    # === /ТАЙМЕРЫ ===
 
     context.user_data["temp_booking"] = {
         "specialist": specialist,
