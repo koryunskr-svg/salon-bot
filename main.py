@@ -949,6 +949,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return await select_date(update, context)  # Сценарий B
         else:
             return await select_time(update, context)  # Сценарий A
+    if data == "any_specialist":
+        context.user_data["selected_specialist"] = "любой"
+        if context.user_data.get("priority") == "date":
+            return await select_time(update, context)
+        else:
+            return await select_date(update, context)     
     if data.startswith("slot_"):
         # ДОБАВИТЬ ОТЛАДКУ:
         logger.info(f"DEBUG button_handler: data='{data}'")
