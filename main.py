@@ -1342,7 +1342,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Правильная сортировка дат
         date_pairs = []
-        for date_str in aavailable_dates_for_specialist
+        for date_str in available_dates_for_specialist
             try:
                 dt_obj = datetime.strptime(date_str, "%d.%m.%Y")
                 date_pairs.append((dt_obj, date_str))
