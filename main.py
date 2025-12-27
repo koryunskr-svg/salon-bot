@@ -948,6 +948,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             # Сценарий B: сначала специалист, потом дата → теперь время
             return await select_time(update, context)
+
+    print(f"🟢 КНОПКА НАЖАТА: {data}")
+    
+    if data.startswith("specialist_"):
+    ...
+    
     if data.startswith("specialist_"):
         context.user_data["selected_specialist"] = data.split("specialist_", 1)[1]
         if context.user_data.get("priority") == "specialist":
