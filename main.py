@@ -1579,10 +1579,19 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    # ДОБАВИТЬ ОТЛАДКУ СРАЗУ ЗДЕСЬ:
+    print(f"=== DEBUG select_time ВХОД ===")
+    print(f"context.user_data keys: {list(context.user_data.keys())}")
+    print(f"date из context: {context.user_data.get('date')}")
+    print(f"selected_specialist из context: {context.user_data.get('selected_specialist')}")
+    print(f"service_type из context: {context.user_data.get('service_type')}")
+    print(f"subservice из context: {context.user_data.get('subservice')}")
+    
     # ДОБАВИТЬ ДЛЯ ОТЛАДКИ:
     logger.info(
         f"DEBUG select_time: дата={context.user_data.get('date')}, специалист={context.user_data.get('selected_specialist')}, приоритет={context.user_data.get('priority')}"
     )
+
     # Сохраняем текущее состояние в историю
     current_state = context.user_data.get("state")
     if current_state:
@@ -1599,9 +1608,27 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # === ДЕТАЛЬНАЯ ОТЛАДКА ПЕРЕД ВЫЗОВОМ ===
+    print(f"=== DEBUG BEFORE find_available_slots ===")
+    print(f"st (service_type): '{st}'")
+    print(f"ss (subservice): '{ss}'")
+    print(f"date_str: '{date_str}'")
+    print(f"specialist: '{specialist}'")
+    print(f"priority: '{context.user_data.get('priority', 'date')}'")
+    
+    # Проверяем типы данных
+    print(f"Тип date_str: {type(date_str)}")
+    print(f"Тип specialist: {type(specialist)}")
+    print(f"date_str пустая? {not date_str}")
+    print(f"specialist пустой? {not specialist}")
+    
     slots = find_available_slots(
         st, ss, date_str, specialist, context.user_data.get("priority", "date")
     )
+    
+    print(f"=== DEBUG AFTER find_available_slots ===")
+    print(f"Возвращено слотов: {len(slots) if slots else 0}")
+    # === /ОТЛАДКА ===
 
     # ДОБАВИТЬ ЭТУ СТРОКУ ДЛЯ ОТЛАДКИ:
     logger.info(
@@ -2054,6 +2081,43 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"❌ Ошибка обновления календаря: {e}")
             print(f"ERROR updating calendar: {e}")
+
+                print(f"ERROR updating calendar: {e}")
+
+    # === 3.5 ПРОВЕРКА НА КОНФЛИКТЫ ===
+    try:
+        # Проверяем, не занят ли уже этот слот другим подтверждённым клиентом
+        search_date = datetime.strptime(date_str, "%d.%m.%Y")
+        search_date = TIMEZONE.localize(search_date)
+        time_min = search_date.replace(hour=0, minute=0, second=0).isoformat()
+        time_max = search_date.replace(hour=23, minute=59, second=59).isoformat()
+        
+        events = safe_get_calendar_events(CALENDAR_ID, time_min, time_max) or []
+        for event in events:
+            event_start = event.get('start', {}).get('dateTime')
+            event_summary = event.get('summary', '')
+            event_id_check = event.get('id')
+            
+            # Пропускаем текущее событие (которое мы обновляем)
+            if event_id_check == event_id:
+                continue
+                
+            if event_start and specialist in event_summary:
+                event_dt = datetime.fromisoformat(event_start.replace('Z', '+00:00'))
+                event_dt = event_dt.astimezone(TIMEZONE)
+                event_time = event_dt.strftime("%H:%M")
+                
+                # Проверяем совпадение времени и что запись подтверждена
+                if event_time == time_str and "подтвержден" in event_summary.lower():
+                    await query.edit_message_text(
+                        f"❌ Извините, время {time_str} у {specialist} только что заняли.\n"
+                        f"Пожалуйста, выберите другое время."
+                    )
+                    return await select_time(update, context)
+    except Exception as e:
+        logger.error(f"⚠️ Ошибка проверки конфликтов: {e}")
+    # === /ПРОВЕРКА НА КОНФЛИКТЫ ===
+
 
     # === 4. ЗАПИСЫВАЕМ В ТАБЛИЦУ "ЗАПИСИ" ===
     try:
