@@ -1340,14 +1340,21 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # TODO: Проверить реальную доступность специалиста в день по его календарю и расписанию
                     available_dates_for_specialist.append(target_date_str)
 
-        # ↓↓↓ ДОБАВЛЕНО: СОРТИРОВКА ↓↓↓
-        available_dates_sorted = sorted(
-            available_dates_for_specialist, key=sort_date_str
-        )
-        # ↑↑↑ ДОБАВЛЕНО: СОРТИРОВКА ↑↑↑
-
+        # Правильная сортировка дат
+        date_pairs = []
+        for date_str in available_dates:  # или available_dates_for_specialist
+            try:
+                dt_obj = datetime.strptime(date_str, "%d.%m.%Y")
+                date_pairs.append((dt_obj, date_str))
+            except ValueError:
+                date_pairs.append((datetime.now(), date_str))
+        
+        # Сортируем по дате
+        date_pairs.sort(key=lambda x: x[0])
+        
+        # Формируем кнопки
         kb = []
-        for date_str in sorted(available_dates_for_specialist):
+        for dt_obj, date_str in date_pairs:
             kb.append(
                 [InlineKeyboardButton(date_str, callback_data=f"date_{date_str}")]
             )
@@ -1398,25 +1405,24 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 # Нашли хотя бы одного подходящего специалиста с потенциальным временем, можно перейти к следующей дате
                                 break
 
-        # ↓↓↓ ДОБАВЛЕНО: СОРТИРОВКА ↓↓↓
-        available_dates_list = sorted(list(available_dates), key=sort_date_str)
-        # ↑↑↑ ДОБАВЛЕНО: СОРТИРОВКА ↑↑↑
-
-        # Формируем клавиатуру с доступными датами
+        # Правильная сортировка дат
+        date_pairs = []
+        for date_str in available_dates:  # или available_dates_for_specialist
+            try:
+                dt_obj = datetime.strptime(date_str, "%d.%m.%Y")
+                date_pairs.append((dt_obj, date_str))
+            except ValueError:
+                date_pairs.append((datetime.now(), date_str))
+        
+        # Сортируем по дате
+        date_pairs.sort(key=lambda x: x[0])
+        
+        # Формируем кнопки
         kb = []
-        for date_str in sorted(available_dates):
+        for dt_obj, date_str in date_pairs:
             kb.append(
                 [InlineKeyboardButton(date_str, callback_data=f"date_{date_str}")]
             )
-
-        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-
-        await query.edit_message_text(
-            f"📅 Выберите дату для услуги '{subservice}':",
-            reply_markup=InlineKeyboardMarkup(kb),
-        )
-        context.user_data["state"] = SELECT_DATE
-        return
 
 
 # --- /SELECT DATE ---
@@ -1579,6 +1585,8 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     # ДОБАВИТЬ ОТЛАДКУ СРАЗУ ЗДЕСЬ:
     print(f"=== DEBUG select_time ВХОД ===")
     print(f"context.user_data keys: {list(context.user_data.keys())}")
@@ -1591,7 +1599,6 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(
         f"DEBUG select_time: дата={context.user_data.get('date')}, специалист={context.user_data.get('selected_specialist')}, приоритет={context.user_data.get('priority')}"
     )
-
     # Сохраняем текущее состояние в историю
     current_state = context.user_data.get("state")
     if current_state:
@@ -1615,17 +1622,17 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"date_str: '{date_str}'")
     print(f"specialist: '{specialist}'")
     print(f"priority: '{context.user_data.get('priority', 'date')}'")
-    
+
     # Проверяем типы данных
     print(f"Тип date_str: {type(date_str)}")
     print(f"Тип specialist: {type(specialist)}")
     print(f"date_str пустая? {not date_str}")
     print(f"specialist пустой? {not specialist}")
-    
+
     slots = find_available_slots(
         st, ss, date_str, specialist, context.user_data.get("priority", "date")
     )
-    
+
     print(f"=== DEBUG AFTER find_available_slots ===")
     print(f"Возвращено слотов: {len(slots) if slots else 0}")
     # === /ОТЛАДКА ===
@@ -2051,7 +2058,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     price_info = safe_parse_price(row[5] if len(row) > 5 else "")
                     break
 
-            new_summary = f"{name} - {ss} к {specialist}"
+            new_summary = f"{name} - {ss}"
             new_description = (
                 f"Клиент: {name}\n"
                 f"Телефон: {phone}\n"
@@ -2081,41 +2088,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"❌ Ошибка обновления календаря: {e}")
             print(f"ERROR updating calendar: {e}")
-
-    # === 3.5 ПРОВЕРКА НА КОНФЛИКТЫ ===
-    try:
-        # Проверяем, не занят ли уже этот слот другим подтверждённым клиентом
-        search_date = datetime.strptime(date_str, "%d.%m.%Y")
-        search_date = TIMEZONE.localize(search_date)
-        time_min = search_date.replace(hour=0, minute=0, second=0).isoformat()
-        time_max = search_date.replace(hour=23, minute=59, second=59).isoformat()
-        
-        events = safe_get_calendar_events(CALENDAR_ID, time_min, time_max) or []
-        for event in events:
-            event_start = event.get('start', {}).get('dateTime')
-            event_summary = event.get('summary', '')
-            event_id_check = event.get('id')
-            
-            # Пропускаем текущее событие (которое мы обновляем)
-            if event_id_check == event_id:
-                continue
-                
-            if event_start and specialist in event_summary:
-                event_dt = datetime.fromisoformat(event_start.replace('Z', '+00:00'))
-                event_dt = event_dt.astimezone(TIMEZONE)
-                event_time = event_dt.strftime("%H:%M")
-                
-                # Проверяем совпадение времени и что запись подтверждена
-                if event_time == time_str and "подтвержден" in event_summary.lower():
-                    await query.edit_message_text(
-                        f"❌ Извините, время {time_str} у {specialist} только что заняли.\n"
-                        f"Пожалуйста, выберите другое время."
-                    )
-                    return await select_time(update, context)
-    except Exception as e:
-        logger.error(f"⚠️ Ошибка проверки конфликтов: {e}")
-    # === /ПРОВЕРКА НА КОНФЛИКТЫ ===
-
 
     # === 4. ЗАПИСЫВАЕМ В ТАБЛИЦУ "ЗАПИСИ" ===
     try:
