@@ -142,7 +142,6 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     """
     logger.info(f"🔍 ПОИСК СЛОТОВ: Дата={date_str}, Специалист={selected_specialist}, Услуга={subservice}")
     
-    # ВРЕМЕННОЕ РЕШЕНИЕ: генерируем тестовые слоты
     if not date_str or not selected_specialist:
         logger.warning(f"⚠️ Пустые параметры: date_str='{date_str}', specialist='{selected_specialist}'")
         return []
@@ -171,10 +170,13 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
         specialist_events = 0
         for event in busy_events:
             event_summary = event.get('summary', '')
+            event_description = event.get('description', '')
             event_start = event.get('start', {}).get('dateTime')
             
-            # Проверяем, относится ли событие к этому специалисту
-            if event_start and selected_specialist in event_summary:
+            # Ищем специалиста в summary (подтверждённые) ИЛИ description (временные брони)
+            specialist_found = (selected_specialist in event_summary) or (selected_specialist in event_description)
+            
+            if event_start and specialist_found:
                 specialist_events += 1
                 try:
                     # Извлекаем время из события
@@ -182,7 +184,7 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                     event_dt = event_dt.astimezone(TIMEZONE)
                     busy_time = event_dt.strftime("%H:%M")
                     busy_slots.append(busy_time)
-                    logger.info(f"   🕒 Занято: {busy_time} - {event_summary}")
+                    logger.info(f"   🕒 Занято: {busy_time} - {event_summary[:30]}")
                 except Exception as e:
                     logger.error(f"❌ Ошибка парсинга времени события: {e}")
         
@@ -211,8 +213,8 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     
     logger.info(f"✅ Сгенерировано {len(test_slots)} свободных слотов для {selected_specialist} на {date_str}")
     logger.info(f"   Занятые слоты: {busy_slots}")
-    logger.info(f"   Свободные слоты: {[s['time'] for s in test_slots]}")
     
     return test_slots
+
 
 print("✅ Модуль slots.py загружен.")
