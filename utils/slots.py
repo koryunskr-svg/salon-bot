@@ -146,74 +146,132 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
         logger.warning(f"⚠️ Пустые параметры: date_str='{date_str}', specialist='{selected_specialist}'")
         return []
     
-    # === 1. ПОЛУЧАЕМ ЗАНЯТЫЕ СЛОТЫ ИЗ КАЛЕНДАРЯ ===
-    from config import CALENDAR_ID, TIMEZONE
+    # === 1. ПОЛУЧАЕМ ГРАФИК РАБОТЫ СПЕЦИАЛИСТА ===
+    from config import CALENDAR_ID, TIMEZONE, SHEET_ID
     import datetime
     
+    # Определяем день недели
+    try:
+        search_date = datetime.datetime.strptime(date_str, "%d.%m.%Y")
+        day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        day_of_week = day_names[search_date.weekday()]
+        logger.info(f"📅 День недели для {date_str}: {day_of_week}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка определения дня недели: {e}")
+        return []
+    
+    # Получаем график специалиста
+    schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
+    work_start = 10  # по умолчанию
+    work_end = 20    # по умолчанию
+    
+    for row in schedule_data:
+        if len(row) > 0 and row[0] == selected_specialist:
+            # Индекс столбца для дня недели: Пн=2, Вт=3, Ср=4, Чт=5, Пт=6, Сб=7, Вс=8
+            day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(day_of_week) + 2
+            
+            if day_index < len(row):
+                schedule = row[day_index].strip()
+                if schedule.lower() == "выходной":
+                    logger.info(f"📅 {selected_specialist} не работает в {day_of_week}")
+                    return []
+                elif "-" in schedule:
+                    try:
+                        start_str, end_str = schedule.split("-")
+                        work_start = int(start_str.split(":")[0])
+                        work_end = int(end_str.split(":")[0])
+                        logger.info(f"📅 График {selected_specialist}: {schedule} ({work_start}:00-{work_end}:00)")
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка парсинга графика: {e}")
+                break
+    
+    # === 2. ПОЛУЧАЕМ ДЛИТЕЛЬНОСТЬ УСЛУГИ ===
+    service_duration = 60  # по умолчанию 60 минут
+    services_data = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
+    for row in services_data:
+        if len(row) > 1 and row[1] == subservice:
+            try:
+                service_duration = int(row[2]) if row[2] else 60  # колонка C - Длительность
+                logger.info(f"⏱️ Длительность услуги '{subservice}': {service_duration} мин")
+            except Exception as e:
+                logger.error(f"❌ Ошибка парсинга длительности услуги: {e}")
+            break
+    
+    # === 3. ПОЛУЧАЕМ ЗАНЯТЫЕ СЛОТЫ ИЗ КАЛЕНДАРЯ ===
     busy_slots = []
     try:
-        # Конвертируем дату для поиска в календаре
-        search_date = datetime.datetime.strptime(date_str, "%d.%m.%Y")
         search_date = TIMEZONE.localize(search_date)
-        
-        # Начало и конец дня для поиска
         time_min = search_date.replace(hour=0, minute=0, second=0).isoformat()
         time_max = search_date.replace(hour=23, minute=59, second=59).isoformat()
         
-        logger.info(f"📅 Ищу события в календаре: {time_min} - {time_max}")
-        
-        # Получаем события календаря
         busy_events = safe_get_calendar_events(CALENDAR_ID, time_min, time_max) or []
         logger.info(f"📅 Найдено событий в календаре: {len(busy_events)}")
         
         # Фильтруем события данного специалиста
-        specialist_events = 0
         for event in busy_events:
             event_summary = event.get('summary', '')
             event_description = event.get('description', '')
             event_start = event.get('start', {}).get('dateTime')
             
-            # Ищем специалиста в summary (подтверждённые) ИЛИ description (временные брони)
             specialist_found = (selected_specialist in event_summary) or (selected_specialist in event_description)
             
             if event_start and specialist_found:
-                specialist_events += 1
                 try:
-                    # Извлекаем время из события
                     event_dt = datetime.datetime.fromisoformat(event_start.replace('Z', '+00:00'))
                     event_dt = event_dt.astimezone(TIMEZONE)
                     busy_time = event_dt.strftime("%H:%M")
                     busy_slots.append(busy_time)
-                    logger.info(f"   🕒 Занято: {busy_time} - {event_summary[:30]}")
                 except Exception as e:
                     logger.error(f"❌ Ошибка парсинга времени события: {e}")
         
-        logger.info(f"📅 Для {selected_specialist} на {date_str} занято слотов: {len(busy_slots)} из {specialist_events} событий")
+        logger.info(f"📅 Занятые слоты: {busy_slots}")
         
     except Exception as e:
         logger.error(f"❌ Ошибка получения данных календаря: {e}")
-        busy_slots = []
-
-    # === 2. ГЕНЕРИРУЕМ СВОБОДНЫЕ СЛОТЫ ===
+    
+    # === 4. ГЕНЕРИРУЕМ СВОБОДНЫЕ СЛОТЫ ===
     test_slots = []
-    for hour in range(10, 20):  # С 10:00 до 20:00
+    slot_interval = 30  # минут между слотами
+    
+    for hour in range(work_start, work_end):
         for minute in [0, 30]:
+            # Проверяем, что слот не выходит за время работы
+            slot_end_hour = hour
+            slot_end_minute = minute + service_duration
+            
+            while slot_end_minute >= 60:
+                slot_end_hour += 1
+                slot_end_minute -= 60
+            
+            # Если услуга выходит за время работы - пропускаем
+            if slot_end_hour > work_end or (slot_end_hour == work_end and slot_end_minute > 0):
+                continue
+            
             time_str = f"{hour:02d}:{minute:02d}"
             
             # Пропускаем занятые слоты
             if time_str in busy_slots:
-                logger.debug(f"   ⏸️ Пропускаем занятый слот: {time_str}")
                 continue
+            
+            # Проверяем, что слот не перекрывается с занятыми
+            slot_ok = True
+            for busy in busy_slots:
+                busy_hour = int(busy.split(":")[0])
+                busy_minute = int(busy.split(":")[1])
                 
-            test_slots.append({
-                "date": date_str,
-                "time": time_str,
-                "specialist": selected_specialist
-            })
+                # Упрощённая проверка перекрытия (можно улучшить)
+                if hour == busy_hour and minute == busy_minute:
+                    slot_ok = False
+                    break
+            
+            if slot_ok:
+                test_slots.append({
+                    "date": date_str,
+                    "time": time_str,
+                    "specialist": selected_specialist
+                })
     
     logger.info(f"✅ Сгенерировано {len(test_slots)} свободных слотов для {selected_specialist} на {date_str}")
-    logger.info(f"   Занятые слоты: {busy_slots}")
-    
     return test_slots
 
 
