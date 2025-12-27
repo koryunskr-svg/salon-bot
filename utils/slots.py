@@ -167,7 +167,6 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     
     for row in schedule_data:
         if len(row) > 0 and row[0] == selected_specialist:
-            # Индекс столбца для дня недели: Пн=2, Вт=3, Ср=4, Чт=5, Пт=6, Сб=7, Вс=8
             day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(day_of_week) + 2
             
             if day_index < len(row):
@@ -186,45 +185,60 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                 break
     
     # === 2. ПОЛУЧАЕМ ДЛИТЕЛЬНОСТЬ УСЛУГИ ===
-    service_duration = 60  # по умолчанию 60 минут
+    service_duration = 60  # по умолчанию
+    service_buffer = 0     # буфер
     services_data = safe_get_sheet_data(SHEET_ID, "Услуги!A3:G") or []
     for row in services_data:
         if len(row) > 1 and row[1] == subservice:
             try:
                 service_duration = int(row[2]) if row[2] else 60  # колонка C - Длительность
-                logger.info(f"⏱️ Длительность услуги '{subservice}': {service_duration} мин")
+                service_buffer = int(row[3]) if len(row) > 3 and row[3] else 0  # колонка D - Буфер
+                logger.info(f"⏱️ Услуга '{subservice}': {service_duration} мин + буфер {service_buffer} мин")
             except Exception as e:
                 logger.error(f"❌ Ошибка парсинга длительности услуги: {e}")
             break
     
-    # === 3. ПОЛУЧАЕМ ЗАНЯТЫЕ СЛОТЫ ИЗ КАЛЕНДАРЯ ===
-    busy_slots = []
+    total_duration = service_duration + service_buffer
+    
+    # === 3. ПОЛУЧАЕМ ЗАНЯТЫЕ ИНТЕРВАЛЫ ИЗ КАЛЕНДАРЯ ===
+    busy_intervals = []  # список кортежей (начало, конец) в минутах от 00:00
     try:
-        search_date = TIMEZONE.localize(search_date)
-        time_min = search_date.replace(hour=0, minute=0, second=0).isoformat()
-        time_max = search_date.replace(hour=23, minute=59, second=59).isoformat()
+        search_date_tz = TIMEZONE.localize(search_date)
+        time_min = search_date_tz.replace(hour=0, minute=0, second=0).isoformat()
+        time_max = search_date_tz.replace(hour=23, minute=59, second=59).isoformat()
         
         busy_events = safe_get_calendar_events(CALENDAR_ID, time_min, time_max) or []
         logger.info(f"📅 Найдено событий в календаре: {len(busy_events)}")
         
-        # Фильтруем события данного специалиста
+        # Получаем начало и конец каждого события
         for event in busy_events:
             event_summary = event.get('summary', '')
             event_description = event.get('description', '')
             event_start = event.get('start', {}).get('dateTime')
+            event_end = event.get('end', {}).get('dateTime')
             
             specialist_found = (selected_specialist in event_summary) or (selected_specialist in event_description)
             
-            if event_start and specialist_found:
+            if event_start and event_end and specialist_found:
                 try:
-                    event_dt = datetime.datetime.fromisoformat(event_start.replace('Z', '+00:00'))
-                    event_dt = event_dt.astimezone(TIMEZONE)
-                    busy_time = event_dt.strftime("%H:%M")
-                    busy_slots.append(busy_time)
+                    # Конвертируем в минуты от начала дня
+                    start_dt = datetime.datetime.fromisoformat(event_start.replace('Z', '+00:00'))
+                    start_dt = start_dt.astimezone(TIMEZONE)
+                    end_dt = datetime.datetime.fromisoformat(event_end.replace('Z', '+00:00'))
+                    end_dt = end_dt.astimezone(TIMEZONE)
+                    
+                    # Проверяем, что событие в нужный день
+                    if start_dt.date() == search_date.date():
+                        start_minutes = start_dt.hour * 60 + start_dt.minute
+                        end_minutes = end_dt.hour * 60 + end_dt.minute
+                        
+                        busy_intervals.append((start_minutes, end_minutes))
+                        logger.info(f"   🕒 Занято: {start_dt.strftime('%H:%M')}-{end_dt.strftime('%H:%M')} ({end_minutes-start_minutes} мин)")
+                        
                 except Exception as e:
                     logger.error(f"❌ Ошибка парсинга времени события: {e}")
         
-        logger.info(f"📅 Занятые слоты: {busy_slots}")
+        logger.info(f"📅 Найдено занятых интервалов: {len(busy_intervals)}")
         
     except Exception as e:
         logger.error(f"❌ Ошибка получения данных календаря: {e}")
@@ -235,36 +249,28 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     
     for hour in range(work_start, work_end):
         for minute in [0, 30]:
+            # Время начала слота в минутах
+            slot_start_minutes = hour * 60 + minute
+            slot_end_minutes = slot_start_minutes + total_duration
+            
             # Проверяем, что слот не выходит за время работы
-            slot_end_hour = hour
-            slot_end_minute = minute + service_duration
+            slot_end_hour = slot_end_minutes // 60
+            slot_end_minute = slot_end_minutes % 60
             
-            while slot_end_minute >= 60:
-                slot_end_hour += 1
-                slot_end_minute -= 60
-            
-            # Если услуга выходит за время работы - пропускаем
             if slot_end_hour > work_end or (slot_end_hour == work_end and slot_end_minute > 0):
                 continue
             
-            time_str = f"{hour:02d}:{minute:02d}"
-            
-            # Пропускаем занятые слоты
-            if time_str in busy_slots:
-                continue
-            
-            # Проверяем, что слот не перекрывается с занятыми
-            slot_ok = True
-            for busy in busy_slots:
-                busy_hour = int(busy.split(":")[0])
-                busy_minute = int(busy.split(":")[1])
-                
-                # Упрощённая проверка перекрытия (можно улучшить)
-                if hour == busy_hour and minute == busy_minute:
-                    slot_ok = False
+            # Проверяем перекрытие с занятыми интервалами
+            slot_overlaps = False
+            for busy_start, busy_end in busy_intervals:
+                # Если интервалы перекрываются
+                if not (slot_end_minutes <= busy_start or slot_start_minutes >= busy_end):
+                    slot_overlaps = True
+                    logger.debug(f"   ⚠️ Слот {hour:02d}:{minute:02d} перекрывается с {busy_start//60:02d}:{busy_start%60:02d}-{busy_end//60:02d}:{busy_end%60:02d}")
                     break
             
-            if slot_ok:
+            if not slot_overlaps:
+                time_str = f"{hour:02d}:{minute:02d}"
                 test_slots.append({
                     "date": date_str,
                     "time": time_str,
@@ -272,7 +278,12 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                 })
     
     logger.info(f"✅ Сгенерировано {len(test_slots)} свободных слотов для {selected_specialist} на {date_str}")
+    
+    # Логируем свободные слоты
+    if test_slots:
+        slot_times = [s['time'] for s in test_slots]
+        logger.info(f"   🕒 Свободные слоты: {slot_times}")
+    
     return test_slots
-
 
 print("✅ Модуль slots.py загружен.")
