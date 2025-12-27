@@ -1342,7 +1342,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Правильная сортировка дат
         date_pairs = []
-        for date_str in available_dates:  # или available_dates_for_specialist
+        for date_str in aavailable_dates_for_specialist
             try:
                 dt_obj = datetime.strptime(date_str, "%d.%m.%Y")
                 date_pairs.append((dt_obj, date_str))
@@ -1407,7 +1407,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Правильная сортировка дат
         date_pairs = []
-        for date_str in available_dates:  # или available_dates_for_specialist
+        for date_str in available_dates:  
             try:
                 dt_obj = datetime.strptime(date_str, "%d.%m.%Y")
                 date_pairs.append((dt_obj, date_str))
@@ -1580,12 +1580,10 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- /ПОЛНАЯ ЗАМЕНА select_specialist ---
+
 # --- SELECT TIME ---
 
-
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     # ДОБАВИТЬ ОТЛАДКУ СРАЗУ ЗДЕСЬ:
     print(f"=== DEBUG select_time ВХОД ===")
