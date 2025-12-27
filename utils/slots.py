@@ -149,8 +149,25 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     # 5. Отфильтровать по selected_specialist, если указан.
     # 6. Отсортировать в зависимости от priority (date -> по времени, specialist -> сгруппировать по специалисту?)
     # Пока возвращаем пустой список.
+        
     logger.debug(f"🔍 Поиск слотов: Тип={service_type}, Услуга={subservice}, Дата={date_str}, специалист={selected_specialist}, Приоритет={priority}")
-    return []
+    
+    # ВРЕМЕННОЕ РЕШЕНИЕ: генерируем тестовые слоты
+    if not date_str or not selected_specialist:
+        return []
+    
+    # Генерируем слоты с 10:00 до 20:00 с интервалом 30 минут
+    test_slots = []
+    for hour in range(10, 20):
+        for minute in [0, 30]:
+            time_str = f"{hour:02d}:{minute:02d}"
+            test_slots.append({
+                "date": date_str,
+                "time": time_str,
+                "specialist": selected_specialist
+            })
+    
+    logger.info(f"✅ Сгенерировано {len(test_slots)} тестовых слотов для {selected_specialist} на {date_str}")
+    return test_slots
 
 print("✅ Модуль slots.py загружен.")
-
