@@ -1,7 +1,9 @@
 # main.py-Q-3256-24.12.25-D.
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 from dotenv import load_dotenv
+
 load_dotenv()
 import logging.handlers
 import os
@@ -1247,6 +1249,7 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- SELECT DATE ---
 
+
 async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1338,7 +1341,9 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     available_dates_for_specialist.append(target_date_str)
 
         # ↓↓↓ ДОБАВЛЕНО: СОРТИРОВКА ↓↓↓
-        available_dates_sorted = sorted(available_dates_for_specialist, key=sort_date_str)
+        available_dates_sorted = sorted(
+            available_dates_for_specialist, key=sort_date_str
+        )
         # ↑↑↑ ДОБАВЛЕНО: СОРТИРОВКА ↑↑↑
 
         kb = []
@@ -1616,7 +1621,7 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             f"❌ К сожалению, нет свободного времени на {date_str} у специалиста {specialist}.\n\n"
             f"Хотите встать в лист ожидания? Мы уведомим вас, если время освободится.",
-            reply_markup=InlineKeyboardMarkup(kb)
+            reply_markup=InlineKeyboardMarkup(kb),
         )
         return SELECT_TIME
 
@@ -1717,7 +1722,7 @@ async def reserve_slot(
     dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
     start_dt = TIMEZONE.localize(dt)
     end_dt = start_dt + timedelta(minutes=step)
-    
+
     print(f"=== DEBUG: Создаю событие в календаре ===")
     print(f"Календарь ID: {CALENDAR_ID}")
     print(f"Начало: {start_dt.isoformat()}")
@@ -1726,26 +1731,28 @@ async def reserve_slot(
     event_id = safe_create_calendar_event(
         CALENDAR_ID,
         "⏳ Бронь (в процессе)",
-        start_dt.isoformat(),  
+        start_dt.isoformat(),
         end_dt.isoformat(),
         "5",  # Жёлтый цвет
         f"Бронь: {ss} к {specialist}. В процессе оформления...",
     )
 
+    # ↓↓↓ ВСТАВЬТЕ ЗДЕСЬ ↓↓↓
     print(f"=== ДЕТАЛЬНАЯ ОТЛАДКА КАЛЕНДАРЯ ===")
     print(f"Функция safe_create_calendar_event вызвана с:")
     print(f"  calendar_id: {CALENDAR_ID}")
     print(f"  summary: ⏳ Бронь (в процессе)")
-    print(f"  start_time: {start_time_str}")
-    print(f"  end_time: {end_time_str}")
-    print(f"  color_id: 5")
+    print(f"  start_time: {start_dt.isoformat()}")
+    print(f"  end_time: {end_dt.isoformat()}")
+    print(f"  color_id: 7")
     print(f"  description: Бронь: {ss} к {specialist}. В процессе оформления...")
     print(f"Возвращен event_id: '{event_id}'")
     print(f"Тип event_id: {type(event_id)}")
     print(f"Длина event_id: {len(event_id) if event_id else 0}")
     print(f"=== КОНЕЦ ОТЛАДКИ ===")
+    # ↑↑↑ ВСТАВЬТЕ ЗДЕСЬ ↑↑↑
 
-    print(f"=== DEBUG reserve_slot: создано событие с ID: {event_id}")  
+    print(f"=== DEBUG reserve_slot: создано событие с ID: {event_id}")
 
     if not event_id:
         print(f"❌ ОШИБКА: safe_create_calendar_event вернула None или пустую строку!")
@@ -1758,31 +1765,33 @@ async def reserve_slot(
     # === ДОБАВЛЯЕМ ТАЙМЕРЫ ДЛЯ АВТОМАТИЧЕСКОГО ОСВОБОЖДЕНИЯ ===
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
-    
+
     # Удаляем старые таймеры, если есть
     job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
     for job_name in job_names:
         current_jobs = context.job_queue.get_jobs_by_name(job_name)
         for job in current_jobs:
             job.schedule_removal()
-    
+
     # Добавляем предупреждение через 1 минуту
     context.job_queue.run_once(
         warn_reservation,
         when=WARNING_TIMEOUT,
         data={"user_id": user_id, "chat_id": chat_id},
-        name=f"reservation_warn_{chat_id}"
+        name=f"reservation_warn_{chat_id}",
     )
-    
+
     # Добавляем освобождение через 2 минуты
     context.job_queue.run_once(
         release_reservation,
         when=RESERVATION_TIMEOUT,
         data={"user_id": user_id, "chat_id": chat_id},
-        name=f"reservation_timeout_{chat_id}"
+        name=f"reservation_timeout_{chat_id}",
     )
-    
-    logger.info(f"⏰ Таймеры установлены: предупреждение через {WARNING_TIMEOUT}с, освобождение через {RESERVATION_TIMEOUT}с")
+
+    logger.info(
+        f"⏰ Таймеры установлены: предупреждение через {WARNING_TIMEOUT}с, освобождение через {RESERVATION_TIMEOUT}с"
+    )
     # === /ТАЙМЕРЫ ===
 
     context.user_data["temp_booking"] = {
@@ -2032,7 +2041,9 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 logger.info(f"✅ Календарь обновлён: {event_id}")
             else:
-                logger.error(f"❌ Не найдены start_dt или end_dt в temp_booking: {temp_booking}")
+                logger.error(
+                    f"❌ Не найдены start_dt или end_dt в temp_booking: {temp_booking}"
+                )
                 print(f"ERROR: Missing start_dt or end_dt in temp_booking")
         except Exception as e:
             logger.error(f"❌ Ошибка обновления календаря: {e}")
@@ -2967,17 +2978,17 @@ async def _admin_save_reschedule(
                 dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
                 start_dt = TIMEZONE.localize(dt)
                 end_dt = start_dt + timedelta(minutes=step)
-    
+
                 # Форматируем время БЕЗ миллисекунд
                 start_time_str = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
                 end_time_str = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
-    
-                print(f"=== DEBUG TIME FORMAT ===")
+
                 print(f"Original start_dt: {start_dt}")
                 print(f"Formatted start: {start_time_str}")
                 print(f"Original end_dt: {end_dt}")
                 print(f"Formatted end: {end_time_str}")
-                CALENDAR_ID,
+                safe_update_calendar_event(
+                    CALENDAR_ID,
                     event_id,
                     f"{name} - {ss}",
                     start_dt.isoformat(),
@@ -3572,4 +3583,3 @@ def _handle_exit(signum, frame):
 
 if __name__ == "__main__":
     main()
-
