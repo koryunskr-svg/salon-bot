@@ -2082,8 +2082,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"❌ Ошибка обновления календаря: {e}")
             print(f"ERROR updating calendar: {e}")
 
-                print(f"ERROR updating calendar: {e}")
-
     # === 3.5 ПРОВЕРКА НА КОНФЛИКТЫ ===
     try:
         # Проверяем, не занят ли уже этот слот другим подтверждённым клиентом
