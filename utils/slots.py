@@ -140,34 +140,69 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     Находит доступные слоты на основе типа услуги, подуслуги, даты, специалиста и приоритета.
     Возвращает список словарей с ключами: date, time, specialist.
     """
-    # Заглушка - реализация будет зависеть от логики поиска в календаре и таблице
-    # и сопоставления с графиком специалистов.
-    # 1. Получить 'Шаг' для услуги из 'Услуги'
-    # 2. Получить график специалистов на date_str
-    # 3. Получить события из календаря на date_str
-    # 4. Найти интервалы длиной 'Шаг', где нет событий и специалист работает.
-    # 5. Отфильтровать по selected_specialist, если указан.
-    # 6. Отсортировать в зависимости от priority (date -> по времени, specialist -> сгруппировать по специалисту?)
-    # Пока возвращаем пустой список.
-        
     logger.debug(f"🔍 Поиск слотов: Тип={service_type}, Услуга={subservice}, Дата={date_str}, специалист={selected_specialist}, Приоритет={priority}")
     
     # ВРЕМЕННОЕ РЕШЕНИЕ: генерируем тестовые слоты
     if not date_str or not selected_specialist:
         return []
     
-    # Генерируем слоты с 10:00 до 20:00 с интервалом 30 минут
+    # === 1. ПОЛУЧАЕМ ЗАНЯТЫЕ СЛОТЫ ИЗ КАЛЕНДАРЯ ===
+    from config import CALENDAR_ID, TIMEZONE
+    import datetime
+    
+    busy_slots = []
+    try:
+        # Конвертируем дату для поиска в календаре
+        search_date = datetime.datetime.strptime(date_str, "%d.%m.%Y")
+        search_date = TIMEZONE.localize(search_date)
+        
+        # Начало и конец дня для поиска
+        time_min = search_date.replace(hour=0, minute=0, second=0).isoformat()
+        time_max = search_date.replace(hour=23, minute=59, second=59).isoformat()
+        
+        # Получаем события календаря
+        busy_events = safe_get_calendar_events(CALENDAR_ID, time_min, time_max)
+        
+        # Фильтруем события данного специалиста
+        for event in busy_events:
+            event_summary = event.get('summary', '')
+            event_start = event.get('start', {}).get('dateTime')
+            
+            # Проверяем, относится ли событие к этому специалисту
+            if event_start and selected_specialist in event_summary:
+                try:
+                    # Извлекаем время из события
+                    event_dt = datetime.datetime.fromisoformat(event_start.replace('Z', '+00:00'))
+                    event_dt = event_dt.astimezone(TIMEZONE)
+                    busy_time = event_dt.strftime("%H:%M")
+                    busy_slots.append(busy_time)
+                except Exception as e:
+                    logger.error(f"❌ Ошибка парсинга времени события: {e}")
+        
+        logger.info(f"📅 Для {selected_specialist} на {date_str} занято слотов: {len(busy_slots)}")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения данных календаря: {e}")
+        busy_slots = []
+
+    # === 2. ГЕНЕРИРУЕМ СВОБОДНЫЕ СЛОТЫ ===
     test_slots = []
-    for hour in range(10, 20):
+    for hour in range(10, 20):  # С 10:00 до 20:00
         for minute in [0, 30]:
             time_str = f"{hour:02d}:{minute:02d}"
+            
+            # Пропускаем занятые слоты
+            if time_str in busy_slots:
+                continue
+                
             test_slots.append({
                 "date": date_str,
                 "time": time_str,
                 "specialist": selected_specialist
             })
     
-    logger.info(f"✅ Сгенерировано {len(test_slots)} тестовых слотов для {selected_specialist} на {date_str}")
+    logger.info(f"✅ Сгенерировано {len(test_slots)} свободных слотов для {selected_specialist} на {date_str}")
     return test_slots
+
 
 print("✅ Модуль slots.py загружен.")
