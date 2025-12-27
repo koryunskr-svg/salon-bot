@@ -1618,8 +1618,14 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📋 В лист ожидания", callback_data="waiting_list")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
         ]
+
+        print(
+            f"=== DEBUG SELECT_TIME: date_str='{date_str}', specialist='{specialist}' ==="
+        )
+        logger.info(f"DEBUG: date_str={date_str}, specialist={specialist}")
+
         await query.edit_message_text(
-            f"❌ К сожалению, нет свободного времени на {date_str} у специалиста {specialist}.\n\n"
+            f"❌ К сожалению, нет свободного времени на {date_str or 'выбранную дату'} у специалиста {specialist or 'выбранного специалиста'}.\n\n"
             f"Хотите встать в лист ожидания? Мы уведомим вас, если время освободится.",
             reply_markup=InlineKeyboardMarkup(kb),
         )
