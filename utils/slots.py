@@ -253,7 +253,7 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     
     # === 4. ГЕНЕРИРУЕМ СВОБОДНЫЕ СЛОТЫ ===
     test_slots = []
-    slot_interval = 30  # минут между слотами
+    slot_interval = 15  # минут между слотами
     
     for hour in range(work_start, work_end):
         for minute in [0, 30]:
