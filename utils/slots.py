@@ -200,6 +200,14 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     
     total_duration = service_duration + service_buffer
     
+    # Функция округления до 15 минут
+    def round_to_15(minutes):
+        return ((minutes + 7) // 15) * 15
+    
+    # Округляем общую длительность до 15 минут
+    total_duration = round_to_15(total_duration)
+    logger.info(f"⏱️ Общая длительность с округлением: {total_duration} мин")
+
     # === 3. ПОЛУЧАЕМ ЗАНЯТЫЕ ИНТЕРВАЛЫ ИЗ КАЛЕНДАРЯ ===
     busy_intervals = []  # список кортежей (начало, конец) в минутах от 00:00
     try:
@@ -279,10 +287,21 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     
     logger.info(f"✅ Сгенерировано {len(test_slots)} свободных слотов для {selected_specialist} на {date_str}")
     
-    # Логируем свободные слоты
+    # Детальное логирование слотов
     if test_slots:
-        slot_times = [s['time'] for s in test_slots]
-        logger.info(f"   🕒 Свободные слоты: {slot_times}")
+        logger.info(f"   📋 ДЕТАЛИ СЛОТОВ:")
+        for slot in test_slots:
+            time_str = slot['time']
+            hour = int(time_str.split(':')[0])
+            minute = int(time_str.split(':')[1])
+            start_minutes = hour * 60 + minute
+            end_minutes = start_minutes + total_duration
+            
+            end_hour = end_minutes // 60
+            end_minute = end_minutes % 60
+            
+            logger.info(f"      🕒 {time_str}-{end_hour:02d}:{end_minute:02d} "
+                       f"({total_duration} мин)")
     
     return test_slots
 
