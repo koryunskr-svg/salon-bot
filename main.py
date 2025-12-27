@@ -775,6 +775,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
 
+    # === НАЧАЛО ОТЛАДКИ ===
+    logger.info(f"🔄 DEBUG button_handler: Нажата кнопка с data='{data}'")
+    logger.info(f"🔄 DEBUG: Текущий state={context.user_data.get('state')}, priority={context.user_data.get('priority')}")
+    # === КОНЕЦ ОТЛАДКИ ===
+
     back_map = {
         SELECT_SUBSERVICE: select_service_type,
         SHOW_PRICE_INFO: select_subservice,
