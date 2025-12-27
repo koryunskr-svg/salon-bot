@@ -2051,7 +2051,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     price_info = safe_parse_price(row[5] if len(row) > 5 else "")
                     break
 
-            new_summary = f"{name} - {ss}"
+            new_summary = f"{name} - {ss} к {specialist}"
             new_description = (
                 f"Клиент: {name}\n"
                 f"Телефон: {phone}\n"
