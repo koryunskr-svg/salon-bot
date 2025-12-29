@@ -607,57 +607,156 @@ async def _validate_booking_checks(
     date_str: str,
     time_str: str,
     service_type: str,
+    specialist: str,  # ← ДОБАВЛЕН НОВЫЙ ПАРАМЕТР
 ):
+    """
+    Проверяет возможность бронирования с учетом:
+    1. Занятости специалиста
+    2. Занятости клиента (по телефону)
+    3. Повторной записи в категории
+    """
+
+    # Получаем все записи
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+
+    # Получаем данные текущей услуги
+    ss = context.user_data.get("subservice", "")
+    service_duration = calculate_service_step(ss)
+
+    # Преобразуем новое время
     try:
         new_start = TIMEZONE.localize(
             datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
         )
-        new_end = new_start + timedelta(
-            minutes=calculate_service_step(
-                context.user_data.get("subservice", "default")
-            )
-        )
+        new_end = new_start + timedelta(minutes=service_duration)
     except ValueError:
         return False, "❌ Неверный формат даты/времени"
+
+    # === ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
     for r in records:
-        if (
-            len(r) > 7
-            and str(r[1]).strip() == name
-            and str(r[2]).strip() == phone
-            and str(r[8]).strip() == "подтверждено"
-        ):
-            rec_date = str(r[6]).strip()
-            rec_time = str(r[7]).strip()
-            try:
-                rec_start = TIMEZONE.localize(
-                    datetime.strptime(f"{rec_date} {rec_time}", "%d.%m.%Y %H:%M")
-                )
-                rec_end = rec_start + timedelta(
-                    minutes=calculate_service_step(str(r[4]).strip())
-                )
-                if max(new_start, rec_start) < min(new_end, rec_end):
-                    return (
-                        False,
-                        f"❌ У вас уже есть запись на {rec_date} в {rec_time} к {str(r[5]).strip()} (услуга: {str(r[4]).strip()}).",
+        if len(r) > 8:
+            record_specialist = str(r[5]).strip()
+            record_status = str(r[8]).strip()
+            record_date = str(r[6]).strip()
+
+            # Проверяем только подтвержденные записи того же специалиста в тот же день
+            if (
+                record_specialist == specialist
+                and record_status == "подтверждено"
+                and record_date == date_str
+            ):
+
+                record_time = str(r[7]).strip()
+                record_service = str(r[4]).strip() if len(r) > 4 else ""
+
+                try:
+                    record_start = TIMEZONE.localize(
+                        datetime.strptime(
+                            f"{record_date} {record_time}", "%d.%m.%Y %H:%M"
+                        )
                     )
-            except ValueError:
-                continue
+                    record_duration = calculate_service_step(record_service)
+                    record_end = record_start + timedelta(minutes=record_duration)
+
+                    # Проверяем пересечение времени
+                    if max(new_start, record_start) < min(new_end, record_end):
+                        return (
+                            False,
+                            f"❌ Специалист {specialist} уже занят:\n"
+                            f"• Время: {record_time}-{record_end.strftime('%H:%M')}\n"
+                            f"• Услуга: {record_service}\n"
+                            f"• Клиент: {r[1] if len(r) > 1 else 'Неизвестно'}\n\n"
+                            f"Выберите другое время или специалиста.",
+                        )
+                except (ValueError, TypeError):
+                    continue
+
+    # === ПРОВЕРКА 2: КЛИЕНТ (ПО ТЕЛЕФОНУ) ЗАНЯТ? ===
     for r in records:
-        if (
-            len(r) > 4
-            and str(r[1]).strip() == name
-            and str(r[2]).strip() == phone
-            and str(r[3]).strip() == service_type
-            and str(r[8]).strip() == "подтверждено"
-        ):
-            context.user_data["repeat_booking_conflict"] = {
-                "category": str(r[3]).strip(),
-                "date": str(r[6]).strip(),
-                "time": str(r[7]).strip(),
-                "specialist": str(r[5]).strip(),
-            }
-            return "CONFIRM_REPEAT", None
+        if len(r) > 8:
+            record_phone = str(r[2]).strip()
+            record_status = str(r[8]).strip()
+            record_date = str(r[6]).strip()
+
+            # Проверяем тот же телефон (разные люди могут использовать один телефон)
+            if (
+                record_phone == phone
+                and record_status == "подтверждено"
+                and record_date == date_str
+            ):
+
+                record_name = str(r[1]).strip()
+                record_time = str(r[7]).strip()
+                record_service = str(r[4]).strip() if len(r) > 4 else ""
+                record_specialist = str(r[5]).strip()
+
+                try:
+                    record_start = TIMEZONE.localize(
+                        datetime.strptime(
+                            f"{record_date} {record_time}", "%d.%m.%Y %H:%M"
+                        )
+                    )
+                    record_duration = calculate_service_step(record_service)
+                    record_end = record_start + timedelta(minutes=record_duration)
+
+                    # Проверяем пересечение времени
+                    if max(new_start, record_start) < min(new_end, record_end):
+                        # Если имя совпадает - это тот же человек
+                        if record_name.lower() == name.lower():
+                            return (
+                                False,
+                                f"❌ У вас уже есть запись на это время:\n"
+                                f"• {record_time}-{record_end.strftime('%H:%M')}\n"
+                                f"• К специалисту: {record_specialist}\n"
+                                f"• Услуга: {record_service}\n\n"
+                                f"Вы не можете быть в двух местах одновременно.",
+                            )
+                        else:
+                            # Разные люди, но один телефон (семья)
+                            return (
+                                False,
+                                f"❌ На этот номер телефона уже есть запись:\n"
+                                f"• Имя: {record_name}\n"
+                                f"• Время: {record_time}-{record_end.strftime('%H:%M')}\n"
+                                f"• К специалисту: {record_specialist}\n"
+                                f"• Услуга: {record_service}\n\n"
+                                f"Нельзя записать двух разных людей на пересекающееся время.",
+                            )
+                except (ValueError, TypeError):
+                    continue
+
+    # === ПРОВЕРКА 3: ПОВТОРНАЯ ЗАПИСЬ В КАТЕГОРИИ ===
+    # Проверяем только для ОДНОГО человека (имя + телефон)
+    repeat_records = []
+    for r in records:
+        if len(r) > 4:
+            record_name = str(r[1]).strip()
+            record_phone = str(r[2]).strip()
+            record_category = str(r[3]).strip()
+            record_status = str(r[8]).strip()
+
+            # Тот же человек (имя И телефон) в той же категории
+            if (
+                record_name.lower() == name.lower()
+                and record_phone == phone
+                and record_category == service_type
+                and record_status == "подтверждено"
+            ):
+
+                repeat_records.append(
+                    {
+                        "category": record_category,
+                        "service": str(r[4]).strip() if len(r) > 4 else "",
+                        "specialist": str(r[5]).strip() if len(r) > 5 else "",
+                        "date": str(r[6]).strip() if len(r) > 6 else "",
+                        "time": str(r[7]).strip() if len(r) > 7 else "",
+                    }
+                )
+
+    if repeat_records:
+        context.user_data["repeat_booking_conflict"] = repeat_records[0]
+        return "CONFIRM_REPEAT", None
+
     return True, None
 
 
@@ -1268,7 +1367,9 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
 
     # Получаем выбранного специалиста, категорию услуги, приоритет
-    selected_specialist = context.user_data.get("selected_specialist")  # Может быть None
+    selected_specialist = context.user_data.get(
+        "selected_specialist"
+    )  # Может быть None
     service_type = context.user_data.get("service_type")
     subservice = context.user_data.get("subservice")
     priority = context.user_data.get("priority", "date")  # По умолчанию "date"
@@ -1348,10 +1449,10 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 date_pairs.append((dt_obj, date_str))
             except ValueError:
                 date_pairs.append((datetime.now(), date_str))
-        
+
         # Сортируем по дате
         date_pairs.sort(key=lambda x: x[0])
-        
+
         # Формируем кнопки
         kb = []
         for dt_obj, date_str in date_pairs:
@@ -1407,10 +1508,10 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 date_pairs.append((dt_obj, date_str))
             except ValueError:
                 date_pairs.append((datetime.now(), date_str))
-        
+
         # Сортируем по дате
         date_pairs.sort(key=lambda x: x[0])
-        
+
         # Формируем кнопки
         kb = []
         for dt_obj, date_str in date_pairs:
@@ -1426,6 +1527,8 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data["state"] = SELECT_DATE
         return SELECT_DATE
+
+
 # --- /SELECT DATE ---
 
 # --- /SELECT DATE ---
@@ -2049,6 +2152,61 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"Данные из context.user_data: {list(context.user_data.keys())}")
     print(f"ID временного события: {event_id}")
     print(f"Имя клиента: {name}")
+
+    # === 2.5. ПРОВЕРКА ВАЛИДНОСТИ БРОНИРОВАНИЯ ===
+    check_result, error_msg = await _validate_booking_checks(
+        context=context,
+        name=name,
+        phone=phone,
+        date_str=date_str,
+        time_str=time_str,
+        service_type=st,
+        specialist=specialist,  # ← ДОБАВИТЬ ЭТОТ ПАРАМЕТР!
+    )
+
+    if check_result is False:
+        # Освобождаем временный слот
+        if event_id:
+            safe_delete_calendar_event(CALENDAR_ID, event_id)
+
+        # Отменяем таймеры
+        job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
+        for job_name in job_names:
+            current_jobs = context.job_queue.get_jobs_by_name(job_name)
+            for job in current_jobs:
+                job.schedule_removal()
+
+        await query.edit_message_text(
+            f"❌ Невозможно завершить запись:\n{error_msg}\n\n"
+            f"Пожалуйста, выберите другое время или специалиста.",
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("🏠 В меню", callback_data="start")]]
+            ),
+        )
+        context.user_data.clear()
+        return MENU
+
+    elif check_result == "CONFIRM_REPEAT":
+        # Показываем подтверждение повторной записи
+        conflict = context.user_data.get("repeat_booking_conflict", {})
+        kb = [
+            [InlineKeyboardButton("✅ Да, всё верно", callback_data="confirm_repeat")],
+            [InlineKeyboardButton("❌ Отменить", callback_data="cancel_booking")],
+        ]
+
+        await query.edit_message_text(
+            f"⚠️ <b>Внимание!</b>\n\n"
+            f"У вас уже есть активная запись в категории <b>{conflict.get('category', 'N/A')}</b>:\n"
+            f"• Услуга: {conflict.get('service', 'N/A')}\n"
+            f"• Специалист: {conflict.get('specialist', 'N/A')}\n"
+            f"• Дата: {conflict.get('date', 'N/A')}\n"
+            f"• Время: {conflict.get('time', 'N/A')}\n\n"
+            f"Вы уверены, что хотите создать еще одну запись в этой же категории?",
+            reply_markup=InlineKeyboardMarkup(kb),
+            parse_mode="HTML",
+        )
+        context.user_data["state"] = AWAITING_REPEAT_CONFIRMATION
+        return AWAITING_REPEAT_CONFIRMATION
 
     # === 3. ОБНОВЛЯЕМ СОБЫТИЕ В КАЛЕНДАРЕ ===
 
@@ -2927,7 +3085,13 @@ async def admin_process_new_slot(
     phone = orig[2] if len(orig) > 2 else ""
     st = orig[3] if len(orig) > 3 else ""
     check_result, error_msg = await _validate_booking_checks(
-        context, name, phone, new_date, time_str, st
+        context=context,
+        name=name,
+        phone=phone,
+        date_str=date_str,  # было new_date
+        time_str=time_str,
+        service_type=st,  # было st
+        specialist=specialist,  # ← ДОБАВИТЬ ЭТОТ ПАРАМЕТР!
     )
     if check_result is False:
         await query.edit_message_text(
