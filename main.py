@@ -408,7 +408,8 @@ def remove_lock_file():
     AWAITING_ADMIN_NEW_TIME,
     AWAITING_PHONE_FOR_CALLBACK,
     AWAITING_WL_PRIORITY_CHOICE,
-) = range(29)
+    AWAITING_PHONE_CONFIRMATION,
+) = range(30)
 
 ACTIVE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано"}
 CANCELLABLE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано"}
@@ -607,7 +608,7 @@ async def _validate_booking_checks(
     date_str: str,
     time_str: str,
     service_type: str,
-    specialist: str,  # ← ДОБАВЛЕН НОВЫЙ ПАРАМЕТР
+    specialist: str
 ):
     """
     Проверяет возможность бронирования с учетом:
@@ -615,14 +616,14 @@ async def _validate_booking_checks(
     2. Занятости клиента (по телефону)
     3. Повторной записи в категории
     """
-
+    
     # Получаем все записи
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
-
+    
     # Получаем данные текущей услуги
     ss = context.user_data.get("subservice", "")
     service_duration = calculate_service_step(ss)
-
+    
     # Преобразуем новое время
     try:
         new_start = TIMEZONE.localize(
@@ -631,33 +632,39 @@ async def _validate_booking_checks(
         new_end = new_start + timedelta(minutes=service_duration)
     except ValueError:
         return False, "❌ Неверный формат даты/времени"
-
+    
+    # ДЛЯ ОТЛАДКИ:
+    print(f"=== DEBUG ВАЛИДАЦИЯ ===")
+    print(f"Проверяем запись: {date_str} {time_str} к {specialist}")
+    print(f"Услуга: {ss}, Длительность: {service_duration} мин")
+    print(f"Новое время: {new_start.strftime('%H:%M')}-{new_end.strftime('%H:%M')}")
+    print(f"Ищем пересечения...")
+    
     # === ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
     for r in records:
         if len(r) > 8:
             record_specialist = str(r[5]).strip()
             record_status = str(r[8]).strip()
             record_date = str(r[6]).strip()
-
+            
             # Проверяем только подтвержденные записи того же специалиста в тот же день
-            if (
-                record_specialist == specialist
-                and record_status == "подтверждено"
-                and record_date == date_str
-            ):
-
+            if (record_specialist == specialist and 
+                record_status == "подтверждено" and 
+                record_date == date_str):
+                
                 record_time = str(r[7]).strip()
                 record_service = str(r[4]).strip() if len(r) > 4 else ""
-
+                
                 try:
                     record_start = TIMEZONE.localize(
-                        datetime.strptime(
-                            f"{record_date} {record_time}", "%d.%m.%Y %H:%M"
-                        )
+                        datetime.strptime(f"{record_date} {record_time}", "%d.%m.%Y %H:%M")
                     )
                     record_duration = calculate_service_step(record_service)
                     record_end = record_start + timedelta(minutes=record_duration)
-
+                    
+                    # ДЛЯ ОТЛАДКИ:
+                    print(f"  Сравниваем с: {r[1]} {record_time}-{record_end.strftime('%H:%M')} ({record_service})")
+                    
                     # Проверяем пересечение времени
                     if max(new_start, record_start) < min(new_end, record_end):
                         return (
@@ -666,39 +673,35 @@ async def _validate_booking_checks(
                             f"• Время: {record_time}-{record_end.strftime('%H:%M')}\n"
                             f"• Услуга: {record_service}\n"
                             f"• Клиент: {r[1] if len(r) > 1 else 'Неизвестно'}\n\n"
-                            f"Выберите другое время или специалиста.",
+                            f"Выберите другое время."  # ← ИСПРАВЛЕНО
                         )
                 except (ValueError, TypeError):
                     continue
-
+    
     # === ПРОВЕРКА 2: КЛИЕНТ (ПО ТЕЛЕФОНУ) ЗАНЯТ? ===
     for r in records:
         if len(r) > 8:
             record_phone = str(r[2]).strip()
             record_status = str(r[8]).strip()
             record_date = str(r[6]).strip()
-
+            
             # Проверяем тот же телефон (разные люди могут использовать один телефон)
-            if (
-                record_phone == phone
-                and record_status == "подтверждено"
-                and record_date == date_str
-            ):
-
+            if (record_phone == phone and 
+                record_status == "подтверждено" and 
+                record_date == date_str):
+                
                 record_name = str(r[1]).strip()
                 record_time = str(r[7]).strip()
                 record_service = str(r[4]).strip() if len(r) > 4 else ""
                 record_specialist = str(r[5]).strip()
-
+                
                 try:
                     record_start = TIMEZONE.localize(
-                        datetime.strptime(
-                            f"{record_date} {record_time}", "%d.%m.%Y %H:%M"
-                        )
+                        datetime.strptime(f"{record_date} {record_time}", "%d.%m.%Y %H:%M")
                     )
                     record_duration = calculate_service_step(record_service)
                     record_end = record_start + timedelta(minutes=record_duration)
-
+                    
                     # Проверяем пересечение времени
                     if max(new_start, record_start) < min(new_end, record_end):
                         # Если имя совпадает - это тот же человек
@@ -709,22 +712,21 @@ async def _validate_booking_checks(
                                 f"• {record_time}-{record_end.strftime('%H:%M')}\n"
                                 f"• К специалисту: {record_specialist}\n"
                                 f"• Услуга: {record_service}\n\n"
-                                f"Вы не можете быть в двух местах одновременно.",
+                                f"Выберите другое время."  # ← ИСПРАВЛЕНО
                             )
                         else:
                             # Разные люди, но один телефон (семья)
-                            return (
-                                False,
-                                f"❌ На этот номер телефона уже есть запись:\n"
-                                f"• Имя: {record_name}\n"
-                                f"• Время: {record_time}-{record_end.strftime('%H:%M')}\n"
-                                f"• К специалисту: {record_specialist}\n"
-                                f"• Услуга: {record_service}\n\n"
-                                f"Нельзя записать двух разных людей на пересекающееся время.",
-                            )
+                            # НЕ запрещаем, а просим подтвердить
+                            context.user_data["phone_conflict"] = {
+                                "existing_name": record_name,
+                                "existing_time": f"{record_time}-{record_end.strftime('%H:%M')}",
+                                "existing_specialist": record_specialist,
+                                "existing_service": record_service
+                            }
+                            return "CONFIRM_PHONE", None
                 except (ValueError, TypeError):
                     continue
-
+    
     # === ПРОВЕРКА 3: ПОВТОРНАЯ ЗАПИСЬ В КАТЕГОРИИ ===
     # Проверяем только для ОДНОГО человека (имя + телефон)
     repeat_records = []
@@ -734,31 +736,26 @@ async def _validate_booking_checks(
             record_phone = str(r[2]).strip()
             record_category = str(r[3]).strip()
             record_status = str(r[8]).strip()
-
+            
             # Тот же человек (имя И телефон) в той же категории
-            if (
-                record_name.lower() == name.lower()
-                and record_phone == phone
-                and record_category == service_type
-                and record_status == "подтверждено"
-            ):
-
-                repeat_records.append(
-                    {
-                        "category": record_category,
-                        "service": str(r[4]).strip() if len(r) > 4 else "",
-                        "specialist": str(r[5]).strip() if len(r) > 5 else "",
-                        "date": str(r[6]).strip() if len(r) > 6 else "",
-                        "time": str(r[7]).strip() if len(r) > 7 else "",
-                    }
-                )
-
+            if (record_name.lower() == name.lower() and 
+                record_phone == phone and 
+                record_category == service_type and 
+                record_status == "подтверждено"):
+                
+                repeat_records.append({
+                    "category": record_category,
+                    "service": str(r[4]).strip() if len(r) > 4 else "",
+                    "specialist": str(r[5]).strip() if len(r) > 5 else "",
+                    "date": str(r[6]).strip() if len(r) > 6 else "",
+                    "time": str(r[7]).strip() if len(r) > 7 else "",
+                })
+    
     if repeat_records:
         context.user_data["repeat_booking_conflict"] = repeat_records[0]
         return "CONFIRM_REPEAT", None
-
+    
     return True, None
-
 
 # --- HANDLERS ---
 # --- HANDLERS ---
@@ -1108,6 +1105,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await finalize_booking(update, context)
     if data == "refresh_time":
         return await select_time(update, context)
+        if data == "confirm_phone_yes":
+        return await finalize_booking(update, context)
+    if data == "confirm_phone_no":
+        await query.edit_message_text("📞 Пожалуйста, введите другой номер телефона:")
+        context.user_data["state"] = ENTER_PHONE
+        return ENTER_PHONE
+
     # --- УМНЫЙ ВХОД В ЛИСТ ОЖИДАНИЯ (Вариант 1) ---
     if data == "waiting_list":
         st = context.user_data.get("service_type", "не указана")
@@ -2161,39 +2165,39 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         date_str=date_str,
         time_str=time_str,
         service_type=st,
-        specialist=specialist,  # ← ДОБАВИТЬ ЭТОТ ПАРАМЕТР!
+        specialist=specialist
     )
-
+    
     if check_result is False:
         # Освобождаем временный слот
         if event_id:
             safe_delete_calendar_event(CALENDAR_ID, event_id)
-
-        # Отменяем таймеры
+        
+        # Отменяем таймеры (если еще не отменены)
         job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
         for job_name in job_names:
             current_jobs = context.job_queue.get_jobs_by_name(job_name)
             for job in current_jobs:
                 job.schedule_removal()
-
+        
         await query.edit_message_text(
             f"❌ Невозможно завершить запись:\n{error_msg}\n\n"
-            f"Пожалуйста, выберите другое время или специалиста.",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🏠 В меню", callback_data="start")]]
-            ),
+            f"Пожалуйста, выберите другое время.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+            ])
         )
         context.user_data.clear()
         return MENU
-
+    
     elif check_result == "CONFIRM_REPEAT":
         # Показываем подтверждение повторной записи
         conflict = context.user_data.get("repeat_booking_conflict", {})
         kb = [
             [InlineKeyboardButton("✅ Да, всё верно", callback_data="confirm_repeat")],
-            [InlineKeyboardButton("❌ Отменить", callback_data="cancel_booking")],
+            [InlineKeyboardButton("❌ Отменить", callback_data="cancel_booking")]
         ]
-
+        
         await query.edit_message_text(
             f"⚠️ <b>Внимание!</b>\n\n"
             f"У вас уже есть активная запись в категории <b>{conflict.get('category', 'N/A')}</b>:\n"
@@ -2203,10 +2207,36 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Время: {conflict.get('time', 'N/A')}\n\n"
             f"Вы уверены, что хотите создать еще одну запись в этой же категории?",
             reply_markup=InlineKeyboardMarkup(kb),
-            parse_mode="HTML",
+            parse_mode="HTML"
         )
         context.user_data["state"] = AWAITING_REPEAT_CONFIRMATION
         return AWAITING_REPEAT_CONFIRMATION
+    
+    elif check_result == "CONFIRM_PHONE":
+        # Показываем подтверждение телефона
+        conflict = context.user_data.get("phone_conflict", {})
+        kb = [
+            [InlineKeyboardButton("✅ Да, это мой номер", callback_data="confirm_phone_yes")],
+            [InlineKeyboardButton("❌ Нет, ввести другой", callback_data="confirm_phone_no")]
+        ]
+        
+        await query.edit_message_text(
+            f"⚠️ <b>Подтвердите номер телефона</b>\n\n"
+            f"Этот номер уже используется клиентом:\n"
+            f"• Имя: {conflict.get('existing_name', 'N/A')}\n"
+            f"• Время: {conflict.get('existing_time', 'N/A')}\n"
+            f"• К специалисту: {conflict.get('existing_specialist', 'N/A')}\n"
+            f"• Услуга: {conflict.get('existing_service', 'N/A')}\n\n"
+            f"Это ваш номер телефона?",
+            reply_markup=InlineKeyboardMarkup(kb),
+            parse_mode="HTML"
+        )
+        context.user_data["state"] = AWAITING_PHONE_CONFIRMATION
+        return AWAITING_PHONE_CONFIRMATION
+
+    # === 3. ОБНОВЛЯЕМ СОБЫТИЕ В КАЛЕНДАРЕ ===
+
+    
 
     # === 3. ОБНОВЛЯЕМ СОБЫТИЕ В КАЛЕНДАРЕ ===
 
