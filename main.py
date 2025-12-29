@@ -775,6 +775,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
 
+    print(f"🔥 НАЖАТА КНОПКА: '{data}'")
+    print(f"🔥 ID пользователя: {update.effective_user.id}")
+    print(f"🔥 Время: {datetime.now()}")
+
     # === НАЧАЛО ОТЛАДКИ ===
     logger.info(f"🔄 DEBUG button_handler: Нажата кнопка с data='{data}'")
     logger.info(
