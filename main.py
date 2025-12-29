@@ -1036,12 +1036,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = AWAITING_WL_PRIORITY_CHOICE
         return AWAITING_WL_PRIORITY_CHOICE
     # --- /УМНЫЙ ВХОД В ЛИСТ ОЖИДАНИЯ ---
-    if data == "any_specialist":
-        context.user_data["selected_specialist"] = "любой"
-        if context.user_data.get("priority") == "date":
-            return await select_time(update, context)
-        else:
-            return await select_date(update, context)
 
     # --- ОБРАБОТКА выбора в листе ожидания ---
     if data == "wl_prefer_specific":
