@@ -1262,22 +1262,13 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- SELECT DATE ---
-
-
 async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await update_last_activity(update, context)
 
-    print(f"🎯 ВХОД В SELECT_DATE")
-    print(f"📅 selected_specialist: {context.user_data.get('selected_specialist')}")
-    print(f"📅 priority: {context.user_data.get('priority')}")
-
     # Получаем выбранного специалиста, категорию услуги, приоритет
-    # ИСПОЛЬЗУЕМ "selected_specialist", как в оригинальной функции
-    selected_specialist = context.user_data.get(
-        "selected_specialist"
-    )  # Может быть None
+    selected_specialist = context.user_data.get("selected_specialist")  # Может быть None
     service_type = context.user_data.get("service_type")
     subservice = context.user_data.get("subservice")
     priority = context.user_data.get("priority", "date")  # По умолчанию "date"
@@ -1317,13 +1308,6 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(tz)
     days_ahead = int(get_setting("Количество дней генерации слотов", 30))
 
-    # Функция для сортировки дат
-    def sort_date_str(date_str):
-        try:
-            return datetime.strptime(date_str, "%d.%m.%Y")
-        except:
-            return datetime.now()
-
     # --- СЦЕНАРИЙ B: "Сначала специалист", потом дата (selected_specialist есть) ---
     if selected_specialist and selected_specialist != "любой":
         available_dates_for_specialist = []
@@ -1354,8 +1338,6 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if day_index < len(spec_schedule_row):
                 work_schedule = spec_schedule_row[day_index].strip()
                 if work_schedule.lower() != "выходной" and work_schedule:
-                    # УПРОЩЕНИЕ: считаем, что если он работает, то дата доступна.
-                    # TODO: Проверить реальную доступность специалиста в день по его календарю и расписанию
                     available_dates_for_specialist.append(target_date_str)
 
         # Правильная сортировка дат
@@ -1366,10 +1348,10 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 date_pairs.append((dt_obj, date_str))
             except ValueError:
                 date_pairs.append((datetime.now(), date_str))
-
+        
         # Сортируем по дате
         date_pairs.sort(key=lambda x: x[0])
-
+        
         # Формируем кнопки
         kb = []
         for dt_obj, date_str in date_pairs:
@@ -1388,7 +1370,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- СЦЕНАРИЙ A: "Сначала дата", потом специалист (selected_specialist is None) ---
     else:
-        available_dates = set()  # Используем set, чтобы избежать дубликатов дат
+        available_dates = set()
         for days_offset in range(days_ahead + 1):
             target_date = (now + timedelta(days=days_offset)).date()
             target_day_name = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][
@@ -1396,7 +1378,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             target_date_str = target_date.strftime("%d.%m.%Y")
 
-            # Проверяем, есть ли хотя бы один специалист нужной категории, который работает и имеет свободное время
+            # Проверяем, есть ли хотя бы один специалист нужной категории, который работает
             for row in schedule_data:
                 if len(row) > 0:
                     spec_name = row[0].strip()
@@ -1410,17 +1392,11 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         # Проверяем, работает ли он в этот день
                         day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(
                             target_day_name
-                        ) + 2  # Индекс столбца (C=2, D=3, ...)
+                        ) + 2
                         if day_index < len(row):
                             work_schedule = row[day_index].strip()
-                            if (
-                                work_schedule.lower() != "выходной" and work_schedule
-                            ):  # Если не выходной и не пусто
-                                # Проверяем, есть ли у него свободное время (упрощённо - просто проверим его график)
-                                # TODO: Проверить реальную доступность специалиста в день
-                                # Пока что, если он работает в этот день и подходит по категории, добавляем дату
+                            if work_schedule.lower() != "выходной" and work_schedule:
                                 available_dates.add(target_date_str)
-                                # Нашли хотя бы одного подходящего специалиста с потенциальным временем, можно перейти к следующей дате
                                 break
 
         # Правильная сортировка дат
@@ -1431,10 +1407,10 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 date_pairs.append((dt_obj, date_str))
             except ValueError:
                 date_pairs.append((datetime.now(), date_str))
-
+        
         # Сортируем по дате
         date_pairs.sort(key=lambda x: x[0])
-
+        
         # Формируем кнопки
         kb = []
         for dt_obj, date_str in date_pairs:
@@ -1442,6 +1418,15 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton(date_str, callback_data=f"date_{date_str}")]
             )
 
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+
+        await query.edit_message_text(
+            f"📅 Выберите дату для услуги '{subservice}':",
+            reply_markup=InlineKeyboardMarkup(kb),
+        )
+        context.user_data["state"] = SELECT_DATE
+        return SELECT_DATE
+# --- /SELECT DATE ---
 
 # --- /SELECT DATE ---
 
