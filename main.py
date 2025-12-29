@@ -777,7 +777,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === НАЧАЛО ОТЛАДКИ ===
     logger.info(f"🔄 DEBUG button_handler: Нажата кнопка с data='{data}'")
-    logger.info(f"🔄 DEBUG: Текущий state={context.user_data.get('state')}, priority={context.user_data.get('priority')}")
+    logger.info(
+        f"🔄 DEBUG: Текущий state={context.user_data.get('state')}, priority={context.user_data.get('priority')}"
+    )
     # === КОНЕЦ ОТЛАДКИ ===
 
     back_map = {
@@ -950,7 +952,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return await select_time(update, context)
 
     print(f"🟢 КНОПКА НАЖАТА: {data}")
-    
+
     if data.startswith("specialist_"):
         context.user_data["selected_specialist"] = data.split("specialist_", 1)[1]
         if context.user_data.get("priority") == "specialist":
@@ -962,7 +964,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.user_data.get("priority") == "date":
             return await select_time(update, context)
         else:
-            return await select_date(update, context)     
+            return await select_date(update, context)
     if data.startswith("slot_"):
         # ДОБАВИТЬ ОТЛАДКУ:
         logger.info(f"DEBUG button_handler: data='{data}'")
@@ -1263,6 +1265,10 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     await update_last_activity(update, context)
 
+    print(f"🎯 ВХОД В SELECT_DATE")
+    print(f"📅 selected_specialist: {context.user_data.get('selected_specialist')}")
+    print(f"📅 priority: {context.user_data.get('priority')}")
+
     # Получаем выбранного специалиста, категорию услуги, приоритет
     # ИСПОЛЬЗУЕМ "selected_specialist", как в оригинальной функции
     selected_specialist = context.user_data.get(
@@ -1356,10 +1362,10 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 date_pairs.append((dt_obj, date_str))
             except ValueError:
                 date_pairs.append((datetime.now(), date_str))
-        
+
         # Сортируем по дате
         date_pairs.sort(key=lambda x: x[0])
-        
+
         # Формируем кнопки
         kb = []
         for dt_obj, date_str in date_pairs:
@@ -1415,16 +1421,16 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Правильная сортировка дат
         date_pairs = []
-        for date_str in available_dates:  
+        for date_str in available_dates:
             try:
                 dt_obj = datetime.strptime(date_str, "%d.%m.%Y")
                 date_pairs.append((dt_obj, date_str))
             except ValueError:
                 date_pairs.append((datetime.now(), date_str))
-        
+
         # Сортируем по дате
         date_pairs.sort(key=lambda x: x[0])
-        
+
         # Формируем кнопки
         kb = []
         for dt_obj, date_str in date_pairs:
@@ -1591,16 +1597,19 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- SELECT TIME ---
 
+
 async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     # ДОБАВИТЬ ОТЛАДКУ СРАЗУ ЗДЕСЬ:
     print(f"=== DEBUG select_time ВХОД ===")
     print(f"context.user_data keys: {list(context.user_data.keys())}")
     print(f"date из context: {context.user_data.get('date')}")
-    print(f"selected_specialist из context: {context.user_data.get('selected_specialist')}")
+    print(
+        f"selected_specialist из context: {context.user_data.get('selected_specialist')}"
+    )
     print(f"service_type из context: {context.user_data.get('service_type')}")
     print(f"subservice из context: {context.user_data.get('subservice')}")
-    
+
     # ДОБАВИТЬ ДЛЯ ОТЛАДКИ:
     logger.info(
         f"DEBUG select_time: дата={context.user_data.get('date')}, специалист={context.user_data.get('selected_specialist')}, приоритет={context.user_data.get('priority')}"
