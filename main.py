@@ -1788,6 +1788,13 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"Тип specialist: {type(specialist)}")
     print(f"date_str пустая? {not date_str}")
     print(f"specialist пустой? {not specialist}")
+    
+    logger.info(f"=== DEBUG перед find_available_slots ===")
+    logger.info(f"st (service_type): '{st}'")
+    logger.info(f"ss (subservice): '{ss}'") 
+    logger.info(f"date_str: '{date_str}'")
+    logger.info(f"specialist: '{specialist}'")
+    logger.info(f"priority: '{context.user_data.get('priority', 'date')}'")
 
     slots = find_available_slots(
         st, ss, date_str, specialist, context.user_data.get("priority", "date")
@@ -1801,13 +1808,22 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(
         f"DEBUG: find_available_slots вернул {len(slots)} слотов. Параметры: дата={date_str}, специалист={specialist}, услуга={ss}/{st}"
     )
-    service_duration = calculate_service_step(
+        service_duration = calculate_service_step(
         ss
     )  # получаем длительность услуги в минутах
     logger.info(f"DEBUG: Длительность услуги '{ss}' = {service_duration} мин")
+    
+    logger.info(f"=== DEBUG select_time: slots получено = {len(slots) if slots else 0}")
+    if slots:
+        logger.info(f"Первый слот: {slots[0]}")
+        logger.info(f"Последний слот: {slots[-1]}")
 
     if not slots:
         logger.info(f"Нет доступных слотов для {date_str}, специалист {specialist}")
+        
+        # УДАЛИТЬ ВЕСЬ БЛОК ТЕСТОВЫХ СЛОТОВ (он не работает!)
+        # ВМЕСТО НЕГО ПРОСТО ПОКАЗЫВАЕМ СООБЩЕНИЕ И КНОПКИ
+        
         kb = [
             [InlineKeyboardButton("📋 В лист ожидания", callback_data="waiting_list")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
@@ -1823,70 +1839,10 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Хотите встать в лист ожидания? Мы уведомим вас, если время освободится.",
             reply_markup=InlineKeyboardMarkup(kb),
         )
-        return SELECT_TIME
-
-        # Проверяем что specialist определен
-        if not specialist:
-            specialist = "Тест"
-            logger.warning(f"⚠️ specialist=None, используем '{specialist}'")
-
-        # Генерируем слоты с учетом времени работы (10:00-20:00)
-        start_hour = 10
-        end_hour = 20
-        slot_interval = 15  # интервал между слотами в минутах
-
-        test_slots = []
-        current_hour = start_hour
-        current_minute = 0
-
-        while True:
-            # Рассчитываем время окончания слота
-            end_hour_slot = current_hour
-            end_minute_slot = current_minute + service_duration
-
-            # Корректируем если минуты > 60
-            while end_minute_slot >= 60:
-                end_hour_slot += 1
-                end_minute_slot -= 60
-
-            # Проверяем, что слот заканчивается до закрытия
-            if end_hour_slot > end_hour or (
-                end_hour_slot == end_hour and end_minute_slot > 0
-            ):
-                break  # слот выходит за время работы
-
-            time_str = f"{current_hour:02d}:{current_minute:02d}"
-            test_slots.append({"time": time_str, "specialist": specialist or "Тест"})
-
-            # Увеличиваем время
-            current_minute += slot_interval
-            if current_minute >= 60:
-                current_hour += 1
-                current_minute = 0
-
-        kb = []
-        for s in test_slots:
-            t = s.get("time", "N/A")
-            m = s.get("specialist", "N/A")
-            # ВАЖНО: использовать specialist из контекста, а не из
-            # test_slots
-            kb.append(
-                [
-                    InlineKeyboardButton(
-                        f"{t} — {m}", callback_data=f"slot_{specialist or 'Тест'}_{t}"
-                    )
-                ]
-            )
-
-        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-
-        await query.edit_message_text(
-            f"🟡 ТЕСТ: Доступное время для услуги '{ss}' ({service_duration} мин):",
-            reply_markup=InlineKeyboardMarkup(kb),
-        )
         context.user_data["state"] = SELECT_TIME
         return SELECT_TIME
 
+    # ЕСЛИ ЕСТЬ СЛОТЫ - ПОКАЗЫВАЕМ ИХ С ИНТЕРВАЛАМИ
     kb = []
     for s in slots:
         t = s.get("time", "N/A")
@@ -1909,10 +1865,17 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
             # Отображаем как "10:00-11:45 — Татьяна"
             kb.append([InlineKeyboardButton(f"{t}-{end_time} — {m}", callback_data=f"slot_{m}_{t}")])
-        except:
+        except Exception as e:
             # Если ошибка - старый формат
+            logger.error(f"Ошибка расчета времени для слота {t}: {e}")
             kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
+    
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+    logger.info(f"=== DEBUG ИТОГ: Отображаем {len(kb)-1} слотов (без кнопки Назад) ===")
+    for i, button_row in enumerate(kb):
+        if i < len(kb) - 1:  # Все кроме последней кнопки (Назад)
+            for button in button_row:
+                logger.info(f"  Слот {i+1}: {button.text}")
     await query.edit_message_text(
         "Выберите время:", reply_markup=InlineKeyboardMarkup(kb)
     )
