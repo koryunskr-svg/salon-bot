@@ -712,8 +712,7 @@ async def _validate_booking_checks(
                                 f"• {record_time}-{record_end.strftime('%H:%M')}\n"
                                 f"• К специалисту: {record_specialist}\n"
                                 f"• Услуга: {record_service}\n\n"
-                                f"Выберите другое время."  # ← ИСПРАВЛЕНО
-                            )
+                                f"Выберите другое время."                            )
                         else:
                             # Разные люди, но один телефон (семья)
                             # НЕ запрещаем, а просим подтвердить
@@ -1105,7 +1104,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await finalize_booking(update, context)
     if data == "refresh_time":
         return await select_time(update, context)
-        if data == "confirm_phone_yes":
+    if data == "confirm_phone_yes":
         return await finalize_booking(update, context)
     if data == "confirm_phone_no":
         await query.edit_message_text("📞 Пожалуйста, введите другой номер телефона:")
