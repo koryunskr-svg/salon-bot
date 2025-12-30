@@ -138,7 +138,7 @@ def generate_slots_for_n_days(days_ahead: int = None):
 def find_available_slots(service_type: str, subservice: str, date_str: str = None, selected_specialist: str = None, priority: str = "date"):
     """
     Находит доступные слоты на основе типа услуги, подуслуги, даты, специалиста и приоритета.
-    Возвращает список словарей с ключами: date, time, specialist.
+    Возвращает список словарей с ключами: time, specialist.
     """
     logger.info(f"🔍 ПОИСК СЛОТОВ: Дата={date_str}, Специалист={selected_specialist}, Услуга={subservice}")
     
@@ -208,55 +208,54 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     total_duration = round_to_15(total_duration)
     logger.info(f"⏱️ Общая длительность с округлением: {total_duration} мин")
 
-    # === 3. ПОЛУЧАЕМ ЗАНЯТЫЕ ИНТЕРВАЛЫ ИЗ КАЛЕНДАРЯ ===
+    # === 3. ПОЛУЧАЕМ ЗАНЯТЫЕ ИНТЕРВАЛЫ ===
+    # Получаем из таблицы "Записи" (более надежно чем из календаря)
     busy_intervals = []  # список кортежей (начало, конец) в минутах от 00:00
-    try:
-        search_date_tz = TIMEZONE.localize(search_date)
-        time_min = search_date_tz.replace(hour=0, minute=0, second=0).isoformat()
-        time_max = search_date_tz.replace(hour=23, minute=59, second=59).isoformat()
-        
-        busy_events = safe_get_calendar_events(CALENDAR_ID, time_min, time_max) or []
-        logger.info(f"📅 Найдено событий в календаре: {len(busy_events)}")
-        
-        # Получаем начало и конец каждого события
-        for event in busy_events:
-            event_summary = event.get('summary', '')
-            event_description = event.get('description', '')
-            event_start = event.get('start', {}).get('dateTime')
-            event_end = event.get('end', {}).get('dateTime')
+    
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+    for r in records:
+        if len(r) > 7:
+            record_date = str(r[6]).strip()
+            record_specialist = str(r[5]).strip() if len(r) > 5 else ""
+            record_status = str(r[8]).strip() if len(r) > 8 else ""
+            record_time = str(r[7]).strip()
             
-            specialist_found = (selected_specialist in event_summary) or (selected_specialist in event_description)
-            
-            if event_start and event_end and specialist_found:
+            if (record_date == date_str and 
+                record_status == "подтверждено" and
+                record_specialist == selected_specialist):
+                
                 try:
-                    # Конвертируем в минуты от начала дня
-                    start_dt = datetime.datetime.fromisoformat(event_start.replace('Z', '+00:00'))
-                    start_dt = start_dt.astimezone(TIMEZONE)
-                    end_dt = datetime.datetime.fromisoformat(event_end.replace('Z', '+00:00'))
-                    end_dt = end_dt.astimezone(TIMEZONE)
+                    # Получаем время начала
+                    start_dt = TIMEZONE.localize(
+                        datetime.datetime.strptime(f"{record_date} {record_time}", "%d.%m.%Y %H:%M")
+                    )
                     
-                    # Проверяем, что событие в нужный день
-                    if start_dt.date() == search_date.date():
-                        start_minutes = start_dt.hour * 60 + start_dt.minute
-                        end_minutes = end_dt.hour * 60 + end_dt.minute
-                        
-                        busy_intervals.append((start_minutes, end_minutes))
-                        logger.info(f"   🕒 Занято: {start_dt.strftime('%H:%M')}-{end_dt.strftime('%H:%M')} ({end_minutes-start_minutes} мин)")
-                        
+                    # Получаем длительность этой записи
+                    record_service = str(r[4]).strip() if len(r) > 4 else ""
+                    record_duration = calculate_service_step(record_service)
+                    
+                    # Конец записи
+                    end_dt = start_dt + datetime.timedelta(minutes=record_duration)
+                    
+                    # Конвертируем в минуты от начала дня
+                    start_minutes = start_dt.hour * 60 + start_dt.minute
+                    end_minutes = end_dt.hour * 60 + end_dt.minute
+                    
+                    busy_intervals.append((start_minutes, end_minutes))
+                    logger.info(f"   🕒 Занято в таблице: {record_time}-{end_dt.strftime('%H:%M')} ({record_service}, {record_duration} мин)")
+                    
                 except Exception as e:
-                    logger.error(f"❌ Ошибка парсинга времени события: {e}")
-        
-        logger.info(f"📅 Найдено занятых интервалов: {len(busy_intervals)}")
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка получения данных календаря: {e}")
+                    logger.error(f"❌ Ошибка парсинга времени записи: {e}")
+    
+    logger.info(f"📅 Найдено занятых интервалов: {len(busy_intervals)}")
     
     # === 4. ГЕНЕРИРУЕМ СВОБОДНЫЕ СЛОТЫ ===
-    test_slots = []
-    slot_interval = 15  # минут между слотами
+    available_slots = []
+    slot_interval = 15  # минут между проверяемыми слотами
     
+    # Перебираем все 15-минутные интервалы в рабочее время
     for hour in range(work_start, work_end):
-        for minute in [0, 30]:
+        for minute in [0, 15, 30, 45]:  # ← ИЗМЕНИТЬ: каждые 15 минут!
             # Время начала слота в минутах
             slot_start_minutes = hour * 60 + minute
             slot_end_minutes = slot_start_minutes + total_duration
@@ -265,6 +264,7 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
             slot_end_hour = slot_end_minutes // 60
             slot_end_minute = slot_end_minutes % 60
             
+            # Если слот выходит за время работы - пропускаем
             if slot_end_hour > work_end or (slot_end_hour == work_end and slot_end_minute > 0):
                 continue
             
@@ -272,25 +272,24 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
             slot_overlaps = False
             for busy_start, busy_end in busy_intervals:
                 # Если интервалы перекрываются
-                if not (slot_end_minutes <= busy_start or slot_start_minutes >= busy_end):
+                if max(slot_start_minutes, busy_start) < min(slot_end_minutes, busy_end):
                     slot_overlaps = True
-                    logger.debug(f"   ⚠️ Слот {hour:02d}:{minute:02d} перекрывается с {busy_start//60:02d}:{busy_start%60:02d}-{busy_end//60:02d}:{busy_end%60:02d}")
+                    logger.debug(f"   ⚠️ Слот {hour:02d}:{minute:02d} перекрывается с занятым интервалом")
                     break
             
             if not slot_overlaps:
                 time_str = f"{hour:02d}:{minute:02d}"
-                test_slots.append({
-                    "date": date_str,
+                available_slots.append({
                     "time": time_str,
                     "specialist": selected_specialist
                 })
     
-    logger.info(f"✅ Сгенерировано {len(test_slots)} свободных слотов для {selected_specialist} на {date_str}")
+    logger.info(f"✅ Сгенерировано {len(available_slots)} свободных слотов для {selected_specialist} на {date_str}")
     
     # Детальное логирование слотов
-    if test_slots:
-        logger.info(f"   📋 ДЕТАЛИ СЛОТОВ:")
-        for slot in test_slots:
+    if available_slots:
+        logger.info(f"   📋 ДОСТУПНЫЕ СЛОТЫ:")
+        for slot in available_slots:
             time_str = slot['time']
             hour = int(time_str.split(':')[0])
             minute = int(time_str.split(':')[1])
@@ -303,6 +302,11 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
             logger.info(f"      🕒 {time_str}-{end_hour:02d}:{end_minute:02d} "
                        f"({total_duration} мин)")
     
-    return test_slots
+    # Ограничиваем количество слотов (чтобы не перегружать интерфейс)
+    if len(available_slots) > 10:
+        available_slots = available_slots[:10]
+    
+    return available_slots
+
 
 print("✅ Модуль slots.py загружен.")
