@@ -2252,7 +2252,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.edit_message_text(
             f"❌ Невозможно завершить запись:\n{error_msg}",
-            f"❌ Невозможно завершить запись:\n{error_msg}",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🕐 Выбрать другое время", callback_data="refresh_time")],
                 [InlineKeyboardButton("👩‍💼 Выбрать другого специалиста", callback_data="back_to_specialist")],
@@ -2260,7 +2259,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
         )
         context.user_data.clear()
-        return MENU15
+        return MENU
     
     elif check_result == "CONFIRM_REPEAT":
         # Показываем подтверждение повторной записи
