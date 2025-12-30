@@ -307,9 +307,8 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                        f"({total_duration} мин)")
     
     # Ограничиваем количество слотов (чтобы не перегружать интерфейс)
-    if len(available_slots) > 10:
-        available_slots = available_slots[:10]
+    if len(available_slots) > 20:
+        available_slots = available_slots[:20]
     
     return available_slots
 print("✅ Модуль slots.py загружен.")
-
