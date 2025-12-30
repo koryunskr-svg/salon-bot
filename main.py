@@ -1891,7 +1891,27 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for s in slots:
         t = s.get("time", "N/A")
         m = s.get("specialist", "N/A")
-        kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
+    
+        # Рассчитываем время окончания
+        ss = context.user_data.get("subservice", "")
+        total_duration = calculate_service_step(ss)
+    
+        # Преобразуем время
+        try:
+            hour = int(t.split(':')[0])
+            minute = int(t.split(':')[1])
+            start_minutes = hour * 60 + minute
+            end_minutes = start_minutes + total_duration
+        
+            end_hour = end_minutes // 60
+            end_minute = end_minutes % 60
+            end_time = f"{end_hour:02d}:{end_minute:02d}"
+        
+            # Отображаем как "10:00-11:45 — Татьяна"
+            kb.append([InlineKeyboardButton(f"{t}-{end_time} — {m}", callback_data=f"slot_{m}_{t}")])
+        except:
+            # Если ошибка - старый формат
+            kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
     await query.edit_message_text(
         "Выберите время:", reply_markup=InlineKeyboardMarkup(kb)
