@@ -1156,6 +1156,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("📞 Пожалуйста, введите другой номер телефона:")
         context.user_data["state"] = ENTER_PHONE
         return ENTER_PHONE
+    if data == "back_to_specialist":
+        # Возвращаемся к выбору специалиста
+        return await select_specialist(update, context)
+    
 
     # --- УМНЫЙ ВХОД В ЛИСТ ОЖИДАНИЯ (Вариант 1) ---
     if data == "waiting_list":
@@ -1829,7 +1833,7 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Генерируем слоты с учетом времени работы (10:00-20:00)
         start_hour = 10
         end_hour = 20
-        slot_interval = 30  # интервал между слотами в минутах
+        slot_interval = 15  # интервал между слотами в минутах
 
         test_slots = []
         current_hour = start_hour
@@ -2248,12 +2252,15 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.edit_message_text(
             f"❌ Невозможно завершить запись:\n{error_msg}",
+            f"❌ Невозможно завершить запись:\n{error_msg}",
             reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🕐 Выбрать другое время", callback_data="refresh_time")],
+                [InlineKeyboardButton("👩‍💼 Выбрать другого специалиста", callback_data="back_to_specialist")],
                 [InlineKeyboardButton("🏠 В меню", callback_data="start")]
             ])
         )
         context.user_data.clear()
-        return MENU
+        return MENU15
     
     elif check_result == "CONFIRM_REPEAT":
         # Показываем подтверждение повторной записи
