@@ -1808,7 +1808,7 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(
         f"DEBUG: find_available_slots вернул {len(slots)} слотов. Параметры: дата={date_str}, специалист={specialist}, услуга={ss}/{st}"
     )
-        service_duration = calculate_service_step(
+    service_duration = calculate_service_step(
         ss
     )  # получаем длительность услуги в минутах
     logger.info(f"DEBUG: Длительность услуги '{ss}' = {service_duration} мин")
