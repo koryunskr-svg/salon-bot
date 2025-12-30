@@ -2207,7 +2207,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 job.schedule_removal()
         
         await query.edit_message_text(
-            f"❌ Невозможно завершить запись:\n{error_msg}\n\n"
+            f"❌ Невозможно завершить запись:\n{error_msg}",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🏠 В меню", callback_data="start")]
             ])
@@ -3841,4 +3841,3 @@ def _handle_exit(signum, frame):
 
 if __name__ == "__main__":
     main()
-
