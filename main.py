@@ -610,6 +610,25 @@ async def _validate_booking_checks(
     service_type: str,
     specialist: str
 ):
+
+# ПРОВЕРКА ВХОДНЫХ ДАННЫХ
+    if not date_str or date_str in ["Неизвестно", "None", "none", ""]:
+        return False, "❌ Ошибка: дата не указана."
+    
+    if not time_str or time_str in ["Неизвестно", "None", "none", ""]:
+        return False, "❌ Ошибка: время не указано."
+    
+    if not specialist or specialist in ["любой", "None", "none", ""]:
+        return False, "❌ Ошибка: специалист не выбран."
+    
+    # ДЛЯ ОТЛАДКИ: вывести полученные данные
+    print(f"=== DEBUG ВХОДНЫЕ ДАННЫЕ ВАЛИДАЦИИ ===")
+    print(f"date_str: '{date_str}'")
+    print(f"time_str: '{time_str}'")
+    print(f"specialist: '{specialist}'")
+    print(f"name: '{name}'")
+    print(f"phone: '{phone}'")
+
     """
     Проверяет возможность бронирования с учетом:
     1. Занятости специалиста
@@ -2182,6 +2201,27 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"Данные из context.user_data: {list(context.user_data.keys())}")
     print(f"ID временного события: {event_id}")
     print(f"Имя клиента: {name}")
+
+    print(f"=== DEBUG finalize_booking ДАННЫЕ ===")
+    print(f"date_str: '{date_str}' (тип: {type(date_str)})")
+    print(f"time_str: '{time_str}'")
+    print(f"specialist: '{specialist}'")
+    print(f"service_type: '{st}'")
+    print(f"subservice: '{ss}'")
+    print(f"name: '{name}'")
+    print(f"phone: '{phone}'")
+    
+    # Проверяем, что date_str не None
+    if not date_str or date_str == "Неизвестно":
+        print(f"⚠️ ВНИМАНИЕ: date_str = '{date_str}'")
+        await query.edit_message_text(
+            "❌ Ошибка: дата не указана. Начните запись заново.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+            ])
+        )
+        context.user_data.clear()
+        return MENU
 
     # === 2.5. ПРОВЕРКА ВАЛИДНОСТИ БРОНИРОВАНИЯ ===
     check_result, error_msg = await _validate_booking_checks(
