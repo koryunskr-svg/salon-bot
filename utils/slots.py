@@ -143,7 +143,7 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     logger.info(f"🔍 ПОИСК СЛОТОВ: Дата={date_str}, Специалист={selected_specialist}, Услуга={subservice}")
     
     if not date_str or not selected_specialist:
-        logger.warning(f"⚠️ Пустые параметры: date_str='{date_str}', specialist='{selected_specialist}'")
+        logger.warning(f⚠️ Пустые параметры: date_str='{date_str}', specialist='{selected_specialist}'")
         return []
     
     # === 1. ПОЛУЧАЕМ ГРАФИК РАБОТЫ СПЕЦИАЛИСТА ===
@@ -230,8 +230,10 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                         datetime.datetime.strptime(f"{record_date} {record_time}", "%d.%m.%Y %H:%M")
                     )
                     
-                    # Получаем длительность этой записи
+                    # Получаем длительность этой записи (нужно импортировать calculate_service_step)
                     record_service = str(r[4]).strip() if len(r) > 4 else ""
+                    # Импортируем функцию для расчета шага услуги
+                    from main import calculate_service_step
                     record_duration = calculate_service_step(record_service)
                     
                     # Конец записи
@@ -307,6 +309,5 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
         available_slots = available_slots[:10]
     
     return available_slots
-
 
 print("✅ Модуль slots.py загружен.")
