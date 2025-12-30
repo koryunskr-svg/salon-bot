@@ -276,7 +276,7 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
             slot_overlaps = False
             for busy_start, busy_end in busy_intervals:
                 # Если интервалы перекрываются
-                if max(slot_start_minutes, busy_start) < min(slot_end_minutes, busy_end):
+                if not (slot_end_minutes <= busy_start or slot_start_minutes >= busy_end):
                     slot_overlaps = True
                     logger.debug(f"   Слот {hour:02d}:{minute:02d} перекрывается с занятым интервалом")
                     break
