@@ -640,6 +640,37 @@ async def _validate_booking_checks(
     print(f"Новое время: {new_start.strftime('%H:%M')}-{new_end.strftime('%H:%M')}")
     print(f"Ищем пересечения...")
     
+    print(f"Всего записей в базе: {len(records)}")
+    for i, r in enumerate(records[:5]):  # первые 5 записей
+        if len(r) > 8:
+            print(f"  [{i}] {r[1]}: {r[6]} {r[7]} к {r[5]}")
+    
+    # ← ДОБАВИТЬ ЭТОТ БЛОК ↓↓↓
+    # РАСШИРЕННАЯ ОТЛАДКА ДЛЯ ТЕЛЕФОНА
+    print(f"=== DEBUG ТЕЛЕФОННАЯ ПРОВЕРКА ===")
+    print(f"Клиент: {name}, Телефон: {phone}")
+    print(f"Ищем записи с телефоном {phone}:")
+    phone_matches = 0
+    for i, r in enumerate(records):
+        if len(r) > 8 and str(r[2]).strip() == phone:
+            phone_matches += 1
+            try:
+                record_start = TIMEZONE.localize(
+                    datetime.strptime(f"{r[6]} {r[7]}", "%d.%m.%Y %H:%M")
+                )
+                record_duration = calculate_service_step(r[4] if len(r) > 4 else "")
+                record_end = record_start + timedelta(minutes=record_duration)
+                
+                print(f"  [{i}] {r[1]}: {r[6]} {r[7]} ({record_start.strftime('%H:%M')}-{record_end.strftime('%H:%M')})")
+                print(f"     Пересекается? {max(new_start, record_start) < min(new_end, record_end)}")
+            except (ValueError, TypeError):
+                print(f"  [{i}] {r[1]}: ОШИБКА парсинга времени")
+    print(f"Всего записей с этим телефоном: {phone_matches}")
+    print(f"=== КОНЕЦ ОТЛАДКИ ===")
+    # ← КОНЕЦ ДОБАВЛЕНИЯ ↑↑↑
+    
+    # === ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
+    
     # === ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
     for r in records:
         if len(r) > 8:
@@ -669,11 +700,8 @@ async def _validate_booking_checks(
                     if max(new_start, record_start) < min(new_end, record_end):
                         return (
                             False,
-                            f"❌ Специалист {specialist} уже занят:\n"
-                            f"• Время: {record_time}-{record_end.strftime('%H:%M')}\n"
-                            f"• Услуга: {record_service}\n"
-                            f"• Клиент: {r[1] if len(r) > 1 else 'Неизвестно'}\n\n"
-                            f"Выберите другое время."  # ← ИСПРАВЛЕНО
+                            f"❌ Специалист {specialist} уже занят в это время.\n"
+                            f"Выберите другое время или специалиста."
                         )
                 except (ValueError, TypeError):
                     continue
@@ -709,10 +737,7 @@ async def _validate_booking_checks(
                             return (
                                 False,
                                 f"❌ У вас уже есть запись на это время:\n"
-                                f"• {record_time}-{record_end.strftime('%H:%M')}\n"
-                                f"• К специалисту: {record_specialist}\n"
-                                f"• Услуга: {record_service}\n\n"
-                                f"Выберите другое время."                            )
+                                f"Выберите другое время или специалиста."                            )
                         else:
                             # Разные люди, но один телефон (семья)
                             # НЕ запрещаем, а просим подтвердить
@@ -1105,6 +1130,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "refresh_time":
         return await select_time(update, context)
     if data == "confirm_phone_yes":
+        await query.answer()
+        await query.message.edit_reply_markup(reply_markup=None)
         return await finalize_booking(update, context)
     if data == "confirm_phone_no":
         await query.edit_message_text("📞 Пожалуйста, введите другой номер телефона:")
@@ -2181,7 +2208,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.edit_message_text(
             f"❌ Невозможно завершить запись:\n{error_msg}\n\n"
-            f"Пожалуйста, выберите другое время.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🏠 В меню", callback_data="start")]
             ])
@@ -2219,13 +2245,8 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("❌ Нет, ввести другой", callback_data="confirm_phone_no")]
         ]
         
-        await query.edit_message_text(
-            f"⚠️ <b>Подтвердите номер телефона</b>\n\n"
-            f"Этот номер уже используется клиентом:\n"
-            f"• Имя: {conflict.get('existing_name', 'N/A')}\n"
-            f"• Время: {conflict.get('existing_time', 'N/A')}\n"
-            f"• К специалисту: {conflict.get('existing_specialist', 'N/A')}\n"
-            f"• Услуга: {conflict.get('existing_service', 'N/A')}\n\n"
+        await query.edit_message_text(           
+            f"Этот номер уже используется клиентом:\n"           "
             f"Это ваш номер телефона?",
             reply_markup=InlineKeyboardMarkup(kb),
             parse_mode="HTML"
