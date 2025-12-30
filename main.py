@@ -2246,7 +2246,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         
         await query.edit_message_text(           
-            f"Этот номер уже используется клиентом:\n"           "
+            f"Этот номер уже используется клиентом:\n"
             f"Это ваш номер телефона?",
             reply_markup=InlineKeyboardMarkup(kb),
             parse_mode="HTML"
@@ -3841,3 +3841,4 @@ def _handle_exit(signum, frame):
 
 if __name__ == "__main__":
     main()
+
