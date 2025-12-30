@@ -312,3 +312,4 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     
     return available_slots
 print("✅ Модуль slots.py загружен.")
+
