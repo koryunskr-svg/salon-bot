@@ -1,5 +1,6 @@
 # utils/slots.py
 import logging
+logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 import pytz
 from config import TIMEZONE, SHEET_ID, CALENDAR_ID
