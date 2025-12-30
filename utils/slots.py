@@ -143,7 +143,7 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     logger.info(f"🔍 ПОИСК СЛОТОВ: Дата={date_str}, Специалист={selected_specialist}, Услуга={subservice}")
     
     if not date_str or not selected_specialist:
-        logger.warning(f⚠️ Пустые параметры: date_str='{date_str}', specialist='{selected_specialist}'")
+        logger.warning(f"⚠️ Пустые параметры: date_str='{date_str}', specialist='{selected_specialist}'")
         return []
     
     # === 1. ПОЛУЧАЕМ ГРАФИК РАБОТЫ СПЕЦИАЛИСТА ===
