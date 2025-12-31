@@ -1842,6 +1842,11 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = SELECT_TIME
         return SELECT_TIME
 
+     # ← ДОБАВИТЬ ЗДЕСЬ ↓↓↓
+    logger.info(f"=== DEBUG: В select_time получено {len(slots)} слотов ===")
+    logger.info(f"Слоты: {[s['time'] for s in slots]}")
+    # ← КОНЕЦ ДОБАВЛЕНИЯ ↑↑↑
+
     # ЕСЛИ ЕСТЬ СЛОТЫ - ПОКАЗЫВАЕМ ИХ С ИНТЕРВАЛАМИ
     kb = []
     for s in slots:
