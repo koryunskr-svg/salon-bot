@@ -177,12 +177,43 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                     return []
                 elif "-" in schedule:
                     try:
-                        start_str, end_str = schedule.split("-")
-                        work_start = int(start_str.split(":")[0])
-                        work_end = int(end_str.split(":")[0])
-                        logger.info(f"График {selected_specialist}: {schedule} ({work_start}:00-{work_end}:00)")
+                        # Создаем список рабочих интервалов
+                        work_intervals = []
+                        
+                        if "," in schedule:
+                            # Есть перерыв: "10:00-13:00,14:00-20:00"
+                            interval_strings = schedule.split(",")
+                            for interval_str in interval_strings:
+                                interval_str = interval_str.strip()
+                                if "-" in interval_str:
+                                    start_str, end_str = interval_str.split("-")
+                                    # Берем только часы (минуты игнорируем для совместимости)
+                                    work_start = int(start_str.split(":")[0])
+                                    work_end = int(end_str.split(":")[0])
+                                    work_intervals.append((work_start, work_end))
+                                    logger.info(f"  Интервал: {start_str}-{end_str}")
+                        else:
+                            # Один интервал без перерыва: "10:00-20:00"
+                            start_str, end_str = schedule.split("-")
+                            work_start = int(start_str.split(":")[0])
+                            work_end = int(end_str.split(":")[0])
+                            work_intervals.append((work_start, work_end))
+                            logger.info(f"  Интервал: {start_str}-{end_str}")
+                        
+                        # Временное решение: берем первый интервал
+                        if work_intervals:
+                            work_start = work_intervals[0][0]
+                            work_end = work_intervals[0][1]
+                        else:
+                            work_start = 10
+                            work_end = 20
+                            
+                        logger.info(f"График {selected_specialist}: {schedule} (используем {work_start}:00-{work_end}:00)")
+                        
                     except Exception as e:
                         logger.error(f"Ошибка парсинга графика: {e}")
+                        work_start = 10
+                        work_end = 20
                 break
     
     # === 2. ПОЛУЧАЕМ ДЛИТЕЛЬНОСТЬ УСЛУГИ ===
