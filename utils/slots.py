@@ -200,16 +200,14 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                             work_intervals.append((work_start, work_end))
                             logger.info(f"  Интервал: {start_str}-{end_str}")
                         
-                # Удаляем переменные work_start/work_end, будем использовать work_intervals
-                logger.info(f"График {selected_specialist}: {schedule} (интервалы: {work_intervals})")
-                        
+                        # Удаляем переменные work_start/work_end, будем использовать work_intervals
+                        logger.info(f"График {selected_specialist}: {schedule} (интервалы: {work_intervals})")
+                        break  # <-- break должен быть на том же уровне, что и try
                     except Exception as e:
                         logger.error(f"Ошибка парсинга графика: {e}")
-          
                         work_start = 10
-
                         work_end = 20
-                break
+                        break
     
     # === 2. ПОЛУЧАЕМ ДЛИТЕЛЬНОСТЬ УСЛУГИ ===
     service_duration = 60  # по умолчанию
@@ -327,6 +325,20 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
         work_intervals = [(work_start, work_end)]  # fallback на старые переменные
     
     logger.info(f"Генерация слотов по интервалам: {work_intervals}")
+
+    # Получаем время перерыва из настроек
+    break_str = get_setting("Перерыв", "14:00-15:00")  # По умолчанию 14-15
+    break_intervals = []
+    
+    if break_str and "-" in break_str:
+        try:
+            break_start_str, break_end_str = break_str.split("-")
+            break_start_hour = int(break_start_str.split(":")[0])
+            break_end_hour = int(break_end_str.split(":")[0])
+            break_intervals.append((break_start_hour, break_end_hour))
+            logger.info(f"Перерыв: {break_start_str}-{break_end_str}")
+        except Exception as e:
+            logger.error(f"Ошибка парсинга перерыва: {e}")
     
     # Пробегаем по всем рабочим интервалам
     for interval_start_hour, interval_end_hour in work_intervals:
@@ -356,11 +368,19 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                         break
                 
                 if not slot_overlaps:
-                    time_str = f"{hour:02d}:{minute:02d}"
-                    available_slots.append({
-                        "time": time_str,
-                        "specialist": selected_specialist
-                    })
+                    # Проверяем, не попадает ли слот в перерыв
+                    in_break = False
+                    for break_start, break_end in break_intervals:
+                        if break_start <= hour < break_end:
+                            in_break = True
+                            break
+                    
+                    if not in_break:
+                        time_str = f"{hour:02d}:{minute:02d}"
+                        available_slots.append({
+                            "time": time_str,
+                            "specialist": selected_specialist
+                        })
     
     logger.info(f"Сгенерировано {len(available_slots)} свободных слотов для {selected_specialist} на {date_str}")
     
