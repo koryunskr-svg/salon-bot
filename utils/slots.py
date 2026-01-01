@@ -243,21 +243,23 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     last_possible_start_minutes = work_end * 60 - total_duration
 
     # === АВТОМАТИЧЕСКОЕ ОГРАНИЧЕНИЕ ДЛЯ ДЛИННЫХ УСЛУГ ===
-    # Если услуга занимает больше 1/3 рабочего дня - ограничиваем время начала
-    work_hours = work_end - work_start
-    if total_duration / 60 > work_hours / 3:  # больше 1/3 рабочего дня
-        # Рассчитываем максимальное время начала
-        # Формула: нельзя начинать позже чем (конец работы - длительность услуги - 1 час запас)
-        max_start_hour = work_end - (total_duration // 60) - 1
-        
-        # Минимум: начало работы + 1 час
-        if max_start_hour < work_start + 1:
-            max_start_hour = work_start + 1
-            
+    # Вычисляем обычное ограничение
+    max_start_minutes = work_end * 60 - total_duration
+    
+    # Дополнительные ограничения для очень длинных услуг
+    if total_duration > 240:  # Более 4 часов
+        # Сильное ограничение: только утренние слоты
+        max_start_hour = work_start + 2  # Не позже чем через 2 часа после начала
+        max_start_minutes = max_start_hour * 60
+        logger.info(f"⚠️ ОЧЕНЬ длинная услуга ({total_duration} мин). Макс. начало: {max_start_hour}:00")
+    
+    elif total_duration > 180:  # 3-4 часа
+        # Умеренное ограничение: не позже чем за 4 часа до конца
+        max_start_hour = work_end - 4
+        if max_start_hour < work_start:
+            max_start_hour = work_start
         max_start_minutes = max_start_hour * 60
         logger.info(f"⚠️ Длинная услуга ({total_duration} мин). Макс. начало: {max_start_hour}:00")
-    else:
-        max_start_minutes = last_possible_start_minutes  # обычное ограничение
     
     logger.info(f"Работа с {work_start}:00 до {work_end}:00")
     logger.info(f"Максимальное начало слота: {max_start_minutes//60}:{max_start_minutes%60:02d}")
