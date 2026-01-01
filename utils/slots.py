@@ -240,6 +240,8 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     total_duration = round_to_15(total_duration)
     logger.info(f"Общая длительность с округлением: {total_duration} мин")
 
+    last_possible_start_minutes = work_end * 60 - total_duration
+
     # === АВТОМАТИЧЕСКОЕ ОГРАНИЧЕНИЕ ДЛЯ ДЛИННЫХ УСЛУГ ===
     # Если услуга занимает больше 1/3 рабочего дня - ограничиваем время начала
     work_hours = work_end - work_start
