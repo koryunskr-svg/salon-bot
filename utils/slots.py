@@ -200,19 +200,14 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                             work_intervals.append((work_start, work_end))
                             logger.info(f"  Интервал: {start_str}-{end_str}")
                         
-                        # Временное решение: берем первый интервал
-                        if work_intervals:
-                            work_start = work_intervals[0][0]
-                            work_end = work_intervals[0][1]
-                        else:
-                            work_start = 10
-                            work_end = 20
-                            
-                        logger.info(f"График {selected_specialist}: {schedule} (используем {work_start}:00-{work_end}:00)")
+                # Удаляем переменные work_start/work_end, будем использовать work_intervals
+                logger.info(f"График {selected_specialist}: {schedule} (интервалы: {work_intervals})")
                         
                     except Exception as e:
                         logger.error(f"Ошибка парсинга графика: {e}")
+          
                         work_start = 10
+
                         work_end = 20
                 break
     
@@ -240,28 +235,46 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     total_duration = round_to_15(total_duration)
     logger.info(f"Общая длительность с округлением: {total_duration} мин")
 
-    last_possible_start_minutes = work_end * 60 - total_duration
-
     # === АВТОМАТИЧЕСКОЕ ОГРАНИЧЕНИЕ ДЛЯ ДЛИННЫХ УСЛУГ ===
-    # Вычисляем обычное ограничение
-    max_start_minutes = work_end * 60 - total_duration
+    # Вычисляем общее рабочее время за день (сумма всех интервалов)
+    total_work_minutes = 0
+    for int_start, int_end in work_intervals:
+        total_work_minutes += (int_end - int_start) * 60
     
-    # Дополнительные ограничения для очень длинных услуг
-    if total_duration > 240:  # Более 4 часов
-        # Сильное ограничение: только утренние слоты
-        max_start_hour = work_start + 2  # Не позже чем через 2 часа после начала
-        max_start_minutes = max_start_hour * 60
-        logger.info(f"⚠️ ОЧЕНЬ длинная услуга ({total_duration} мин). Макс. начало: {max_start_hour}:00")
+    # Сколько таких услуг можно сделать за день?
+    max_services_per_day = total_work_minutes // total_duration
     
-    elif total_duration > 180:  # 3-4 часа
-        # Умеренное ограничение: не позже чем за 4 часа до конца
-        max_start_hour = work_end - 4
-        if max_start_hour < work_start:
-            max_start_hour = work_start
-        max_start_minutes = max_start_hour * 60
-        logger.info(f"⚠️ Длинная услуга ({total_duration} мин). Макс. начало: {max_start_hour}:00")
+    # Вычисляем границы рабочего дня ДО условия
+    latest_interval_end = max([end for _, end in work_intervals])
+    earliest_interval_start = min([start for start, _ in work_intervals])
     
-    logger.info(f"Работа с {work_start}:00 до {work_end}:00")
+    # Если услуга очень длинная (больше 3 часов)
+    if total_duration > 180:  # Более 3 часов
+        if max_services_per_day >= 2:
+            # Можно минимум 2 услуги - ограничиваем так, чтобы успели все
+            # total_duration * 2 в часах с дробной частью
+            total_hours_needed = (total_duration * 2) / 60
+            max_start_hour = latest_interval_end - total_hours_needed
+            
+            # Преобразуем в минуты
+            max_start_minutes = int(max_start_hour * 60)
+            
+            logger.info(f"⚠️ Длинная услуга ({total_duration} мин). Можно {max_services_per_day} услуг/день. Начало до: {max_start_hour:.1f} часов")
+        else:
+            # Только одна услуга в день - разрешаем в первой половине дня
+            max_start_hour = earliest_interval_start + 4  # Не позже чем через 4 часа от начала
+            
+            # Проверяем, чтобы не выйти за пределы рабочего времени
+            if max_start_hour > latest_interval_end:
+                max_start_hour = latest_interval_end
+            
+            max_start_minutes = int(max_start_hour * 60)
+            logger.info(f"⚠️ Длинная услуга ({total_duration} мин). Только {max_services_per_day} услуга/день. Начало до: {max_start_hour:.0f}:00")
+    else:
+        # Обычная услуга - стандартное ограничение
+        max_start_minutes = latest_interval_end * 60 - total_duration
+    
+    logger.info(f"Общее рабочее время: {total_work_minutes//60}ч{total_work_minutes%60}мин")
     logger.info(f"Максимальное начало слота: {max_start_minutes//60}:{max_start_minutes%60:02d}")
 
     # === 3. ПОЛУЧАЕМ ЗАНЯТЫЕ ИНТЕРВАЛЫ ===
@@ -309,39 +322,45 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     available_slots = []
     slot_interval = 15  # минут между проверяемыми слотами
     
-    # ВАЖНО: Последний возможный слот должен начинаться за total_duration до конца работы
-    # Например: работа до 20:00, услуга 105 мин -> последний слот в 18:15 (20:00 - 1:45 = 18:15)
-    last_possible_start_minutes = work_end * 60 - total_duration
-    logger.info(f"Работа с {work_start}:00 до {work_end}:00")
-    logger.info(f"Последний возможный старт: {last_possible_start_minutes//60}:{last_possible_start_minutes%60:02d}")
+    # Проверяем, есть ли рабочие интервалы
+    if not work_intervals:
+        work_intervals = [(work_start, work_end)]  # fallback на старые переменные
     
-    # Перебираем все 15-минутные интервалы в рабочее время
-    for hour in range(work_start, work_end):
-        for minute in [0, 15, 30, 45]:
-            # Время начала слота в минутах
-            slot_start_minutes = hour * 60 + minute
-            
-            # Пропускаем если начало слота позже последнего возможного
-            if slot_start_minutes > max_start_minutes:
-                continue
+    logger.info(f"Генерация слотов по интервалам: {work_intervals}")
+    
+    # Пробегаем по всем рабочим интервалам
+    for interval_start_hour, interval_end_hour in work_intervals:
+        logger.info(f"  Интервал: {interval_start_hour}:00-{interval_end_hour}:00")
+        
+        # Последний возможный старт в этом интервале
+        interval_last_start_minutes = interval_end_hour * 60 - total_duration
+        
+        # Перебираем все 15-минутные интервалы в текущем рабочем интервале
+        for hour in range(interval_start_hour, interval_end_hour):
+            for minute in [0, 15, 30, 45]:
+                # Время начала слота в минутах
+                slot_start_minutes = hour * 60 + minute
                 
-            slot_end_minutes = slot_start_minutes + total_duration
-            
-            # Проверяем перекрытие с занятыми интервалами
-            slot_overlaps = False
-            for busy_start, busy_end in busy_intervals:
-                # Если интервалы перекрываются
-                if not (slot_end_minutes <= busy_start or slot_start_minutes >= busy_end):
-                    slot_overlaps = True
-                    logger.debug(f"   Слот {hour:02d}:{minute:02d} перекрывается с занятым интервалом")
-                    break
-            
-            if not slot_overlaps:
-                time_str = f"{hour:02d}:{minute:02d}"
-                available_slots.append({
-                    "time": time_str,
-                    "specialist": selected_specialist
-                })
+                # Пропускаем если слот начинается позже последнего возможного в этом интервале
+                if slot_start_minutes > interval_last_start_minutes:
+                    continue
+                
+                slot_end_minutes = slot_start_minutes + total_duration
+                
+                # Проверяем перекрытие с занятыми интервалами
+                slot_overlaps = False
+                for busy_start, busy_end in busy_intervals:
+                    # Если интервалы перекрываются
+                    if not (slot_end_minutes <= busy_start or slot_start_minutes >= busy_end):
+                        slot_overlaps = True
+                        break
+                
+                if not slot_overlaps:
+                    time_str = f"{hour:02d}:{minute:02d}"
+                    available_slots.append({
+                        "time": time_str,
+                        "specialist": selected_specialist
+                    })
     
     logger.info(f"Сгенерировано {len(available_slots)} свободных слотов для {selected_specialist} на {date_str}")
     
@@ -366,4 +385,6 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
         available_slots = available_slots[:40]
     
     return available_slots
+
+
 print("✅ Модуль slots.py загружен.")
