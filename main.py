@@ -1852,6 +1852,9 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for s in slots:
         t = s.get("time", "N/A")
         m = s.get("specialist", "N/A")
+
+        logger.info(f"=== DEBUG: Расчет для слота {t} ===")
+        logger.info(f"  subservice: {ss}")
     
         # Рассчитываем время окончания
         ss = context.user_data.get("subservice", "")
