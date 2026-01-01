@@ -209,6 +209,26 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     total_duration = round_to_15(total_duration)
     logger.info(f"Общая длительность с округлением: {total_duration} мин")
 
+    # === АВТОМАТИЧЕСКОЕ ОГРАНИЧЕНИЕ ДЛЯ ДЛИННЫХ УСЛУГ ===
+    # Если услуга занимает больше 1/3 рабочего дня - ограничиваем время начала
+    work_hours = work_end - work_start
+    if total_duration / 60 > work_hours / 3:  # больше 1/3 рабочего дня
+        # Рассчитываем максимальное время начала
+        # Формула: нельзя начинать позже чем (конец работы - длительность услуги - 1 час запас)
+        max_start_hour = work_end - (total_duration // 60) - 1
+        
+        # Минимум: начало работы + 1 час
+        if max_start_hour < work_start + 1:
+            max_start_hour = work_start + 1
+            
+        max_start_minutes = max_start_hour * 60
+        logger.info(f"⚠️ Длинная услуга ({total_duration} мин). Макс. начало: {max_start_hour}:00")
+    else:
+        max_start_minutes = last_possible_start_minutes  # обычное ограничение
+    
+    logger.info(f"Работа с {work_start}:00 до {work_end}:00")
+    logger.info(f"Максимальное начало слота: {max_start_minutes//60}:{max_start_minutes%60:02d}")
+
     # === 3. ПОЛУЧАЕМ ЗАНЯТЫЕ ИНТЕРВАЛЫ ===
     busy_intervals = []  # список кортежей (начало, конец) в минутах от 00:00
     
@@ -267,7 +287,7 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
             slot_start_minutes = hour * 60 + minute
             
             # Пропускаем если начало слота позже последнего возможного
-            if slot_start_minutes > last_possible_start_minutes:
+            if slot_start_minutes > max_start_minutes:
                 continue
                 
             slot_end_minutes = slot_start_minutes + total_duration
@@ -307,8 +327,8 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                        f"({total_duration} мин)")
     
     # Ограничиваем количество слотов (чтобы не перегружать интерфейс)
-    if len(available_slots) > 30:
-        available_slots = available_slots[:30]
+    if len(available_slots) > 40:
+        available_slots = available_slots[:40]
     
     return available_slots
 print("✅ Модуль slots.py загружен.")
