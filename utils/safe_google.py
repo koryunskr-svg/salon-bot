@@ -7,6 +7,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from config import GOOGLE_CREDENTIALS_JSON, TIMEZONE
+from datetime import datetime
 import pytz
 
 logger = logging.getLogger(__name__)
@@ -200,6 +201,30 @@ def safe_delete_calendar_event(calendar_id, event_id):
         return True
     except Exception as e:
         logger.error(f"❌ Ошибка при удалении события {event_id}: {e}")
+        return False
+
+def safe_log_missed_call(phone_from: str, admin_phone: str):
+    """Записывает пропущенный звонок в таблицу 'Обратные звонки'"""
+    try:
+        timestamp = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
+        row = [
+            f"MISSED-{int(time.time())}",  # ID
+            timestamp,                     # Дата/время
+            "Неизвестно",                  # Имя клиента
+            phone_from,                    # Телефон клиента
+            admin_phone,                   # Телефон админа
+            "Telegram",                    # Источник
+            "",                            # Время уведомления (пусто)
+            "ожидает",                     # Статус
+            f"Пропущенный звонок от клиента через бота",  # Примечание
+            "1"                            # Приоритет
+        ]
+        success = safe_append_to_sheet(SHEET_ID, "Обратные звонки!A3:J", [row])
+        if success:
+            logger.info(f"✅ Записан пропущенный звонок от {phone_from} к {admin_phone}")
+        return success
+    except Exception as e:
+        logger.error(f"❌ Ошибка записи пропущенного звонка: {e}")
         return False
 
 print("✅ Модуль safe_google.py загружен.")
