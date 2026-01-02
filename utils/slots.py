@@ -216,14 +216,12 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                             logger.info(f"  Интервал в минутах: {start_str}-{end_str} ({start_in_minutes}-{end_in_minutes} мин)")
                         
                         logger.info(f"График {selected_specialist}: {schedule} (интервалы в минутах: {work_intervals})")
-                        break  # Выходим из цикла после нахождения специалиста
                     except Exception as e:
                         logger.error(f"Ошибка парсинга графика: {e}")
                         # Создаем дефолтный интервал в минутах
                         work_intervals = [(10*60, 20*60)]  # 10:00-20:00 в минутах
-                        break
-    # Выходим из цикла после нахождения специалиста
-    break
+            break  # Выходим из цикла после нахождения специалиста
+     
 
     
     # === 2. ПОЛУЧАЕМ ДЛИТЕЛЬНОСТЬ УСЛУГИ ===
