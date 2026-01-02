@@ -891,9 +891,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
         [InlineKeyboardButton("📋 Мои записи", callback_data="my_records")],
         [InlineKeyboardButton("💅 Услуги и цены", callback_data="prices")],
-        [InlineKeyboardButton("📞 Связаться с админом", callback_data="contact_admin")],
     ]
-    rm = InlineKeyboardMarkup(kb)
+    
+    # Получаем телефон админа из настроек
+    admin_phone = get_setting("Телефон администратора", "")
+    if admin_phone:
+        # Кнопка для звонка (чистый номер для callback)
+        clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
+        kb.append([InlineKeyboardButton(f"📞 Позвонить: {admin_phone}", 
+                                       callback_data=f"call_admin_{clean_phone}")])
+        # Кнопка для сообщения
+        kb.append([InlineKeyboardButton("💬 Написать сообщение", callback_data="contact_admin")])
+    else:
+        kb.append([InlineKeyboardButton("📞 Связаться с админом", callback_data="contact_admin")])
+    
+    rm = InlineKeyboardMarkup(kb)  # <-- ЭТУ СТРОКУ ОСТАВИТЬ!
 
     # Формируем итоговое сообщение
     # Название заведения отображается отдельной строкой, как в предыдущем варианте, но без HTML тегов
@@ -980,6 +992,38 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await start(update, context)
             return MENU
+
+        if data.startswith("call_admin_"):
+        phone = data.split("call_admin_", 1)[1]
+        # Форматируем для отображения
+        formatted_phone = f"+7{phone[1:4]} {phone[4:7]}-{phone[7:9]}-{phone[9:11]}" if len(phone) == 11 else phone
+        call_url = f"tel:{phone}"
+        
+        # Получаем телефон клиента (если есть)
+        user_phone = context.user_data.get("phone", "Неизвестно")
+        
+        # Записываем попытку звонка
+        admin_phone_setting = get_setting("Телефон администратора", "")
+        if admin_phone_setting:
+            from utils.safe_google import safe_log_missed_call
+            # Очищаем номер для логирования
+            admin_phone_clean = admin_phone_setting.replace('+', '').replace(' ', '').replace('-', '')
+            safe_log_missed_call(user_phone, admin_phone_clean)
+        
+        await query.answer()
+        await query.edit_message_text(
+            f"📞 <b>Нажмите на ссылку для звонка:</b>\n\n"
+            f"<a href='{call_url}'>{formatted_phone}</a>\n\n"
+            f"<i>Если администратор не ответит, мы уведомим его о пропущенном звонке.</i>\n\n"
+            f"Или оставьте сообщение:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💬 Написать сообщение", callback_data="contact_admin")],
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+            ])
+        )
+        return
+
     if data == "start":
         await start(update, context)
         return MENU
@@ -1712,11 +1756,24 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         kb = []
-        for specialist in sorted(available_specialists):
+        # Сначала добавляем всех специалистов кроме "Любой"
+        sorted_specialists = sorted(available_specialists)
+        for specialist in sorted_specialists:
+            if specialist.lower() != "любой":
+                kb.append(
+                    [
+                        InlineKeyboardButton(
+                            specialist, callback_data=f"specialist_{specialist}"
+                        )
+                    ]
+                )
+        
+        # Потом добавляем "Любой" в конце, если есть
+        if "Любой" in available_specialists:
             kb.append(
                 [
                     InlineKeyboardButton(
-                        specialist, callback_data=f"specialist_{specialist}"
+                        "👥 Любой специалист", callback_data="specialist_Любой"
                     )
                 ]
             )
@@ -1762,7 +1819,8 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     specialist = context.user_data.get("selected_specialist")
     st = context.user_data.get("service_type")
     ss = context.user_data.get("subservice")
-    if not all([date_str, st, ss]):
+    if not all([
+date_str, st, ss]):
         await query.edit_message_text(
             "❌ Ошибка: не все данные для выбора времени выбраны."
         )
