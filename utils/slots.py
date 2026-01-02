@@ -261,31 +261,13 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     latest_interval_end = max([end for _, end in work_intervals])
     earliest_interval_start = min([start for start, _ in work_intervals])
     
-    # Если услуга очень длинная (больше 3 часов)
-    if total_duration > 180:  # Более 3 часов
-        if max_services_per_day >= 2:
-            # Можно минимум 2 услуги - ограничиваем так, чтобы успели все
-            # total_duration * 2 в часах с дробной частью
-            total_hours_needed = (total_duration * 2) / 60
-            max_start_hour = latest_interval_end - total_hours_needed
-            
-            # Преобразуем в минуты
-            max_start_minutes = int(max_start_hour * 60)
-            
-            logger.info(f"⚠️ Длинная услуга ({total_duration} мин). Можно {max_services_per_day} услуг/день. Начало до: {max_start_hour:.1f} часов")
-        else:
-            # Только одна услуга в день - разрешаем в первой половине дня
-            max_start_hour = earliest_interval_start + 4  # Не позже чем через 4 часа от начала
-            
-            # Проверяем, чтобы не выйти за пределы рабочего времени
-            if max_start_hour > latest_interval_end:
-                max_start_hour = latest_interval_end
-            
-            max_start_minutes = int(max_start_hour * 60)
-            logger.info(f"⚠️ Длинная услуга ({total_duration} мин). Только {max_services_per_day} услуга/день. Начало до: {max_start_hour:.0f}:00")
-    else:
-        # Обычная услуга - стандартное ограничение
-        max_start_minutes = latest_interval_end * 60 - total_duration
+    # Если услуга очень длинная (больше 4 часов) - направляем к админу
+    if total_duration > 240:  # Более 4 часов
+        logger.info(f"⚠️ Очень длинная услуга ({total_duration} мин) - требуется согласование с админом")
+        return []  # Вернуть пустой список - бот покажет "нет времени"
+    
+    # Стандартное ограничение для обычных услуг
+    max_start_minutes = latest_interval_end * 60 - total_duration
     
     logger.info(f"Общее рабочее время: {total_work_minutes//60}ч{total_work_minutes%60}мин")
     logger.info(f"Максимальное начало слота: {max_start_minutes//60}:{max_start_minutes%60:02d}")
