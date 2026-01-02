@@ -898,7 +898,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if admin_phone:
         # Кнопка для звонка (чистый номер для callback)
         clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
-        kb.append([InlineKeyboardButton(f"📞 Позвонить администратору {admin_phone}", 
+        kb.append([InlineKeyboardButton(f"📞 Позвонить администратору:  {admin_phone}", 
                                        callback_data=f"call_admin_{clean_phone}")])
         # Кнопка для сообщения
         kb.append([InlineKeyboardButton("💬 Написать сообщение", callback_data="contact_admin")])
