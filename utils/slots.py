@@ -177,7 +177,7 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                     return []
                 elif "-" in schedule:
                     try:
-                        # Создаем список рабочих интервалов
+                        # Создаем список рабочих интервалов в МИНУТАХ
                         work_intervals = []
                         
                         if "," in schedule:
@@ -187,27 +187,44 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                                 interval_str = interval_str.strip()
                                 if "-" in interval_str:
                                     start_str, end_str = interval_str.split("-")
-                                    # Берем только часы (минуты игнорируем для совместимости)
-                                    work_start = int(start_str.split(":")[0])
-                                    work_end = int(end_str.split(":")[0])
-                                    work_intervals.append((work_start, work_end))
-                                    logger.info(f"  Интервал: {start_str}-{end_str}")
+                                    # Парсим ЧАСЫ И МИНУТЫ
+                                    start_hour = int(start_str.split(":")[0])
+                                    start_minute = int(start_str.split(":")[1]) if ":" in start_str and len(start_str.split(":")) > 1 else 0
+                                    end_hour = int(end_str.split(":")[0])
+                                    end_minute = int(end_str.split(":")[1]) if ":" in end_str and len(end_str.split(":")) > 1 else 0
+                                    
+                                    # Конвертируем в минуты от начала дня
+                                    start_in_minutes = start_hour * 60 + start_minute
+                                    end_in_minutes = end_hour * 60 + end_minute
+                                    
+                                    work_intervals.append((start_in_minutes, end_in_minutes))
+                                    logger.info(f"  Интервал в минутах: {start_str}-{end_str} ({start_in_minutes}-{end_in_minutes} мин)")
                         else:
                             # Один интервал без перерыва: "10:00-20:00"
                             start_str, end_str = schedule.split("-")
-                            work_start = int(start_str.split(":")[0])
-                            work_end = int(end_str.split(":")[0])
-                            work_intervals.append((work_start, work_end))
-                            logger.info(f"  Интервал: {start_str}-{end_str}")
+                            # Парсим ЧАСЫ И МИНУТЫ
+                            start_hour = int(start_str.split(":")[0])
+                            start_minute = int(start_str.split(":")[1]) if ":" in start_str and len(start_str.split(":")) > 1 else 0
+                            end_hour = int(end_str.split(":")[0])
+                            end_minute = int(end_str.split(":")[1]) if ":" in end_str and len(end_str.split(":")) > 1 else 0
+                            
+                            # Конвертируем в минуты от начала дня
+                            start_in_minutes = start_hour * 60 + start_minute
+                            end_in_minutes = end_hour * 60 + end_minute
+                            
+                            work_intervals.append((start_in_minutes, end_in_minutes))
+                            logger.info(f"  Интервал в минутах: {start_str}-{end_str} ({start_in_minutes}-{end_in_minutes} мин)")
                         
-                        # Удаляем переменные work_start/work_end, будем использовать work_intervals
-                        logger.info(f"График {selected_specialist}: {schedule} (интервалы: {work_intervals})")
-                        break  # <-- break должен быть на том же уровне, что и try
+                        logger.info(f"График {selected_specialist}: {schedule} (интервалы в минутах: {work_intervals})")
+                        break  # Выходим из цикла после нахождения специалиста
                     except Exception as e:
                         logger.error(f"Ошибка парсинга графика: {e}")
-                        work_start = 10
-                        work_end = 20
+                        # Создаем дефолтный интервал в минутах
+                        work_intervals = [(10*60, 20*60)]  # 10:00-20:00 в минутах
                         break
+    # Выходим из цикла после нахождения специалиста
+    break
+
     
     # === 2. ПОЛУЧАЕМ ДЛИТЕЛЬНОСТЬ УСЛУГИ ===
     service_duration = 60  # по умолчанию
@@ -318,69 +335,47 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     
     # === 4. ГЕНЕРИРУЕМ СВОБОДНЫЕ СЛОТЫ ===
     available_slots = []
-    slot_interval = 15  # минут между проверяемыми слотами
     
     # Проверяем, есть ли рабочие интервалы
     if not work_intervals:
-        work_intervals = [(work_start, work_end)]  # fallback на старые переменные
+        work_intervals = [(10*60, 20*60)]  # fallback 10:00-20:00 в минутах
     
-    logger.info(f"Генерация слотов по интервалам: {work_intervals}")
+    logger.info(f"Генерация слотов по интервалам (в минутах): {work_intervals}")
 
-    # Получаем время перерыва из настроек
-    break_str = get_setting("Перерыв", "14:00-15:00")  # По умолчанию 14-15
-    break_intervals = []
-    
-    if break_str and "-" in break_str:
-        try:
-            break_start_str, break_end_str = break_str.split("-")
-            break_start_hour = int(break_start_str.split(":")[0])
-            break_end_hour = int(break_end_str.split(":")[0])
-            break_intervals.append((break_start_hour, break_end_hour))
-            logger.info(f"Перерыв: {break_start_str}-{break_end_str}")
-        except Exception as e:
-            logger.error(f"Ошибка парсинга перерыва: {e}")
-    
     # Пробегаем по всем рабочим интервалам
-    for interval_start_hour, interval_end_hour in work_intervals:
-        logger.info(f"  Интервал: {interval_start_hour}:00-{interval_end_hour}:00")
+    for interval_start_minutes, interval_end_minutes in work_intervals:
+        start_hour = interval_start_minutes // 60
+        start_minute = interval_start_minutes % 60
+        end_hour = interval_end_minutes // 60
+        end_minute = interval_end_minutes % 60
+        logger.info(f"  Интервал: {start_hour:02d}:{start_minute:02d}-{end_hour:02d}:{end_minute:02d}")
         
-        # Последний возможный старт в этом интервале
-        interval_last_start_minutes = interval_end_hour * 60 - total_duration
-        
-        # Перебираем все 15-минутные интервалы в текущем рабочем интервале
-        for hour in range(interval_start_hour, interval_end_hour):
-            for minute in [0, 15, 30, 45]:
-                # Время начала слота в минутах
-                slot_start_minutes = hour * 60 + minute
-                
-                # Пропускаем если слот начинается позже последнего возможного в этом интервале
-                if slot_start_minutes > interval_last_start_minutes:
-                    continue
-                
-                slot_end_minutes = slot_start_minutes + total_duration
-                
-                # Проверяем перекрытие с занятыми интервалами
-                slot_overlaps = False
-                for busy_start, busy_end in busy_intervals:
-                    # Если интервалы перекрываются
-                    if not (slot_end_minutes <= busy_start or slot_start_minutes >= busy_end):
-                        slot_overlaps = True
-                        break
-                
-                if not slot_overlaps:
-                    # Проверяем, не попадает ли слот в перерыв
-                    in_break = False
-                    for break_start, break_end in break_intervals:
-                        if break_start <= hour < break_end:
-                            in_break = True
-                            break
-                    
-                    if not in_break:
-                        time_str = f"{hour:02d}:{minute:02d}"
-                        available_slots.append({
-                            "time": time_str,
-                            "specialist": selected_specialist
-                        })
+        # Перебираем 15-минутные интервалы
+        current_minutes = interval_start_minutes
+        while current_minutes + total_duration <= interval_end_minutes:
+            slot_start_minutes = current_minutes
+            slot_end_minutes = current_minutes + total_duration
+            
+            # Проверяем перекрытие с занятыми интервалами
+            slot_overlaps = False
+            for busy_start, busy_end in busy_intervals:
+                # Если интервалы перекрываются
+                if not (slot_end_minutes <= busy_start or slot_start_minutes >= busy_end):
+                    slot_overlaps = True
+                    break
+            
+            if not slot_overlaps:
+                # Форматируем время
+                hour = slot_start_minutes // 60
+                minute = slot_start_minutes % 60
+                time_str = f"{hour:02d}:{minute:02d}"
+                available_slots.append({
+                    "time": time_str,
+                    "specialist": selected_specialist
+                })
+            
+            # Переходим к следующему 15-минутному интервалу
+            current_minutes += 15
     
     logger.info(f"Сгенерировано {len(available_slots)} свободных слотов для {selected_specialist} на {date_str}")
     
