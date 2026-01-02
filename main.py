@@ -993,7 +993,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await start(update, context)
             return MENU
 
-        if data.startswith("call_admin_"):
+    if data.startswith("call_admin_"):
         phone = data.split("call_admin_", 1)[1]
         # Форматируем для отображения
         formatted_phone = f"+7{phone[1:4]} {phone[4:7]}-{phone[7:9]}-{phone[9:11]}" if len(phone) == 11 else phone
