@@ -1000,16 +1000,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Форматируем для отображения
         formatted_phone = f"+7{phone[1:4]} {phone[4:7]}-{phone[7:9]}-{phone[9:11]}" if len(phone) == 11 else phone
 
-        # Ссылка для звонка (ИСПРАВЛЕННЫЙ ВАРИАНТ)
-        if phone.startswith('7') and len(phone) == 11:
-            # Российский номер: 79991112233 → tel:+79991112233
-            call_url = f"tel:+{phone}"
-        elif phone.startswith('8') and len(phone) == 11:
-            # Российский номер: 89991112233 → tel:+79991112233
-            call_url = f"tel:+7{phone[1:]}"
-        else:
-            # Другие форматы
-            call_url = f"tel:+{phone}"
+        # Ссылка для звонка (РАБОЧИЙ ВАРИАНТ для Telegram)
+        # Форматируем номер для отображения
+        display_phone = f"+7{phone[1:4]} {phone[4:7]}-{phone[7:9]}-{phone[9:11]}" if len(phone) == 11 else phone
+        
+        # 1. Для Android/iOS: tel: ссылка
+        call_url = f"tel:+{phone}"
+        
+        # 2. Альтернатива: кнопка "Позвонить" через Telegram
+        # call_url = f"https://t.me/share/url?url=tel:{phone}&text=Звонок%20администратору"
         
         # Получаем телефон клиента (если есть)
         user_phone = context.user_data.get("phone", "Неизвестно")
@@ -1031,8 +1030,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.answer()
         await query.edit_message_text(
-            f"📞 <b>Нажмите на ссылку для звонка:</b>\n\n"
-            f"<a href='{call_url}'>{formatted_phone}</a>\n\n"
+            f"📞 <b>Для звонка администратору:</b>\n\n"
+            f"<b>Номер:</b> {formatted_phone}\n\n"
+            f"<i>Скопируйте номер и наберите его в телефонном приложении.</i>\n\n"
+            f"Или нажмите: <a href='{call_url}'>📞 Позвонить</a>\n\n"
             f"<i>Если администратор не ответит, мы уведомим его о пропущенном звонке.</i>\n\n"
             f"Или оставьте сообщение:",
             parse_mode="HTML",
