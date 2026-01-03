@@ -999,7 +999,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Форматируем для отображения
         formatted_phone = f"+7{phone[1:4]} {phone[4:7]}-{phone[7:9]}-{phone[9:11]}" if len(phone) == 11 else phone
-        call_url = f"tel:{phone}"
+
+        # Ссылка для звонка (ИСПРАВЛЕННЫЙ ВАРИАНТ)
+        if phone.startswith('7') and len(phone) == 11:
+            # Российский номер: 79991112233 → tel:+79991112233
+            call_url = f"tel:+{phone}"
+        elif phone.startswith('8') and len(phone) == 11:
+            # Российский номер: 89991112233 → tel:+79991112233
+            call_url = f"tel:+7{phone[1:]}"
+        else:
+            # Другие форматы
+            call_url = f"tel:+{phone}"
         
         # Получаем телефон клиента (если есть)
         user_phone = context.user_data.get("phone", "Неизвестно")
