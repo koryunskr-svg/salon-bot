@@ -206,6 +206,7 @@ def safe_delete_calendar_event(calendar_id, event_id):
 def safe_log_missed_call(phone_from: str, admin_phone: str):
     """Записывает пропущенный звонок в таблицу 'Обратные звонки'"""
     try:
+        print(f"DEBUG safe_log_missed_call: Начало, phone_from={phone_from}, admin_phone={admin_phone}")
         timestamp = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
         row = [
             f"MISSED-{int(time.time())}",  # ID
@@ -219,11 +220,14 @@ def safe_log_missed_call(phone_from: str, admin_phone: str):
             f"Пропущенный звонок от клиента через бота",  # Примечание
             "1"                            # Приоритет
         ]
+        print(f"DEBUG safe_log_missed_call: Строка для записи: {row}")
         success = safe_append_to_sheet(SHEET_ID, "Обратные звонки!A3:J", [row])
+        print(f"DEBUG safe_log_missed_call: Результат safe_append_to_sheet: {success}")
         if success:
             logger.info(f"✅ Записан пропущенный звонок от {phone_from} к {admin_phone}")
         return success
     except Exception as e:
+        print(f"DEBUG safe_log_missed_call: Ошибка: {e}")
         logger.error(f"❌ Ошибка записи пропущенного звонка: {e}")
         return False
 
