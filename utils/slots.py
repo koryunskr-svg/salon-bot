@@ -264,11 +264,17 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
 
     logger.info(f"ПРОВЕРКА ДЛИТЕЛЬНОСТИ: total_duration={total_duration}, порог=240")
 
-    # Если услуга очень длинная (больше 4 часов) - направляем к админу
+    # Если услуга очень длинная (больше 4 часов) - создаем специальный слот
     if total_duration > 240:  # Более 4 часов
         logger.info(f"⚠️ Очень длинная услуга ({total_duration} мин) - требуется согласование с админом")
-        return []  # Вернуть пустой список - бот покажет "нет времени"
-    
+        
+        # Возвращаем специальный слот с пометкой "Требуется согласование"
+        return [{
+            "time": "Требуется согласование",
+            "specialist": f"{selected_specialist} (длинная услуга)",
+            "long_service": True  # Флаг длинной услуги
+        }]
+
     # Стандартное ограничение для обычных услуг
     max_start_minutes = latest_interval_end * 60 - total_duration
     
