@@ -1014,16 +1014,45 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Получаем телефон клиента
         user_phone = context.user_data.get("phone", "Неизвестно")
         
-        # ← ЗАПИСЬ В ТАБЛИЦУ (ДОБАВЛЯЕМ ОТЛАДКУ)
+        # ← ЗАПИСЬ В ТАБЛИЦУ (ДЕТАЛЬНАЯ ОТЛАДКА)
+        print("=" * 50)
+        print("📋 ОТЛАДКА ЗАПИСИ В ТАБЛИЦУ:")
+        print(f"   1. Телефон клиента: '{user_phone}'")
+        print(f"   2. Телефон админа: '{phone}'")
+        print(f"   3. User ID: {update.effective_user.id}")
+        print(f"   4. Время: {datetime.now().isoformat()}")
+        
         try:
             from utils.safe_google import safe_log_missed_call
-            print(f"📞 DEBUG: Вызываю safe_log_missed_call({user_phone}, {phone})")
+            print(f"   5. Импортировал safe_log_missed_call")
+            
+            # ВЫЗЫВАЕМ ФУНКЦИЮ
+            print(f"   6. Вызываю safe_log_missed_call('{user_phone}', '{phone}')...")
             result = safe_log_missed_call(user_phone, phone)
-            print(f"📞 DEBUG: Результат записи звонка: {result}")
-        except Exception as e:
-            print(f"📞 DEBUG: Ошибка записи звонка: {e}")
+            
+            print(f"   7. Функция вернула: {result}")
+            print(f"   8. Тип результата: {type(result)}")
+            
+            if result is True:
+                print("   ✅ УСПЕХ: Запись в таблицу прошла!")
+            elif result is False:
+                print("   ❌ НЕУДАЧА: Функция вернула False")
+            elif result is None:
+                print("   ⚠️ ПРЕДУПРЕЖДЕНИЕ: Функция вернула None")
+            else:
+                print(f"   🤔 НЕИЗВЕСТНО: Непонятный результат: {result}")
+                
+        except ImportError as e:
+            print(f"   ❌ ОШИБКА ИМПОРТА: Не могу импортировать safe_log_missed_call")
+            print(f"      Детали: {e}")
             import traceback
             traceback.print_exc()
+        except Exception as e:
+            print(f"   ❌ ДРУГАЯ ОШИБКА: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        print("=" * 50)
         
         await query.answer()
         await query.edit_message_text(
