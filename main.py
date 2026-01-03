@@ -995,45 +995,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("call_admin_"):
         phone = data.split("call_admin_", 1)[1]
-        logger.info(f"📞 Обработка звонка: номер={phone}")
         
-        # Форматируем для отображения
-        formatted_phone = f"+7{phone[1:4]} {phone[4:7]}-{phone[7:9]}-{phone[9:11]}" if len(phone) == 11 else phone
-
-        # Ссылка для звонка (РАБОЧИЙ ВАРИАНТ для Telegram)
-        # Форматируем номер для отображения
-        display_phone = f"+7{phone[1:4]} {phone[4:7]}-{phone[7:9]}-{phone[9:11]}" if len(phone) == 11 else phone
+        # Форматируем для отображения (КАК БЫЛО РАНЬШЕ)
+        formatted_phone = f"8{phone[1:4]}-{phone[4:7]}-{phone[7:9]}-{phone[9:11]}" if len(phone) == 11 else phone
         
-        # 1. Для Android/iOS: tel: ссылка
-        call_url = f"tel:+{phone}"
+        # Ссылка КАК БЫЛО РАНЬШЕ (работало)
+        call_url = f"tel:{phone}"
         
-        # 2. Альтернатива: кнопка "Позвонить" через Telegram
-        # call_url = f"https://t.me/share/url?url=tel:{phone}&text=Звонок%20администратору"
-        
-        # Получаем телефон клиента (если есть)
+        # Получаем телефон клиента
         user_phone = context.user_data.get("phone", "Неизвестно")
-        logger.info(f"📞 Телефон клиента: {user_phone}")
         
-        # Записываем попытку звонка
-        admin_phone_setting = get_setting("Телефон администратора", "")
-        logger.info(f"📞 Телефон админа из настроек: {admin_phone_setting}")
-        
-        if admin_phone_setting:
+        # Записываем попытку звонка (УПРОЩЕННЫЙ ВАРИАНТ)
+        try:
             from utils.safe_google import safe_log_missed_call
-            # Очищаем номер для логирования
-            admin_phone_clean = admin_phone_setting.replace('+', '').replace(' ', '').replace('-', '')
-            logger.info(f"📞 Вызов safe_log_missed_call: клиент={user_phone}, админ={admin_phone_clean}")
-            result = safe_log_missed_call(user_phone, admin_phone_clean)
-            logger.info(f"📞 Результат safe_log_missed_call: {result}")
-        else:
-            logger.warning("📞 Телефон админа не найден в настройках")
+            result = safe_log_missed_call(user_phone, phone)
+            print(f"DEBUG: Результат записи звонка: {result}")
+        except Exception as e:
+            print(f"DEBUG: Ошибка записи звонка: {e}")
         
         await query.answer()
         await query.edit_message_text(
-            f"📞 <b>Для звонка администратору:</b>\n\n"
-            f"<b>Номер:</b> {formatted_phone}\n\n"
-            f"<i>Скопируйте номер и наберите его в телефонном приложении.</i>\n\n"
-            f"Или нажмите: <a href='{call_url}'>📞 Позвонить</a>\n\n"
+            f"📞 <b>Нажмите на ссылку для звонка:</b>\n\n"
+            f"<a href='{call_url}'>{formatted_phone}</a>\n\n"
             f"<i>Если администратор не ответит, мы уведомим его о пропущенном звонке.</i>\n\n"
             f"Или оставьте сообщение:",
             parse_mode="HTML",
