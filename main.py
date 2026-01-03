@@ -996,6 +996,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("call_admin_"):
         phone = data.split("call_admin_", 1)[1]
         
+        # ЗАПИСАТЬ В ФАЙЛ ВРУЧНУЮ
+        with open("logs/bot.log", "a") as f:
+            f.write(f"{datetime.now().isoformat()} - 📞 Звонок: {phone}\n")
+
         # Форматируем для отображения (КАК БЫЛО РАНЬШЕ)
         formatted_phone = f"8{phone[1:4]}-{phone[4:7]}-{phone[7:9]}-{phone[9:11]}" if len(phone) == 11 else phone
         
