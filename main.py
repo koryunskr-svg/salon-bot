@@ -926,29 +926,32 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
 
-    print("🚨🚨🚨 button_handler ВЫЗВАН! 🚨🚨🚨")
-    print(f"🚨 data = '{data}'")
-    print(f"🚨 User = {update.effective_user.id}")
+# === СИГНАЛЬНЫЙ ПРИНТ (для уверенности что функция вызывается) ===
+    # Этот print используем sys.stdout напрямую чтобы обойти логирование
+    import sys
+    sys.stdout.write(f"\n\n{'='*80}\n")
+    sys.stdout.write(f"🚨🚨🚨 button_handler ВЫЗВАН! data='{data}'\n")
+    sys.stdout.write(f"🚨 User ID: {update.effective_user.id}\n")
+    sys.stdout.write(f"{'='*80}\n\n")
+    sys.stdout.flush()  # ← ВАЖНО: принудительно выводим в консоль
 
-    # ← НОВЫЙ ПРИНТ ДЛЯ ДИАГНОСТИКИ
-    print("=" * 70)
-    print(f"🎯 НАЖАТА КНОПКА: '{data}'")
-    print(f"🎯 User ID: {update.effective_user.id}")
-    print(f"🎯 Username: {update.effective_user.username}")
-    print(f"🎯 Время: {datetime.now().strftime('%H:%M:%S.%f')}")
+    # === ЛОГИРОВАНИЕ (для файла logs/bot.log) ===
+    logger.info("=" * 80)
+    logger.info(f"🎯 НАЖАТА КНОПКА: '{data}'")
+    logger.info(f"🎯 User ID: {update.effective_user.id}")
+    logger.info(f"🎯 Username: {update.effective_user.username}")
+    logger.info(f"🎯 Время: {datetime.now().strftime('%H:%M:%S.%f')}")
     
     # ← СПЕЦИАЛЬНО ДЛЯ call_admin_
     if data.startswith("call_admin_"):
-        print(f"🔥 ОБНАРУЖЕН call_admin_! Номер: {data.split('call_admin_', 1)[1]}")
+        logger.info(f"🔥 ОБНАРУЖЕН call_admin_! Номер: {data.split('call_admin_', 1)[1]}")
     
-    print("=" * 70)
-    # ← КОНЕЦ ДОБАВЛЕНИЯ
-    # === НАЧАЛО ОТЛАДКИ ===
+    logger.info("=" * 80)
+    
     logger.info(f"🔄 DEBUG button_handler: Нажата кнопка с data='{data}'")
     logger.info(
         f"🔄 DEBUG: Текущий state={context.user_data.get('state')}, priority={context.user_data.get('priority')}"
     )
-    # === КОНЕЦ ОТЛАДКИ ===
 
     back_map = {
         SELECT_SUBSERVICE: select_service_type,
@@ -1009,13 +1012,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("call_admin_"):
         phone = data.split("call_admin_", 1)[1]
         
-        # ← ЛОГИРОВАНИЕ В ФАЙЛ (ДОБАВЛЯЕМ ЭТО)
+        # === СИГНАЛЬНЫЙ ПРИНТ В КОНСОЛЬ ===
+        import sys
+        sys.stdout.write(f"\n\n{'📞'*20}\n")
+        sys.stdout.write(f"📞 ОБРАБОТКА КНОПКИ 'ПОЗВОНИТЬ АДМИНУ'\n")
+        sys.stdout.write(f"📞 Номер админа: {phone}\n")
+        sys.stdout.write(f"📞 User ID: {update.effective_user.id}\n")
+        sys.stdout.write(f"{'📞'*20}\n\n")
+        sys.stdout.flush()
+        
+        # === ЛОГИРОВАНИЕ В ФАЙЛ ===
+        logger.info("📞" * 40)
+        logger.info(f"📞 ОБРАБОТКА КНОПКИ 'ПОЗВОНИТЬ АДМИНУ'")
+        logger.info(f"📞 Номер админа: {phone}")
+        logger.info(f"📞 User ID: {update.effective_user.id}")
+        logger.info(f"📞 Время: {datetime.now().isoformat()}")
+        logger.info("📞" * 40)
+        
         try:
             with open("logs/bot.log", "a", encoding="utf-8") as f:
                 f.write(f"{datetime.now().isoformat()} - 📞 ЗВОНОК АДМИНУ: {phone}\n")
                 f.write(f"  User ID: {update.effective_user.id}, Username: {update.effective_user.username}\n")
         except Exception as e:
-            print(f"Ошибка записи в лог: {e}")
+            logger.error(f"Ошибка записи в лог-файл: {e}")
         
         # ← ОСНОВНОЙ РАБОЧИЙ КОД (КАК БЫЛО)
         # Форматируем для отображения (РАБОЧИЙ ФОРМАТ)
@@ -1023,51 +1042,51 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Ссылка КАК БЫЛО (РАБОТАЕТ!)
         call_url = f"tel:{phone}"
-        
-        # Получаем телефон клиента
         user_phone = context.user_data.get("phone", "Неизвестно")
         
-        # ← ЗАПИСЬ В ТАБЛИЦУ (ДЕТАЛЬНАЯ ОТЛАДКА)
-        print("=" * 50)
-        print("📋 ОТЛАДКА ЗАПИСИ В ТАБЛИЦУ:")
-        print(f"   1. Телефон клиента: '{user_phone}'")
-        print(f"   2. Телефон админа: '{phone}'")
-        print(f"   3. User ID: {update.effective_user.id}")
-        print(f"   4. Время: {datetime.now().isoformat()}")
+        # === ОТЛАДКА ЗАПИСИ В ТАБЛИЦУ (С ПРИНТАМИ В КОНСОЛЬ) ===
+        sys.stdout.write(f"\n{'='*60}\n")
+        sys.stdout.write(f"📋 ОТЛАДКА ЗАПИСИ В ТАБЛИЦУ:\n")
+        sys.stdout.write(f"   1. Телефон клиента: '{user_phone}'\n")
+        sys.stdout.write(f"   2. Телефон админа: '{phone}'\n")
+        sys.stdout.write(f"   3. User ID: {update.effective_user.id}\n")
+        sys.stdout.write(f"{'='*60}\n\n")
+        sys.stdout.flush()
         
+        logger.info(f"📋 Отладка записи: клиент='{user_phone}', админ='{phone}'")
+              
         try:
-            from utils.safe_google import safe_log_missed_call
-            print(f"   5. Импортировал safe_log_missed_call")
-            
-            # ВЫЗЫВАЕМ ФУНКЦИЮ
-            print(f"   6. Вызываю safe_log_missed_call('{user_phone}', '{phone}')...")
+            from utils.safe_google import safe_log_missed_call     
+            sys.stdout.write(f"   4. Вызываю safe_log_missed_call('{user_phone}', '{phone}')...\n")
+            sys.stdout.flush()            
             result = safe_log_missed_call(user_phone, phone)
             
-            print(f"   7. Функция вернула: {result}")
-            print(f"   8. Тип результата: {type(result)}")
+            sys.stdout.write(f"   5. Результат: {result}\n")
+            sys.stdout.write(f"   6. Тип: {type(result)}\n")
             
             if result is True:
-                print("   ✅ УСПЕХ: Запись в таблицу прошла!")
+                sys.stdout.write("   ✅ УСПЕХ: Запись в таблицу прошла!\n")
             elif result is False:
-                print("   ❌ НЕУДАЧА: Функция вернула False")
+                sys.stdout.write("   ❌ НЕУДАЧА: Функция вернула False\n")
             elif result is None:
-                print("   ⚠️ ПРЕДУПРЕЖДЕНИЕ: Функция вернула None")
+                sys.stdout.write("   ⚠️ ПРЕДУПРЕЖДЕНИЕ: Функция вернула None\n")
             else:
-                print(f"   🤔 НЕИЗВЕСТНО: Непонятный результат: {result}")
+                sys.stdout.write(f"   🤔 НЕИЗВЕСТНО: {result}\n")
+            
+            sys.stdout.write(f"{'='*60}\n\n")
+            sys.stdout.flush()
+            
+            logger.info(f"📋 Результат safe_log_missed_call: {result}")
                 
         except ImportError as e:
-            print(f"   ❌ ОШИБКА ИМПОРТА: Не могу импортировать safe_log_missed_call")
-            print(f"      Детали: {e}")
+            sys.stdout.write(f"   ❌ ОШИБКА ИМПОРТА: {e}\n")
             import traceback
             traceback.print_exc()
         except Exception as e:
-            print(f"   ❌ ДРУГАЯ ОШИБКА: {e}")
+            sys.stdout.write(f"   ❌ ДРУГАЯ ОШИБКА: {e}\n")
             import traceback
             traceback.print_exc()
         
-        print("=" * 50)
-        
-        await query.answer()
         await query.edit_message_text(
             f"📞 <b>Нажмите на ссылку для звонка:</b>\n\n"
             f"<a href='{call_url}'>{formatted_phone}</a>\n\n"
