@@ -247,6 +247,7 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     # Округляем общую длительность до 15 минут
     total_duration = round_to_15(total_duration)
     logger.info(f"Общая длительность с округлением: {total_duration} мин")
+    logger.info(f"ПРОВЕРКА ДЛИТЕЛЬНОСТИ: услуга='{subservice}', total_duration={total_duration}, порог=240 мин (4 часа)")
 
     # === АВТОМАТИЧЕСКОЕ ОГРАНИЧЕНИЕ ДЛЯ ДЛИННЫХ УСЛУГ ===
     # Вычисляем общее рабочее время за день (сумма всех интервалов)
