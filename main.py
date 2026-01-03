@@ -926,18 +926,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
 
-    # ← ДОБАВИТЬ ЭТОТ БЛОК СРАЗУ ПОСЛЕ data = query.data
-    print("=" * 60)
-    print(f"🔥 НАЖАТА КНОПКА: '{data}'")
-    print(f"🔥 ID пользователя: {update.effective_user.id}")
-    print(f"🔥 Время: {datetime.now()}")
-    print("=" * 60)
+    # ← НОВЫЙ ПРИНТ ДЛЯ ДИАГНОСТИКИ
+    print("=" * 70)
+    print(f"🎯 НАЖАТА КНОПКА: '{data}'")
+    print(f"🎯 User ID: {update.effective_user.id}")
+    print(f"🎯 Username: {update.effective_user.username}")
+    print(f"🎯 Время: {datetime.now().strftime('%H:%M:%S.%f')}")
+    
+    # ← СПЕЦИАЛЬНО ДЛЯ call_admin_
+    if data.startswith("call_admin_"):
+        print(f"🔥 ОБНАРУЖЕН call_admin_! Номер: {data.split('call_admin_', 1)[1]}")
+    
+    print("=" * 70)
     # ← КОНЕЦ ДОБАВЛЕНИЯ
-
-    print(f"🔥 НАЖАТА КНОПКА: '{data}'")
-    print(f"🔥 ID пользователя: {update.effective_user.id}")
-    print(f"🔥 Время: {datetime.now()}")
-
     # === НАЧАЛО ОТЛАДКИ ===
     logger.info(f"🔄 DEBUG button_handler: Нажата кнопка с data='{data}'")
     logger.info(
