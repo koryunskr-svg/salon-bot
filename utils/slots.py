@@ -260,7 +260,9 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     # Вычисляем границы рабочего дня ДО условия
     latest_interval_end = max([end for _, end in work_intervals])
     earliest_interval_start = min([start for start, _ in work_intervals])
-    
+
+    logger.info(f"ПРОВЕРКА ДЛИТЕЛЬНОСТИ: total_duration={total_duration}, порог=240")
+
     # Если услуга очень длинная (больше 4 часов) - направляем к админу
     if total_duration > 240:  # Более 4 часов
         logger.info(f"⚠️ Очень длинная услуга ({total_duration} мин) - требуется согласование с админом")
