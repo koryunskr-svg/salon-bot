@@ -995,20 +995,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("call_admin_"):
         phone = data.split("call_admin_", 1)[1]
+        logger.info(f"📞 Обработка звонка: номер={phone}")
+        
         # Форматируем для отображения
         formatted_phone = f"+7{phone[1:4]} {phone[4:7]}-{phone[7:9]}-{phone[9:11]}" if len(phone) == 11 else phone
         call_url = f"tel:{phone}"
         
         # Получаем телефон клиента (если есть)
         user_phone = context.user_data.get("phone", "Неизвестно")
+        logger.info(f"📞 Телефон клиента: {user_phone}")
         
         # Записываем попытку звонка
         admin_phone_setting = get_setting("Телефон администратора", "")
+        logger.info(f"📞 Телефон админа из настроек: {admin_phone_setting}")
+        
         if admin_phone_setting:
             from utils.safe_google import safe_log_missed_call
             # Очищаем номер для логирования
             admin_phone_clean = admin_phone_setting.replace('+', '').replace(' ', '').replace('-', '')
-            safe_log_missed_call(user_phone, admin_phone_clean)
+            logger.info(f"📞 Вызов safe_log_missed_call: клиент={user_phone}, админ={admin_phone_clean}")
+            result = safe_log_missed_call(user_phone, admin_phone_clean)
+            logger.info(f"📞 Результат safe_log_missed_call: {result}")
+        else:
+            logger.warning("📞 Телефон админа не найден в настройках")
         
         await query.answer()
         await query.edit_message_text(
