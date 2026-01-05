@@ -3956,9 +3956,9 @@ async def handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYP
         parse_mode="HTML"
     )
 
-    # 4. Возвращаем в меню
+    # 4. Возвращаем в меню (показываем сразу кнопку без лишнего сообщения)
     await update.message.reply_text(
-        "🏠 Возвращаю в главное меню...",
+        "🏠 Выберите действие:",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🏠 В меню", callback_data="start")]
         ])
