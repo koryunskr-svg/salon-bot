@@ -219,7 +219,7 @@ def safe_delete_calendar_event(calendar_id, event_id):
 def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = ""):
     """Записывает пропущенный звонок в таблицу 'Обратные звонки'"""
     try:
-        # ← ЭТИ ПРИНТЫ ДОЛЖНЫ БЫТЬ:
+        # ← ОСТАВЬТЕ ПРИНТЫ (они работают лучше логов для отладки)
         print("=" * 60)
         print("🔧🔧🔧 SAFE_LOG_MISSED_CALL ВЫЗВАНА 🔧🔧🔧")
         print(f"🔧 phone_from: '{phone_from}'")
@@ -241,17 +241,22 @@ def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = ""):
             "1"                            # Приоритет
         ]
         print(f"🔧 Строка для записи: {row}")
+        print(f"🔧 Пытаюсь записать в SHEET_ID={SHEET_ID}")
         
         success = safe_append_to_sheet(SHEET_ID, "Обратные звонки!A3:J", [row])
         print(f"🔧 Результат safe_append_to_sheet: {success}")
         
+        if success:
+            print(f"✅ Записан пропущенный звонок от {phone_from} к {admin_phone}")
+        else:
+            print(f"❌ Не удалось записать пропущенный звонок от {phone_from}")
+        
         return success
     except Exception as e:
-        print(f"❌ Ошибка в safe_log_missed_call: {e}")
+        print(f"❌ Ошибка записи пропущенного звонка: {e}")
         import traceback
         traceback.print_exc()
         return False
-
 
 print("✅ Модуль safe_google.py загружен.")
 
