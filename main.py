@@ -3860,9 +3860,6 @@ async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT
     context.user_data["state"] = MENU
     return MENU
 
-async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... существующий код ...
-
 # --- GENERIC MESSAGE HANDLER ---
 
 async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3880,12 +3877,6 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
     handlers = {
         ENTER_NAME: enter_name,
         ENTER_PHONE: enter_phone,
-        AWAITING_ADMIN_MESSAGE: lambda u, c: (
-            notify_admins(c, f"📞 Сообщение от клиента (ID скрыт): {u.message.text}"),
-            u.message.reply_text("✅ Администратор свяжется с вами."),
-            c.user_data.clear(),
-            c.user_data.update({"state": MENU}) or MENU,
-        ),
         AWAITING_CALLBACK_PHONE: handle_callback_phone,
         AWAITING_CALLBACK_QUESTION: handle_callback_question,
         AWAITING_WAITING_LIST_DETAILS: handle_waiting_list_input,
