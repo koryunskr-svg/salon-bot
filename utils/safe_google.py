@@ -66,20 +66,39 @@ def safe_get_sheet_data(spreadsheet_id, range_name):
 
 @retry_google_api()
 def safe_append_to_sheet(spreadsheet_id, sheet_name, values):
+    print("🔧 DEBUG safe_append_to_sheet: Начало")
+    print(f"🔧 spreadsheet_id: {spreadsheet_id}")
+    print(f"🔧 sheet_name: {sheet_name}")
+    print(f"🔧 values: {values}")
+
     credentials = get_google_credentials()
     if not credentials:
         return False
     try:
         service = build('sheets', 'v4', credentials=credentials)
         body = {'values': values}
+        print(f"🔧 DEBUG: Отправляю запрос к Google Sheets...")
+
         result = service.spreadsheets().values().append(
             spreadsheetId=spreadsheet_id,
             range=sheet_name,
             valueInputOption='RAW',
             body=body
         ).execute()
+
+        print(f"🔧 DEBUG: Google Sheets ответил: {result}")
+        print(f"✅ Добавлено {result.get('updates', {}).get('updatedCells', 0)} ячеек в {sheet_name}")
+        return True
+
+        except Exception as e:
+        print(f"❌ Ошибка при добавлении данных в таблицу: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
         logger.info(f"✅ Добавлено {result.get('updates', {}).get('updatedCells', 0)} ячеек в {sheet_name}")
         return True
+
     except Exception as e:
         logger.error(f"❌ Ошибка при добавлении данных в таблицу: {e}")
         return False
@@ -206,6 +225,15 @@ def safe_delete_calendar_event(calendar_id, event_id):
 def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = ""):
     """Записывает пропущенный звонок в таблицу 'Обратные звонки'"""
     try:
+        # ← ДОБАВЬТЕ ЭТИ СТРОКИ
+        print("=" * 60)
+        print("🔧🔧🔧 SAFE_LOG_MISSED_CALL ВЫЗВАНА 🔧🔧🔧")
+        print(f"🔧 phone_from: '{phone_from}'")
+        print(f"🔧 admin_phone: '{admin_phone}'")
+        print(f"🔧 note: '{note}'")
+        print("=" * 60)
+        # ← КОНЕЦ ДОБАВЛЕНИЯ
+        
         print(f"DEBUG safe_log_missed_call: Начало, phone_from={phone_from}, admin_phone={admin_phone}")
         timestamp = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
         row = [
@@ -217,10 +245,11 @@ def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = ""):
             "Telegram",                    # Источник
             "",                            # Время уведомления (пусто)
             "ожидает",                     # Статус
-            note or f"Пропущенный звонок от клиента через бота",  # Примечание ← ИЗМЕНИТЬ
+            note or f"Пропущенный звонок от клиента через бota",  # Примечание
             "1"                            # Приоритет
         ]
         print(f"DEBUG safe_log_missed_call: Строка для записи: {row}")
+        print(f"DEBUG: Пытаюсь записать в SHEET_ID={SHEET_ID}")
         success = safe_append_to_sheet(SHEET_ID, "Обратные звонки!A3:J", [row])
         print(f"DEBUG safe_log_missed_call: Результат safe_append_to_sheet: {success}")
         if success:
@@ -228,8 +257,11 @@ def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = ""):
         return success
     except Exception as e:
         print(f"DEBUG safe_log_missed_call: Ошибка: {e}")
+        import traceback
+        traceback.print_exc()  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
         logger.error(f"❌ Ошибка записи пропущенного звонка: {e}")
         return False
+
 
 print("✅ Модуль safe_google.py загружен.")
 
