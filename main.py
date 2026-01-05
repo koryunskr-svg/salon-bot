@@ -1113,6 +1113,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = [
             [InlineKeyboardButton("💬 Написать сообщение", callback_data="write_message")],
             [InlineKeyboardButton("📞 Заказать обратный звонок", callback_data="request_callback")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="start")],  # ← ДОБАВЛЕНО
             [InlineKeyboardButton("🏠 В меню", callback_data="start")]
         ]
         await query.edit_message_text(
@@ -1128,12 +1129,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if data == "write_message":
+        # Сохраняем, что выбрали "написать сообщение"
+        context.user_data["contact_method"] = "write_message"
         await query.edit_message_text(
             "💬 <b>Напишите ваше сообщение:</b>\n\n"
             "Администратор ответит в Telegram.\n\n"
             "<i>Вы также можете прикрепить фото или документ.</i>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Назад", callback_data="contact_admin")],  # ← ДОБАВЛЕНО
                 [InlineKeyboardButton("🏠 В меню", callback_data="start")]
             ])
         )
@@ -1147,6 +1151,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Администратор перезвонит в рабочее время.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Назад", callback_data="contact_admin")],  # ← ДОБАВЛЕНО
                 [InlineKeyboardButton("🏠 В меню", callback_data="start")]
             ])
         )
