@@ -3949,11 +3949,11 @@ async def handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYP
         import traceback
         traceback.print_exc()
 
-    # 3. Подтверждаем пользователю
+    # 3. Подтверждаем пользователю И СРАЗУ показываем кнопку в меню
     await update.message.reply_text(
         "✅ <b>Ваше сообщение отправлено!</b>\n\n"
         "Администратор ответит вам в Telegram.",
-        parse_mode="HTML"
+        parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🏠 В меню", callback_data="start")]
         ])
