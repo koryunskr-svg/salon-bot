@@ -3810,6 +3810,9 @@ async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT
     """Обработка ввода вопроса для обратного звонка"""
 
     print("🔧 DEBUG: handle_callback_question вызвана")
+    print("\n" + "="*80)
+    print("🔧🔧🔧 HANDLE_CALLBACK_QUESTION ВЫЗВАНА! 🔧🔧🔧")
+    print("="*80 + "\n")   
 
     question = update.message.text.strip()
     phone = context.user_data.get("callback_phone", "не указан")
@@ -3917,10 +3920,18 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
     if state in handlers:
 
         if state == AWAITING_ADMIN_MESSAGE:
+            print("\n" + "="*80)
+            print("🔧🔧🔧 AWAITING_ADMIN_MESSAGE ВЫЗВАНА! 🔧🔧🔧")
+            print("="*80 + "\n")
+    
             user_message = update.message.text
             user_id = update.effective_user.id
             username = update.effective_user.username or "без username"
-        
+
+            print(f"🔧 user_id: {user_id}")
+            print(f"🔧 username: @{username}")
+            print(f"🔧 message: {user_message}")
+
             # 1. Уведомляем админа
             admin_message = (
                 f"📩 <b>Сообщение от клиента</b>\n"
@@ -3929,30 +3940,43 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
                 f"💬 Сообщение: {user_message}"
             )
             await notify_admins(context, admin_message)
-        
+            print("🔧 Админы уведомлены")
+
             # 2. Записываем в таблицу "Обратные звонки"
             try:
                 from utils.safe_google import safe_log_missed_call
                 # Получаем телефон админа из настроек
                 admin_phone = get_setting("Телефон администратора", "не указан")
-                clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
+                print(f"🔧 admin_phone из настроек: '{admin_phone}'")
+          
+                if admin_phone and admin_phone != "не указан":
+                    clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
+                    print(f"🔧 clean_phone: '{clean_phone}'")
             
-                # Записываем с пометкой "сообщение"
-                safe_log_missed_call(
-                    phone_from=f"TG:{user_id}",  # вместо телефона - ID Telegram
-                    admin_phone=clean_phone,
-                    note=f"Сообщение: {user_message[:100]}..." if len(user_message) > 100 else f"Сообщение: {user_message}"
-                )
+                    # Записываем с пометкой "сообщение"
+                    print("🔧 Вызываю safe_log_missed_call...")
+                    result = safe_log_missed_call(
+                        phone_from=f"TG:{user_id}",  # вместо телефона - ID Telegram
+                        admin_phone=clean_phone,
+                        note=f"Сообщение: {user_message[:200]}..." if len(user_message) > 200 else f"Сообщение: {user_message}"
+                    )
+                    print(f"🔧 safe_log_missed_call вернула: {result}")
+                else:
+                    print("⚠️ Телефон администратора не указан в настройках!")
+                    logger.error("❌ Телефон администратора не указан в настройках")
             except Exception as e:
+                print(f"❌ Ошибка в safe_log_missed_call: {e}")
+                import traceback
+                traceback.print_exc()
                 logger.error(f"❌ Ошибка записи сообщения в таблицу: {e}")
-        
+
             # 3. Подтверждаем пользователю
             await update.message.reply_text(
                 "✅ <b>Ваше сообщение отправлено!</b>\n\n"
                 "Администратор ответит вам в Telegram.",
                 parse_mode="HTML"
             )
-        
+
             # 4. Возвращаем в меню
             await update.message.reply_text(
                 "🏠 Возвращаю в главное меню...",
@@ -3960,10 +3984,12 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
                     [InlineKeyboardButton("🏠 В меню", callback_data="start")]
                 ])
             )
-        
+
+            print("🔧 Очищаю context.user_data...")
             context.user_data.clear()
             context.user_data["state"] = MENU
-            return MENU
+            print("🔧 Возвращаюсь в MENU\n")
+            return MENU 
 
         else:
             return await handlers[state](update, context)
