@@ -3878,6 +3878,7 @@ async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT
     context.user_data["state"] = MENU
     return MENU
 
+
 # --- GENERIC MESSAGE HANDLER ---
 
 async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3892,12 +3893,82 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
     if state == AWAITING_PHONE_FOR_CALLBACK:
         return await handle_phone_for_callback(update, context)
 
+    # ← ВАЖНО: ОБРАБОТКА AWAITING_ADMIN_MESSAGE ДОЛЖНА БЫТЬ ЗДЕСЬ, ДО handlers ↓↓↓
+    if state == AWAITING_ADMIN_MESSAGE:
+        logger.info("\n" + "="*80)
+        logger.info("🔧 AWAITING_ADMIN_MESSAGE ВЫЗВАНА!")
+        logger.info("="*80)
+        
+        user_message = update.message.text
+        user_id = update.effective_user.id
+        username = update.effective_user.username or "без username"
+
+        logger.info(f"🔧 user_id: {user_id}")
+        logger.info(f"🔧 username: @{username}")
+        logger.info(f"🔧 message: {user_message}")
+
+        # 1. Уведомляем админа
+        admin_message = (
+            f"📩 <b>Сообщение от клиента</b>\n"
+            f"👤 ID: {user_id}\n"
+            f"👤 Username: @{username}\n"
+            f"💬 Сообщение: {user_message}"
+        )
+        await notify_admins(context, admin_message)
+        logger.info("🔧 Админы уведомлены")
+
+        # 2. Записываем в таблицу "Обратные звонки"
+        try:
+            from utils.safe_google import safe_log_missed_call
+            # Получаем телефон админа из настроек
+            admin_phone = get_setting("Телефон администратора", "не указан")
+            logger.info(f"🔧 admin_phone из настроек: '{admin_phone}'")
+            
+            if admin_phone and admin_phone != "не указан":
+                clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
+                logger.info(f"🔧 clean_phone: '{clean_phone}'")
+                
+                # Записываем с пометкой "сообщение"
+                logger.info("🔧 Вызываю safe_log_missed_call...")
+                result = safe_log_missed_call(
+                    phone_from=f"TG:{user_id}",  # вместо телефона - ID Telegram
+                    admin_phone=clean_phone,
+                    note=f"Сообщение: {user_message[:200]}..." if len(user_message) > 200 else f"Сообщение: {user_message}"
+                )
+                logger.info(f"🔧 safe_log_missed_call вернула: {result}")
+            else:
+                logger.warning("⚠️ Телефон администратора не указан в настройках!")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в safe_log_missed_call: {e}")
+            logger.exception("Детали ошибки:")
+
+        # 3. Подтверждаем пользователю
+        await update.message.reply_text(
+            "✅ <b>Ваше сообщение отправлено!</b>\n\n"
+            "Администратор ответит вам в Telegram.",
+            parse_mode="HTML"
+        )
+
+        # 4. Возвращаем в меню
+        await update.message.reply_text(
+            "🏠 Возвращаю в главное меню...",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+            ])
+        )
+
+        logger.info("🔧 Очищаю context.user_data...")
+        context.user_data.clear()
+        context.user_data["state"] = MENU
+        logger.info("🔧 Возвращаюсь в MENU\n")
+        return MENU
+    # ← КОНЕЦ ОБРАБОТКИ AWAITING_ADMIN_MESSAGE ↑↑↑
+
     handlers = {
         ENTER_NAME: enter_name,
         ENTER_PHONE: enter_phone,
         AWAITING_CALLBACK_PHONE: handle_callback_phone,
         AWAITING_CALLBACK_QUESTION: handle_callback_question,
-        AWAITING_ADMIN_MESSAGE: lambda u, c: None,
         AWAITING_WAITING_LIST_DETAILS: handle_waiting_list_input,
         AWAITING_REPEAT_CONFIRMATION: lambda u, c: u.message.reply_text(
             "❌ Пожалуйста, используйте кнопки для подтверждения или отмены."
@@ -3918,79 +3989,10 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
         )
         or AWAITING_CONFIRMATION,
     }
-    if state in handlers:
-
-        if state == AWAITING_ADMIN_MESSAGE:
-            logger.info("\n" + "="*80)
-            logger.info("🔧 AWAITING_ADMIN_MESSAGE ВЫЗВАНА!")
-            logger.info("="*80 + "\n")
     
-            user_message = update.message.text
-            user_id = update.effective_user.id
-            username = update.effective_user.username or "без username"
-
-            logger.info(f"🔧 user_id: {user_id}")
-            logger.info(f"🔧 username: @{username}")
-            logger.info(f"🔧 message: {user_message}")
-
-            # 1. Уведомляем админа
-            admin_message = (
-                f"📩 <b>Сообщение от клиента</b>\n"
-                f"👤 ID: {user_id}\n"
-                f"👤 Username: @{username}\n"
-                f"💬 Сообщение: {user_message}"
-            )
-            await notify_admins(context, admin_message)
-            print("🔧 Админы уведомлены")
-
-            # 2. Записываем в таблицу "Обратные звонки"
-            try:
-                from utils.safe_google import safe_log_missed_call
-                # Получаем телефон админа из настроек
-                admin_phone = get_setting("Телефон администратора", "не указан")
-                logger.info(f"🔧 admin_phone из настроек: '{admin_phone}'")
-          
-                if admin_phone and admin_phone != "не указан":
-                    clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
-                    logger.info(f"🔧 clean_phone: '{clean_phone}'")
-            
-                    # Записываем с пометкой "сообщение"
-                    logger.info("🔧 Вызываю safe_log_missed_call...")
-                    result = safe_log_missed_call(
-                        phone_from=f"TG:{user_id}",  # вместо телефона - ID Telegram
-                        admin_phone=clean_phone,
-                        note=f"Сообщение: {user_message[:200]}..." if len(user_message) > 200 else f"Сообщение: {user_message}"
-                    )
-                    logger.info(f"🔧 safe_log_missed_call вернула: {result}")
-                else:
-                    logger.warning("⚠️ Телефон администратора не указан в настройках!")
-            except Exception as e:
-                logger.error(f"❌ Ошибка в safe_log_missed_call: {e}")
-                logger.exception("Детали ошибки:")  
-
-            # 3. Подтверждаем пользователю
-            await update.message.reply_text(
-                "✅ <b>Ваше сообщение отправлено!</b>\n\n"
-                "Администратор ответит вам в Telegram.",
-                parse_mode="HTML"
-            )
-
-            # 4. Возвращаем в меню
-            await update.message.reply_text(
-                "🏠 Возвращаю в главное меню...",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🏠 В меню", callback_data="start")]
-                ])
-            )
-
-            logger.info("🔧 Очищаю context.user_data...")
-            context.user_data.clear()
-            context.user_data["state"] = MENU
-            logger.info("🔧 Возвращаюсь в MENU\n")
-            return MENU 
-
-        else:
-            return await handlers[state](update, context)
+    if state in handlers:
+        return await handlers[state](update, context)
+    
     await handle_trigger_words(update, context)
     return None
 
