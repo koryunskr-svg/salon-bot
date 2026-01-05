@@ -3808,11 +3808,16 @@ async def handle_callback_phone(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ввода вопроса для обратного звонка"""
+
+    print("🔧 DEBUG: handle_callback_question вызвана")
+
     question = update.message.text.strip()
     phone = context.user_data.get("callback_phone", "не указан")
     user_id = update.effective_user.id
     username = update.effective_user.username or "без username"
-    
+
+    print(f"🔧 DEBUG: question='{question}', phone='{phone}'")
+
     if not question:
         await update.message.reply_text(
             "❌ Вопрос не может быть пустым. Опишите ваш вопрос кратко."
@@ -3821,17 +3826,27 @@ async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT
     
     # 1. Записываем в таблицу
     try:
+        print("🔧 DEBUG: Пытаюсь импортировать safe_log_missed_call")
         from utils.safe_google import safe_log_missed_call
         admin_phone = get_setting("Телефон администратора", "не указан")
         clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
+
+        print(f"🔧 DEBUG: admin_phone='{admin_phone}', clean_phone='{clean_phone}'")
+        print(f"🔧 DEBUG: Вызываю safe_log_missed_call(phone_from='{phone}', admin_phone='{clean_phone}', note='...')")
         
         # Модифицируем функцию для записи вопроса
-        safe_log_missed_call(
+        result = safe_log_missed_call(
             phone_from=phone,
             admin_phone=clean_phone,
             note=f"Вопрос: {question[:200]}... | TG: {user_id} (@{username})"
         )
+
+        print(f"🔧 DEBUG: safe_log_missed_call вернула: {result}")
+
     except Exception as e:
+        print(f"🔧 DEBUG: Ошибка в safe_log_missed_call: {e}")
+        import traceback
+        traceback.print_exc()
         logger.error(f"❌ Ошибка записи обратного звонка: {e}")
     
     # 2. Уведомляем админа
