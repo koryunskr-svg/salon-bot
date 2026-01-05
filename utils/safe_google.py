@@ -90,19 +90,12 @@ def safe_append_to_sheet(spreadsheet_id, sheet_name, values):
         print(f"✅ Добавлено {result.get('updates', {}).get('updatedCells', 0)} ячеек в {sheet_name}")
         return True
 
-        except Exception as e:
+    except Exception as e:
         print(f"❌ Ошибка при добавлении данных в таблицу: {e}")
         import traceback
         traceback.print_exc()
         return False
-
-        logger.info(f"✅ Добавлено {result.get('updates', {}).get('updatedCells', 0)} ячеек в {sheet_name}")
-        return True
-
-    except Exception as e:
-        logger.error(f"❌ Ошибка при добавлении данных в таблицу: {e}")
-        return False
-
+        
 @retry_google_api()
 def safe_update_sheet_row(spreadsheet_id, sheet_name, row_index, values):
     credentials = get_google_credentials()
