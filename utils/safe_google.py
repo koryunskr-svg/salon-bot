@@ -97,6 +97,7 @@ def safe_append_to_sheet(spreadsheet_id, sheet_name, values):
         return False
         
 @retry_google_api()
+
 def safe_update_sheet_row(spreadsheet_id, sheet_name, row_index, values):
     credentials = get_google_credentials()
     if not credentials:
@@ -218,16 +219,15 @@ def safe_delete_calendar_event(calendar_id, event_id):
 def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = ""):
     """Записывает пропущенный звонок в таблицу 'Обратные звонки'"""
     try:
-        # ← ДОБАВЬТЕ ЭТИ СТРОКИ
-        print("=" * 60)
-        print("🔧🔧🔧 SAFE_LOG_MISSED_CALL ВЫЗВАНА 🔧🔧🔧")
-        print(f"🔧 phone_from: '{phone_from}'")
-        print(f"🔧 admin_phone: '{admin_phone}'")
-        print(f"🔧 note: '{note}'")
-        print("=" * 60)
+        # ← ДОБАВЬТЕ ЭТИ СТРОКИ ЛОГИРОВАНИЯ
+        logger.info("=" * 60)
+        logger.info("🔧 SAFE_LOG_MISSED_CALL ВЫЗВАНА")
+        logger.info(f"🔧 phone_from: '{phone_from}'")
+        logger.info(f"🔧 admin_phone: '{admin_phone}'")
+        logger.info(f"🔧 note: '{note}'")
+        logger.info("=" * 60)
         # ← КОНЕЦ ДОБАВЛЕНИЯ
         
-        print(f"DEBUG safe_log_missed_call: Начало, phone_from={phone_from}, admin_phone={admin_phone}")
         timestamp = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
         row = [
             f"MISSED-{int(time.time())}",  # ID
@@ -238,23 +238,26 @@ def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = ""):
             "Telegram",                    # Источник
             "",                            # Время уведомления (пусто)
             "ожидает",                     # Статус
-            note or f"Пропущенный звонок от клиента через бota",  # Примечание
+            note or f"Пропущенный звонок от клиента через бота",  # Примечание
             "1"                            # Приоритет
         ]
-        print(f"DEBUG safe_log_missed_call: Строка для записи: {row}")
-        print(f"DEBUG: Пытаюсь записать в SHEET_ID={SHEET_ID}")
+        logger.info(f"🔧 Строка для записи: {row}")
+        logger.info(f"🔧 Пытаюсь записать в SHEET_ID={SHEET_ID}")
+        
         success = safe_append_to_sheet(SHEET_ID, "Обратные звонки!A3:J", [row])
-        print(f"DEBUG safe_log_missed_call: Результат safe_append_to_sheet: {success}")
+        
+        logger.info(f"🔧 Результат safe_append_to_sheet: {success}")
+        
         if success:
             logger.info(f"✅ Записан пропущенный звонок от {phone_from} к {admin_phone}")
+        else:
+            logger.error(f"❌ Не удалось записать пропущенный звонок от {phone_from}")
+        
         return success
     except Exception as e:
-        print(f"DEBUG safe_log_missed_call: Ошибка: {e}")
-        import traceback
-        traceback.print_exc()  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
         logger.error(f"❌ Ошибка записи пропущенного звонка: {e}")
+        logger.exception("Детали ошибки:")  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
         return False
-
 
 print("✅ Модуль safe_google.py загружен.")
 
