@@ -3897,6 +3897,7 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
         ENTER_PHONE: enter_phone,
         AWAITING_CALLBACK_PHONE: handle_callback_phone,
         AWAITING_CALLBACK_QUESTION: handle_callback_question,
+        AWAITING_ADMIN_MESSAGE: lambda u, c: None,
         AWAITING_WAITING_LIST_DETAILS: handle_waiting_list_input,
         AWAITING_REPEAT_CONFIRMATION: lambda u, c: u.message.reply_text(
             "❌ Пожалуйста, используйте кнопки для подтверждения или отмены."
@@ -3920,17 +3921,17 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
     if state in handlers:
 
         if state == AWAITING_ADMIN_MESSAGE:
-            print("\n" + "="*80)
-            print("🔧🔧🔧 AWAITING_ADMIN_MESSAGE ВЫЗВАНА! 🔧🔧🔧")
-            print("="*80 + "\n")
+            logger.info("\n" + "="*80)
+            logger.info("🔧 AWAITING_ADMIN_MESSAGE ВЫЗВАНА!")
+            logger.info("="*80 + "\n")
     
             user_message = update.message.text
             user_id = update.effective_user.id
             username = update.effective_user.username or "без username"
 
-            print(f"🔧 user_id: {user_id}")
-            print(f"🔧 username: @{username}")
-            print(f"🔧 message: {user_message}")
+            logger.info(f"🔧 user_id: {user_id}")
+            logger.info(f"🔧 username: @{username}")
+            logger.info(f"🔧 message: {user_message}")
 
             # 1. Уведомляем админа
             admin_message = (
@@ -3947,28 +3948,25 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
                 from utils.safe_google import safe_log_missed_call
                 # Получаем телефон админа из настроек
                 admin_phone = get_setting("Телефон администратора", "не указан")
-                print(f"🔧 admin_phone из настроек: '{admin_phone}'")
+                logger.info(f"🔧 admin_phone из настроек: '{admin_phone}'")
           
                 if admin_phone and admin_phone != "не указан":
                     clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
-                    print(f"🔧 clean_phone: '{clean_phone}'")
+                    logger.info(f"🔧 clean_phone: '{clean_phone}'")
             
                     # Записываем с пометкой "сообщение"
-                    print("🔧 Вызываю safe_log_missed_call...")
+                    logger.info("🔧 Вызываю safe_log_missed_call...")
                     result = safe_log_missed_call(
                         phone_from=f"TG:{user_id}",  # вместо телефона - ID Telegram
                         admin_phone=clean_phone,
                         note=f"Сообщение: {user_message[:200]}..." if len(user_message) > 200 else f"Сообщение: {user_message}"
                     )
-                    print(f"🔧 safe_log_missed_call вернула: {result}")
+                    logger.info(f"🔧 safe_log_missed_call вернула: {result}")
                 else:
-                    print("⚠️ Телефон администратора не указан в настройках!")
-                    logger.error("❌ Телефон администратора не указан в настройках")
+                    logger.warning("⚠️ Телефон администратора не указан в настройках!")
             except Exception as e:
-                print(f"❌ Ошибка в safe_log_missed_call: {e}")
-                import traceback
-                traceback.print_exc()
-                logger.error(f"❌ Ошибка записи сообщения в таблицу: {e}")
+                logger.error(f"❌ Ошибка в safe_log_missed_call: {e}")
+                logger.exception("Детали ошибки:")  
 
             # 3. Подтверждаем пользователю
             await update.message.reply_text(
@@ -3985,10 +3983,10 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
                 ])
             )
 
-            print("🔧 Очищаю context.user_data...")
+            logger.info("🔧 Очищаю context.user_data...")
             context.user_data.clear()
             context.user_data["state"] = MENU
-            print("🔧 Возвращаюсь в MENU\n")
+            logger.info("🔧 Возвращаюсь в MENU\n")
             return MENU 
 
         else:
