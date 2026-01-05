@@ -1070,7 +1070,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             from utils.safe_google import safe_log_missed_call     
             sys.stdout.write(f"   4. Вызываю safe_log_missed_call('{user_phone}', '{phone}')...\n")
             sys.stdout.flush()            
-            result = safe_log_missed_call(user_phone, phone)
+            result = safe_log_missed_call(user_phone, phone, is_message=False)
             
             sys.stdout.write(f"   5. Результат: {result}\n")
             sys.stdout.write(f"   6. Тип: {type(result)}\n")
@@ -3858,7 +3858,8 @@ async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT
         result = safe_log_missed_call(
             phone_from=phone,
             admin_phone=clean_phone,
-            note=f"Вопрос: {question[:200]}... | TG: {user_id} (@{username})"
+            note=f"Вопрос: {question}",
+            is_message=False
         )
 
         print(f"🔧 DEBUG: safe_log_missed_call вернула: {result}")
@@ -3929,12 +3930,13 @@ async def handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYP
         if admin_phone and admin_phone != "не указан":
             clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
             print(f"📱 Очищенный телефон: '{clean_phone}'")
-            
             print("📝 Вызываю safe_log_missed_call...")
+
             result = safe_log_missed_call(
                 phone_from=f"TG:{user_id}",
                 admin_phone=clean_phone,
-                note=f"Сообщение: {user_message[:200]}..." if len(user_message) > 200 else f"Сообщение: {user_message}"
+                note=f"Сообщение: {user_message}",
+                is_message=True
             )
             print(f"✅ safe_log_missed_call вернула: {result}")
             
