@@ -6,7 +6,7 @@ from functools import wraps
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from config import GOOGLE_CREDENTIALS_JSON, TIMEZONE
+from config import GOOGLE_CREDENTIALS_JSON, SHEET_ID, TIMEZONE
 from datetime import datetime
 import pytz
 
