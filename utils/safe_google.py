@@ -203,7 +203,7 @@ def safe_delete_calendar_event(calendar_id, event_id):
         logger.error(f"❌ Ошибка при удалении события {event_id}: {e}")
         return False
 
-def safe_log_missed_call(phone_from: str, admin_phone: str):
+def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = ""):
     """Записывает пропущенный звонок в таблицу 'Обратные звонки'"""
     try:
         print(f"DEBUG safe_log_missed_call: Начало, phone_from={phone_from}, admin_phone={admin_phone}")
@@ -217,7 +217,7 @@ def safe_log_missed_call(phone_from: str, admin_phone: str):
             "Telegram",                    # Источник
             "",                            # Время уведомления (пусто)
             "ожидает",                     # Статус
-            f"Пропущенный звонок от клиента через бота",  # Примечание
+            note or f"Пропущенный звонок от клиента через бота",  # Примечание ← ИЗМЕНИТЬ
             "1"                            # Приоритет
         ]
         print(f"DEBUG safe_log_missed_call: Строка для записи: {row}")
