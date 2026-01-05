@@ -81,6 +81,23 @@ def safe_parse_price(p) -> str:
     except (ValueError, TypeError, OverflowError):
         return "цена не указана"
 
+# --- DEBUG HANDLER ---
+async def debug_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Логирует ВСЕ входящие сообщения"""
+    if update.message and update.message.text:
+        print(f"\n{'='*80}")
+        print(f"🎯 DEBUG_ALL_MESSAGES ВЫЗВАН!")
+        print(f"🎯 Текст: {update.message.text}")
+        print(f"🎯 Состояние: {context.user_data.get('state')}")
+        print(f"🎯 User ID: {update.effective_user.id}")
+        print(f"{'='*80}\n")
+    return None
+# --- END DEBUG HANDLER ---
+
+# --- GLOBALS ---
+TRIGGER_WORDS = []
+logger = logging.getLogger(__name__)
+
 
 # --- GLOBALS ---
 TRIGGER_WORDS = []
@@ -3878,23 +3895,93 @@ async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT
     context.user_data["state"] = MENU
     return MENU
 
+# --- HANDLE ADMIN MESSAGE ---
+
+async def handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка сообщений администратору"""
+    print(f"\n{'='*80}")
+    print(f"🎯 HANDLE_ADMIN_MESSAGE ВЫЗВАНА!")
+    print(f"{'='*80}\n")
+    
+    user_message = update.message.text
+    user_id = update.effective_user.id
+    username = update.effective_user.username or "без username"
+
+    print(f"📝 Сообщение: {user_message}")
+    print(f"👤 Пользователь: {user_id} (@{username})")
+
+    # 1. Уведомляем админа
+    admin_message = (
+        f"📩 <b>Сообщение от клиента</b>\n"
+        f"👤 ID: {user_id}\n"
+        f"👤 Username: @{username}\n"
+        f"💬 Сообщение: {user_message}"
+    )
+    await notify_admins(context, admin_message)
+    print("✅ Админы уведомлены")
+
+    # 2. Записываем в таблицу "Обратные звонки"
+    try:
+        from utils.safe_google import safe_log_missed_call
+        admin_phone = get_setting("Телефон администратора", "не указан")
+        print(f"📱 Телефон админа из настроек: '{admin_phone}'")
+        
+        if admin_phone and admin_phone != "не указан":
+            clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
+            print(f"📱 Очищенный телефон: '{clean_phone}'")
+            
+            print("📝 Вызываю safe_log_missed_call...")
+            result = safe_log_missed_call(
+                phone_from=f"TG:{user_id}",
+                admin_phone=clean_phone,
+                note=f"Сообщение: {user_message[:200]}..." if len(user_message) > 200 else f"Сообщение: {user_message}"
+            )
+            print(f"✅ safe_log_missed_call вернула: {result}")
+            
+            if result:
+                print("🎉 ЗАПИСЬ В ТАБЛИЦУ ПРОШЛА УСПЕШНО!")
+            else:
+                print("❌ ОШИБКА ЗАПИСИ В ТАБЛИЦУ!")
+        else:
+            print("⚠️ Телефон администратора не указан в настройках!")
+    except Exception as e:
+        print(f"❌ Ошибка: {e}")
+        import traceback
+        traceback.print_exc()
+
+    # 3. Подтверждаем пользователю
+    await update.message.reply_text(
+        "✅ <b>Ваше сообщение отправлено!</b>\n\n"
+        "Администратор ответит вам в Telegram.",
+        parse_mode="HTML"
+    )
+
+    # 4. Возвращаем в меню
+    await update.message.reply_text(
+        "🏠 Возвращаю в главное меню...",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+        ])
+    )
+
+    print("🧹 Очищаю контекст...")
+    context.user_data.clear()
+    context.user_data["state"] = MENU
+    print("🏠 Возвращаюсь в меню\n")
+    return MENU
+# --- END HANDLE ADMIN MESSAGE ---
 
 # --- GENERIC MESSAGE HANDLER ---
 
 async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ← ЭТО ДОЛЖНО БЫТЬ В НАЧАЛЕ ФУНКЦИИ ↓↓↓
+    """Упрощенный обработчик сообщений"""
     print(f"\n{'='*80}")
-    print(f"🔧🔧🔧 generic_message_handler ВЫЗВАН! 🔧🔧🔧")
-    print(f"Тип обновления: {update.update_id}")
-    print(f"Есть message?: {update.message is not None}")
-    print(f"Есть text?: {update.message.text if update.message else 'НЕТ СООБЩЕНИЯ'}")
-    print(f"Состояние: {context.user_data.get('state')}")
+    print(f"🔧 GENERIC_MESSAGE_HANDLER ВЫЗВАН!")
+    print(f"🔧 Текст: {update.message.text}")
+    print(f"🔧 Состояние: {context.user_data.get('state')}")
     print(f"{'='*80}\n")
-    # ← КОНЕЦ ДОБАВЛЕНИЯ ↑↑↑
     
-    # Если это не текстовое сообщение - игнорируем
     if not update.message or not update.message.text:
-        print(f"⚠️ Игнорирую не-текстовое сообщение")
         return
     
     user_id = update.effective_user.id
@@ -3905,82 +3992,13 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
     await update_last_activity(update, context)
     state = context.user_data.get("state")
     
-    # ← ТЕПЕРЬ ПРОВЕРЯЕМ СОСТОЯНИЕ ПРАВИЛЬНО ↓↓↓
-    print(f"🔧 Проверяю состояние: {state}")
-    
-    if state == AWAITING_PHONE_FOR_CALLBACK:
-        print(f"🔧 Вызываю handle_phone_for_callback")
-        return await handle_phone_for_callback(update, context)
-    
-    # ОБРАБОТКА AWAITING_ADMIN_MESSAGE ДОЛЖНА БЫТЬ ЗДЕСЬ
+    # ОБРАБОТКА AWAITING_ADMIN_MESSAGE
     if state == AWAITING_ADMIN_MESSAGE:
-        print(f"🔧 Обрабатываю AWAITING_ADMIN_MESSAGE")
-        
-        user_message = update.message.text
-        user_id = update.effective_user.id
-        username = update.effective_user.username or "без username"
-
-        print(f"🔧 user_id: {user_id}")
-        print(f"🔧 username: @{username}")
-        print(f"🔧 message: {user_message}")
-
-        # 1. Уведомляем админа
-        admin_message = (
-            f"📩 <b>Сообщение от клиента</b>\n"
-            f"👤 ID: {user_id}\n"
-            f"👤 Username: @{username}\n"
-            f"💬 Сообщение: {user_message}"
-        )
-        await notify_admins(context, admin_message)
-        print("🔧 Админы уведомлены")
-
-        # 2. Записываем в таблицу "Обратные звонки"
-        try:
-            from utils.safe_google import safe_log_missed_call
-            admin_phone = get_setting("Телефон администратора", "не указан")
-            print(f"🔧 admin_phone из настроек: '{admin_phone}'")
-            
-            if admin_phone and admin_phone != "не указан":
-                clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
-                print(f"🔧 clean_phone: '{clean_phone}'")
-                
-                print("🔧 Вызываю safe_log_missed_call...")
-                result = safe_log_missed_call(
-                    phone_from=f"TG:{user_id}",
-                    admin_phone=clean_phone,
-                    note=f"Сообщение: {user_message[:200]}..." if len(user_message) > 200 else f"Сообщение: {user_message}"
-                )
-                print(f"🔧 safe_log_missed_call вернула: {result}")
-            else:
-                print("⚠️ Телефон администратора не указан в настройках!")
-        except Exception as e:
-            print(f"❌ Ошибка в safe_log_missed_call: {e}")
-            import traceback
-            traceback.print_exc()
-
-        # 3. Подтверждаем пользователю
-        await update.message.reply_text(
-            "✅ <b>Ваше сообщение отправлено!</b>\n\n"
-            "Администратор ответит вам в Telegram.",
-            parse_mode="HTML"
-        )
-
-        # 4. Возвращаем в меню
-        await update.message.reply_text(
-            "🏠 Возвращаю в главное меню...",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
-            ])
-        )
-
-        print("🔧 Очищаю context.user_data...")
-        context.user_data.clear()
-        context.user_data["state"] = MENU
-        print("🔧 Возвращаюсь в MENU\n")
-        return MENU
+        print(f"🎯 ОБРАБАТЫВАЮ AWAITING_ADMIN_MESSAGE!")
+        return await handle_admin_message(update, context)
     
-    # Остальные состояния обрабатываем через словарь
-    handlers = {
+    # Остальные состояния обрабатываем простым способом
+    handler_map = {
         ENTER_NAME: enter_name,
         ENTER_PHONE: enter_phone,
         AWAITING_CALLBACK_PHONE: handle_callback_phone,
@@ -3989,21 +4007,14 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
         AWAITING_ADMIN_SEARCH: handle_admin_search,
         AWAITING_MY_RECORDS_NAME: handle_my_records_input,
         AWAITING_MY_RECORDS_PHONE: handle_my_records_input,
-        AWAITING_WL_CATEGORY: handle_waiting_list_input,
-        AWAITING_WL_SPECIALIST: handle_waiting_list_input,
-        AWAITING_WL_DATE: handle_waiting_list_input,
-        AWAITING_WL_TIME: handle_waiting_list_input,
-        AWAITING_WL_PRIORITY_CHOICE: select_time,
     }
     
-    if state in handlers:
-        print(f"🔧 Нашел обработчик для состояния {state}")
-        return await handlers[state](update, context)
+    if state in handler_map:
+        print(f"🔧 Вызываю обработчик для состояния {state}")
+        return await handler_map[state](update, context)
     
-    print(f"🔧 Состояние {state} не найдено в handlers, проверяю триггерные слова")
-    await handle_trigger_words(update, context)
+    print(f"⚠️ Неизвестное состояние: {state}")
     return None
-
 
 # --- HANDLE_PHONE_FOR_CALLBACK ---
 
@@ -4060,6 +4071,12 @@ async def handle_phone_for_callback(update: Update, context: ContextTypes.DEFAUL
 
 
 def register_handlers(application: Application):
+    # 0. ОТЛАДОЧНЫЙ обработчик ВСЕХ сообщений (регистрируем ПЕРВЫМ!)
+    application.add_handler(
+        MessageHandler(filters.ALL & ~filters.COMMAND, debug_all_messages),
+        group=-100  # Самый высокий приоритет
+    )
+    
     # 1. Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("record", handle_record_command))
@@ -4068,10 +4085,9 @@ def register_handlers(application: Application):
     # 2. Обработчик callback-кнопок
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # 3. ВАЖНО: Обработчик ВСЕХ сообщений (включая текст, фото, документы)
-    # Используем filters.ALL вместо filters.TEXT
+    # 3. Основной обработчик сообщений
     application.add_handler(
-        MessageHandler(filters.ALL & ~filters.COMMAND, generic_message_handler)
+        MessageHandler(filters.TEXT & ~filters.COMMAND, generic_message_handler)
     )
 
 # --- ENTRYPOINT ---
