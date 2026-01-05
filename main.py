@@ -895,6 +895,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if is_consecutive and len(days_sorted) > 1:
                             # Дни подряд: "Пн-Пт"
                             day_range = f"{days_sorted[0]}-{days_sorted[-1]}"
+                            pretty_schedule = schedule.replace(",", ", ")
                             schedule_parts.append(f"{day_range:<8} {schedule}")
                         else:
                             # Дни не подряд: "Пн, Ср, Пт"
@@ -923,7 +924,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 # 4. Собираем итоговую строку
                 if schedule_parts:
-                    schedule_text = "Мы работаем:\\n" + "\\n".join(schedule_parts)
+                    schedule_text = "Мы работаем:\n" + "\n".join(schedule_parts)
                 else:
                     schedule_text = "График работы не указан."
                 # --- КОНЕЦ УЛУЧШЕННОЙ ЛОГИКИ ---
