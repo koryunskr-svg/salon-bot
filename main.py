@@ -3954,16 +3954,11 @@ async def handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYP
         "✅ <b>Ваше сообщение отправлено!</b>\n\n"
         "Администратор ответит вам в Telegram.",
         parse_mode="HTML"
-    )
-
-    # 4. Возвращаем в меню (показываем сразу кнопку без лишнего сообщения)
-    await update.message.reply_text(
-        "🏠 Выберите действие:",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🏠 В меню", callback_data="start")]
         ])
     )
-
+    
     print("🧹 Очищаю контекст...")
     context.user_data.clear()
     context.user_data["state"] = MENU
