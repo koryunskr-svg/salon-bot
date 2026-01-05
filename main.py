@@ -3882,30 +3882,47 @@ async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT
 # --- GENERIC MESSAGE HANDLER ---
 
 async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ← ЭТО ДОЛЖНО БЫТЬ В НАЧАЛЕ ФУНКЦИИ ↓↓↓
+    print(f"\n{'='*80}")
+    print(f"🔧🔧🔧 generic_message_handler ВЫЗВАН! 🔧🔧🔧")
+    print(f"Тип обновления: {update.update_id}")
+    print(f"Есть message?: {update.message is not None}")
+    print(f"Есть text?: {update.message.text if update.message else 'НЕТ СООБЩЕНИЯ'}")
+    print(f"Состояние: {context.user_data.get('state')}")
+    print(f"{'='*80}\n")
+    # ← КОНЕЦ ДОБАВЛЕНИЯ ↑↑↑
+    
+    # Если это не текстовое сообщение - игнорируем
+    if not update.message or not update.message.text:
+        print(f"⚠️ Игнорирую не-текстовое сообщение")
+        return
+    
     user_id = update.effective_user.id
     if rate_limiter.is_limited(user_id):
         await update.message.reply_text("⚠️ Слишком много запросов. Подождите минуту.")
         return
+    
     await update_last_activity(update, context)
     state = context.user_data.get("state")
-    logger.debug(f"Получено сообщение в состоянии: {state}")
-
+    
+    # ← ТЕПЕРЬ ПРОВЕРЯЕМ СОСТОЯНИЕ ПРАВИЛЬНО ↓↓↓
+    print(f"🔧 Проверяю состояние: {state}")
+    
     if state == AWAITING_PHONE_FOR_CALLBACK:
+        print(f"🔧 Вызываю handle_phone_for_callback")
         return await handle_phone_for_callback(update, context)
-
-    # ← ВАЖНО: ОБРАБОТКА AWAITING_ADMIN_MESSAGE ДОЛЖНА БЫТЬ ЗДЕСЬ, ДО handlers ↓↓↓
+    
+    # ОБРАБОТКА AWAITING_ADMIN_MESSAGE ДОЛЖНА БЫТЬ ЗДЕСЬ
     if state == AWAITING_ADMIN_MESSAGE:
-        logger.info("\n" + "="*80)
-        logger.info("🔧 AWAITING_ADMIN_MESSAGE ВЫЗВАНА!")
-        logger.info("="*80)
+        print(f"🔧 Обрабатываю AWAITING_ADMIN_MESSAGE")
         
         user_message = update.message.text
         user_id = update.effective_user.id
         username = update.effective_user.username or "без username"
 
-        logger.info(f"🔧 user_id: {user_id}")
-        logger.info(f"🔧 username: @{username}")
-        logger.info(f"🔧 message: {user_message}")
+        print(f"🔧 user_id: {user_id}")
+        print(f"🔧 username: @{username}")
+        print(f"🔧 message: {user_message}")
 
         # 1. Уведомляем админа
         admin_message = (
@@ -3915,32 +3932,31 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
             f"💬 Сообщение: {user_message}"
         )
         await notify_admins(context, admin_message)
-        logger.info("🔧 Админы уведомлены")
+        print("🔧 Админы уведомлены")
 
         # 2. Записываем в таблицу "Обратные звонки"
         try:
             from utils.safe_google import safe_log_missed_call
-            # Получаем телефон админа из настроек
             admin_phone = get_setting("Телефон администратора", "не указан")
-            logger.info(f"🔧 admin_phone из настроек: '{admin_phone}'")
+            print(f"🔧 admin_phone из настроек: '{admin_phone}'")
             
             if admin_phone and admin_phone != "не указан":
                 clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
-                logger.info(f"🔧 clean_phone: '{clean_phone}'")
+                print(f"🔧 clean_phone: '{clean_phone}'")
                 
-                # Записываем с пометкой "сообщение"
-                logger.info("🔧 Вызываю safe_log_missed_call...")
+                print("🔧 Вызываю safe_log_missed_call...")
                 result = safe_log_missed_call(
-                    phone_from=f"TG:{user_id}",  # вместо телефона - ID Telegram
+                    phone_from=f"TG:{user_id}",
                     admin_phone=clean_phone,
                     note=f"Сообщение: {user_message[:200]}..." if len(user_message) > 200 else f"Сообщение: {user_message}"
                 )
-                logger.info(f"🔧 safe_log_missed_call вернула: {result}")
+                print(f"🔧 safe_log_missed_call вернула: {result}")
             else:
-                logger.warning("⚠️ Телефон администратора не указан в настройках!")
+                print("⚠️ Телефон администратора не указан в настройках!")
         except Exception as e:
-            logger.error(f"❌ Ошибка в safe_log_missed_call: {e}")
-            logger.exception("Детали ошибки:")
+            print(f"❌ Ошибка в safe_log_missed_call: {e}")
+            import traceback
+            traceback.print_exc()
 
         # 3. Подтверждаем пользователю
         await update.message.reply_text(
@@ -3957,23 +3973,19 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
             ])
         )
 
-        logger.info("🔧 Очищаю context.user_data...")
+        print("🔧 Очищаю context.user_data...")
         context.user_data.clear()
         context.user_data["state"] = MENU
-        logger.info("🔧 Возвращаюсь в MENU\n")
+        print("🔧 Возвращаюсь в MENU\n")
         return MENU
-    # ← КОНЕЦ ОБРАБОТКИ AWAITING_ADMIN_MESSAGE ↑↑↑
-
+    
+    # Остальные состояния обрабатываем через словарь
     handlers = {
         ENTER_NAME: enter_name,
         ENTER_PHONE: enter_phone,
         AWAITING_CALLBACK_PHONE: handle_callback_phone,
         AWAITING_CALLBACK_QUESTION: handle_callback_question,
         AWAITING_WAITING_LIST_DETAILS: handle_waiting_list_input,
-        AWAITING_REPEAT_CONFIRMATION: lambda u, c: u.message.reply_text(
-            "❌ Пожалуйста, используйте кнопки для подтверждения или отмены."
-        )
-        or AWAITING_REPEAT_CONFIRMATION,
         AWAITING_ADMIN_SEARCH: handle_admin_search,
         AWAITING_MY_RECORDS_NAME: handle_my_records_input,
         AWAITING_MY_RECORDS_PHONE: handle_my_records_input,
@@ -3981,18 +3993,14 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
         AWAITING_WL_SPECIALIST: handle_waiting_list_input,
         AWAITING_WL_DATE: handle_waiting_list_input,
         AWAITING_WL_TIME: handle_waiting_list_input,
-        # AWAITING_WL_PRIORITY больше не обрабатывается через back_map
-        # Назад из "📋 Вы в листе ожидания." -> к выбору времени
         AWAITING_WL_PRIORITY_CHOICE: select_time,
-        AWAITING_CONFIRMATION: lambda u, c: u.message.reply_text(
-            "❌ Пожалуйста, используйте кнопки 'Подтвердить' или 'Отменить'."
-        )
-        or AWAITING_CONFIRMATION,
     }
     
     if state in handlers:
+        print(f"🔧 Нашел обработчик для состояния {state}")
         return await handlers[state](update, context)
     
+    print(f"🔧 Состояние {state} не найдено в handlers, проверяю триггерные слова")
     await handle_trigger_words(update, context)
     return None
 
@@ -4052,14 +4060,19 @@ async def handle_phone_for_callback(update: Update, context: ContextTypes.DEFAUL
 
 
 def register_handlers(application: Application):
+    # 1. Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("record", handle_record_command))
     application.add_handler(CommandHandler("my_records", show_my_records))
+    
+    # 2. Обработчик callback-кнопок
     application.add_handler(CallbackQueryHandler(button_handler))
+    
+    # 3. ВАЖНО: Обработчик ВСЕХ сообщений (включая текст, фото, документы)
+    # Используем filters.ALL вместо filters.TEXT
     application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, generic_message_handler)
+        MessageHandler(filters.ALL & ~filters.COMMAND, generic_message_handler)
     )
-
 
 # --- ENTRYPOINT ---
 
