@@ -844,7 +844,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Проверяем, совпадает ли имя специалиста (столбец A) с названием заведения
             if len(row) > 0 and str(row[0]).strip() == org_name_setting:
                 found = True
-                # --- НОВАЯ ЛОГИКА ФОРМИРОВАНИЯ РАСПИСАНИЯ (группировка дней) ---
+                # --- УЛУЧШЕННАЯ ЛОГИКА ФОРМИРОВАНИЯ РАСПИСАНИЯ ---
                 # Ожидаем 7 значений: Пн (C), Вт (D), Ср (E), Чт (F), Пт (G), Сб (H), Вс (I)
                 # Индексы в row: 2 (Пн), 3 (Вт), 4 (Ср), 5 (Чт), 6 (Пт), 7 (Сб), 8 (Вс)
                 daily_schedules = []
@@ -855,46 +855,78 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if index < len(row):
                         daily_schedules.append(str(row[index]).strip())
                     else:
-                        # Если столбец пуст или не существует
                         daily_schedules.append("")
 
-                # Группируем подряд идущие дни с одинаковым расписанием
-                grouped_schedule_parts = []
-                i = 0
-                while i < len(daily_schedules):
-                    current_schedule = daily_schedules[i]
-                    if not current_schedule:  # Пропускаем пустые ячейки
-                        i += 1
-                        continue
+                # 1. Группируем дни по РАСПИСАНИЮ (не по дням недели)
+                # Создаем словарь: расписание -> список дней
+                schedule_to_days = {}
+                for i, schedule in enumerate(daily_schedules):
+                    if schedule and schedule.lower() != "выходной":
+                        if schedule not in schedule_to_days:
+                            schedule_to_days[schedule] = []
+                        schedule_to_days[schedule].append(day_names[i])
 
-                    start_day_index = i
-                    # Ищем, сколько подряд идущих дней имеют одинаковое расписание
-                    while (
-                        i < len(daily_schedules) - 1
-                        and daily_schedules[i + 1] == current_schedule
-                    ):
-                        i += 1
-                    end_day_index = i
+                # 2. Находим ВЫХОДНЫЕ
+                off_days = []
+                for i, schedule in enumerate(daily_schedules):
+                    if schedule and schedule.lower() == "выходной":
+                        off_days.append(day_names[i])
 
-                    # Формируем часть строки расписания
-                    if start_day_index == end_day_index:
+                # 3. Формируем красивый текст
+                schedule_parts = []
+
+                # 3.1. Дни с одинаковым расписанием
+                for schedule, days in schedule_to_days.items():
+                    if len(days) == 1:
                         # Один день
-                        grouped_schedule_parts.append(
-                            f"{day_names[start_day_index]} {current_schedule}"
-                        )
+                        schedule_parts.append(f"{days[0]:<8} {schedule}")
                     else:
-                        # Несколько дней подряд
-                        grouped_schedule_parts.append(
-                            f"{day_names[start_day_index]}-{day_names[end_day_index]} {current_schedule}"
-                        )
-                    i += 1  # Переходим к следующему дню или группе
+                        # Несколько дней
+                        # Пробуем сгруппировать последовательные дни
+                        days_sorted = sorted(days, key=lambda x: day_names.index(x))
+                        
+                        # Проверяем, идут ли дни подряд
+                        is_consecutive = True
+                        for j in range(len(days_sorted) - 1):
+                            if day_names.index(days_sorted[j+1]) - day_names.index(days_sorted[j]) != 1:
+                                is_consecutive = False
+                                break
+                        
+                        if is_consecutive and len(days_sorted) > 1:
+                            # Дни подряд: "Пн-Пт"
+                            day_range = f"{days_sorted[0]}-{days_sorted[-1]}"
+                            schedule_parts.append(f"{day_range:<8} {schedule}")
+                        else:
+                            # Дни не подряд: "Пн, Ср, Пт"
+                            days_str = ", ".join(days_sorted)
+                            schedule_parts.append(f"{days_str:<8} {schedule}")
 
-                # Собираем итоговую строку расписания
-                if grouped_schedule_parts:
-                    schedule_text = ", ".join(grouped_schedule_parts) + "."
+                # 3.2. Выходные дни
+                if off_days:
+                    off_days_sorted = sorted(off_days, key=lambda x: day_names.index(x))
+                    if len(off_days_sorted) == 1:
+                        schedule_parts.append(f"{off_days_sorted[0]:<8} Выходной")
+                    else:
+                        # Группируем выходные подряд
+                        is_consecutive = True
+                        for j in range(len(off_days_sorted) - 1):
+                            if day_names.index(off_days_sorted[j+1]) - day_names.index(off_days_sorted[j]) != 1:
+                                is_consecutive = False
+                                break
+                        
+                        if is_consecutive and len(off_days_sorted) > 1:
+                            day_range = f"{off_days_sorted[0]}-{off_days_sorted[-1]}"
+                            schedule_parts.append(f"{day_range:<8} Выходной")
+                        else:
+                            days_str = ", ".join(off_days_sorted)
+                            schedule_parts.append(f"{days_str:<8} Выходной")
+
+                # 4. Собираем итоговую строку
+                if schedule_parts:
+                    schedule_text = "Мы работаем:\\n" + "\\n".join(schedule_parts)
                 else:
                     schedule_text = "График работы не указан."
-                # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+                # --- КОНЕЦ УЛУЧШЕННОЙ ЛОГИКИ ---
                 break  # Нашли строку, выходим из цикла
 
         if not found:
