@@ -409,7 +409,10 @@ def remove_lock_file():
     AWAITING_PHONE_FOR_CALLBACK,
     AWAITING_WL_PRIORITY_CHOICE,
     AWAITING_PHONE_CONFIRMATION,
-) = range(30)
+    AWAITING_CONTACT_CHOICE,
+    AWAITING_CALLBACK_PHONE,
+    AWAITING_CALLBACK_QUESTION,
+) = range(33)
 
 ACTIVE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано"}
 CANCELLABLE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано"}
@@ -893,19 +896,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("💅 Услуги и цены", callback_data="prices")],
     ]
     
-    # Получаем телефон админа из настроек
-    admin_phone = get_setting("Телефон администратора", "")
-    if admin_phone:
-        # Кнопка для звонка (чистый номер для callback)
-        clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
-        kb.append([InlineKeyboardButton(f"📞 Позвонить админу: {admin_phone}", 
-                               callback_data=f"call_admin_{clean_phone}")])
-        # Кнопка для сообщения
-        kb.append([InlineKeyboardButton("💬 Написать сообщение", callback_data="contact_admin")])
-    else:
-        kb.append([InlineKeyboardButton("📞 Связаться с админом", callback_data="contact_admin")])
+    # ← ОДНА кнопка "Связаться с админом"
+    kb.append([InlineKeyboardButton("📱 Связаться с админом", callback_data="contact_admin")])
     
-    rm = InlineKeyboardMarkup(kb)  # <-- ЭТУ СТРОКУ ОСТАВИТЬ!
+    rm = InlineKeyboardMarkup(kb)
 
     # Формируем итоговое сообщение
     # Название заведения отображается отдельной строкой, как в предыдущем варианте, но без HTML тегов
@@ -1087,6 +1081,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             import traceback
             traceback.print_exc()
         
+        # === ПОКАЗЫВАЕМ СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЮ ===
         await query.edit_message_text(
             f"📞 <b>Нажмите на ссылку для звонка:</b>\n\n"
             f"<a href='{call_url}'>{formatted_phone}</a>\n\n"
@@ -1115,10 +1110,47 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "prices":
         return await show_prices(update, context)
     if data == "contact_admin":
+        kb = [
+            [InlineKeyboardButton("💬 Написать сообщение", callback_data="write_message")],
+            [InlineKeyboardButton("📞 Заказать обратный звонок", callback_data="request_callback")],
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+        ]
         await query.edit_message_text(
-            "Напишите ваше сообщение — администратор свяжется с вами."
+            "📱 <b>Выберите способ связи:</b>\n\n"
+            "💬 <b>Написать сообщение</b>\n"
+            "   Администратор ответит в Telegram\n\n"
+            "📞 <b>Заказать обратный звонок</b>\n"
+            "   Админ перезвонит на ваш телефон",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+        context.user_data["state"] = AWAITING_CONTACT_CHOICE
+        return
+    
+    if data == "write_message":
+        await query.edit_message_text(
+            "💬 <b>Напишите ваше сообщение:</b>\n\n"
+            "Администратор ответит в Telegram.\n\n"
+            "<i>Вы также можете прикрепить фото или документ.</i>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+            ])
         )
         context.user_data["state"] = AWAITING_ADMIN_MESSAGE
+        return
+        
+    if data == "request_callback":
+        await query.edit_message_text(
+            "📞 <b>Введите ваш телефон для обратного звонка:</b>\n\n"
+            "Пример: <code>89161234567</code>\n\n"
+            "Администратор перезвонит в рабочее время.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+            ])
+        )
+        context.user_data["state"] = AWAITING_CALLBACK_PHONE
         return
 
     # АДМИНСКИЕ ФУНКЦИИ
