@@ -3769,9 +3769,101 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"❌ Ошибка в notify_admins_of_new_calls_job: {e}", exc_info=True)
 
+async def handle_callback_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ввода телефона для обратного звонка"""
+    phone = update.message.text.strip()
+    
+    # Проверяем телефон
+    from utils.validation import validate_phone
+    normalized_phone = validate_phone(phone)
+    
+    if not normalized_phone:
+        await update.message.reply_text(
+            "❌ Неверный формат телефона. Введите 10-15 цифр.\n"
+            "Пример: 89161234567"
+        )
+        return AWAITING_CALLBACK_PHONE
+    
+    # Сохраняем телефон
+    context.user_data["callback_phone"] = normalized_phone
+    
+    # Просим вопрос
+    await update.message.reply_text(
+        "📝 <b>Опишите ваш вопрос (можно кратко):</b>\n\n"
+        "Пример:\n"
+        "• 'Не могу записаться на наращивание ресниц'\n"
+        "• 'Хочу записаться на сложную процедуру'\n"
+        "• 'Проблема с моей записью'\n"
+        "• 'Другой вопрос'",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ Назад", callback_data="request_callback")],
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+        ])
+    )
+    
+    context.user_data["state"] = AWAITING_CALLBACK_QUESTION
+    return AWAITING_CALLBACK_QUESTION
+
+
+async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ввода вопроса для обратного звонка"""
+    question = update.message.text.strip()
+    phone = context.user_data.get("callback_phone", "не указан")
+    user_id = update.effective_user.id
+    username = update.effective_user.username or "без username"
+    
+    if not question:
+        await update.message.reply_text(
+            "❌ Вопрос не может быть пустым. Опишите ваш вопрос кратко."
+        )
+        return AWAITING_CALLBACK_QUESTION
+    
+    # 1. Записываем в таблицу
+    try:
+        from utils.safe_google import safe_log_missed_call
+        admin_phone = get_setting("Телефон администратора", "не указан")
+        clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
+        
+        # Модифицируем функцию для записи вопроса
+        safe_log_missed_call(
+            phone_from=phone,
+            admin_phone=clean_phone,
+            note=f"Вопрос: {question[:200]}... | TG: {user_id} (@{username})"
+        )
+    except Exception as e:
+        logger.error(f"❌ Ошибка записи обратного звонка: {e}")
+    
+    # 2. Уведомляем админа
+    admin_message = (
+        f"📞 <b>Запрос на обратный звонок</b>\n"
+        f"👤 Клиент: TG:{user_id} (@{username})\n"
+        f"📱 Телефон: {phone}\n"
+        f"❓ Вопрос: {question}"
+    )
+    await notify_admins(context, admin_message)
+    
+    # 3. Подтверждаем пользователю
+    await update.message.reply_text(
+        "✅ <b>Ваш запрос на обратный звонок принят!</b>\n\n"
+        f"📱 <b>Телефон:</b> {phone}\n"
+        f"📝 <b>Вопрос:</b> {question[:100]}...\n\n"
+        "Администратор свяжется с вами в рабочее время.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+        ])
+    )
+    
+    # 4. Очищаем данные
+    context.user_data.pop("callback_phone", None)
+    context.user_data["state"] = MENU
+    return MENU
+
+async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ... существующий код ...
 
 # --- GENERIC MESSAGE HANDLER ---
-
 
 async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -3794,6 +3886,8 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
             c.user_data.clear(),
             c.user_data.update({"state": MENU}) or MENU,
         ),
+        AWAITING_CALLBACK_PHONE: handle_callback_phone,
+        AWAITING_CALLBACK_QUESTION: handle_callback_question,
         AWAITING_WAITING_LIST_DETAILS: handle_waiting_list_input,
         AWAITING_REPEAT_CONFIRMATION: lambda u, c: u.message.reply_text(
             "❌ Пожалуйста, используйте кнопки для подтверждения или отмены."
@@ -3815,14 +3909,56 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
         or AWAITING_CONFIRMATION,
     }
     if state in handlers:
+
         if state == AWAITING_ADMIN_MESSAGE:
-            await notify_admins(
-                context, f"📞 Сообщение от клиента (ID скрыт): {update.message.text}"
+            user_message = update.message.text
+            user_id = update.effective_user.id
+            username = update.effective_user.username or "без username"
+        
+            # 1. Уведомляем админа
+            admin_message = (
+                f"📩 <b>Сообщение от клиента</b>\n"
+                f"👤 ID: {user_id}\n"
+                f"👤 Username: @{username}\n"
+                f"💬 Сообщение: {user_message}"
             )
-            await update.message.reply_text("✅ Администратор свяжется с вами.")
+            await notify_admins(context, admin_message)
+        
+            # 2. Записываем в таблицу "Обратные звонки"
+            try:
+                from utils.safe_google import safe_log_missed_call
+                # Получаем телефон админа из настроек
+                admin_phone = get_setting("Телефон администратора", "не указан")
+                clean_phone = admin_phone.replace('+', '').replace(' ', '').replace('-', '')
+            
+                # Записываем с пометкой "сообщение"
+                safe_log_missed_call(
+                    phone_from=f"TG:{user_id}",  # вместо телефона - ID Telegram
+                    admin_phone=clean_phone,
+                    note=f"Сообщение: {user_message[:100]}..." if len(user_message) > 100 else f"Сообщение: {user_message}"
+                )
+            except Exception as e:
+                logger.error(f"❌ Ошибка записи сообщения в таблицу: {e}")
+        
+            # 3. Подтверждаем пользователю
+            await update.message.reply_text(
+                "✅ <b>Ваше сообщение отправлено!</b>\n\n"
+                "Администратор ответит вам в Telegram.",
+                parse_mode="HTML"
+            )
+        
+            # 4. Возвращаем в меню
+            await update.message.reply_text(
+                "🏠 Возвращаю в главное меню...",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+                ])
+            )
+        
             context.user_data.clear()
             context.user_data["state"] = MENU
             return MENU
+
         else:
             return await handlers[state](update, context)
     await handle_trigger_words(update, context)
