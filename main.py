@@ -427,9 +427,9 @@ def remove_lock_file():
     AWAITING_WL_PRIORITY_CHOICE,
     AWAITING_PHONE_CONFIRMATION,
     AWAITING_CONTACT_CHOICE,
-    AWAITING_CALLBACK_NAME,
     AWAITING_CALLBACK_PHONE,
     AWAITING_CALLBACK_QUESTION,
+    AWAITING_CALLBACK_NAME,
     
 ) = range(34)
 
@@ -1182,7 +1182,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("🏠 В меню", callback_data="start")]
             ])
         )
-        context.user_data["state"] = AWAITING_CALLBACK_PHONE
+        context.user_data["state"] = AWAITING_CALLBACK_NAME
         return
 
     # АДМИНСКИЕ ФУНКЦИИ
@@ -4040,7 +4040,12 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
     
     if not update.message or not update.message.text:
         return
-    
+
+    # ДОБАВЬТЕ ЭТОТ ПРИНТ:
+    print(f"🔧 DEBUG: текущее состояние = {context.user_data.get('state')}")
+    print(f"🔧 DEBUG: AWAITING_CALLBACK_NAME = {AWAITING_CALLBACK_NAME}")
+    print(f"🔧 DEBUG: AWAITING_CALLBACK_PHONE = {AWAITING_CALLBACK_PHONE}")
+
     user_id = update.effective_user.id
     if rate_limiter.is_limited(user_id):
         await update.message.reply_text("⚠️ Слишком много запросов. Подождите минуту.")
