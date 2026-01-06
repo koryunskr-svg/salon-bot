@@ -35,6 +35,45 @@ from telegram.ext import (
     PicklePersistence,
     ApplicationBuilder,
 )
+# === ДИАГНОСТИКА ПЕРЕД ИМПОРТАМИ ===
+import sys
+import os
+
+print("=" * 60)
+print("🔧 ДИАГНОСТИКА: проверяем почему бот не запускается")
+print("=" * 60)
+
+# Проверяем файл safe_google.py
+safe_google_path = "utils/safe_google.py"
+print(f"\n📁 Проверяем файл: {safe_google_path}")
+print(f"   Файл существует: {os.path.exists(safe_google_path)}")
+
+if os.path.exists(safe_google_path):
+    # Читаем файл
+    with open(safe_google_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # Проверяем ключевые функции
+    checks = [
+        ("def safe_get_sheet_data", "Функция safe_get_sheet_data"),
+        ("def safe_append_to_sheet", "Функция safe_append_to_sheet"),
+        ("def safe_log_missed_call", "Функция safe_log_missed_call"),
+        ("@retry_google_api", "Декоратор retry_google_api"),
+    ]
+    
+    print("\n🔍 Поиск функций в файле:")
+    for search_text, description in checks:
+        found = search_text in content
+        print(f"   {description}: {'✅ НАЙДЕНА' if found else '❌ НЕТ'}")
+    
+    # Покажем где проблема
+    print(f"\n📊 Размер файла: {len(content)} символов")
+    print(f"   Примерно {len(content.splitlines())} строк")
+
+print("\n" + "=" * 60)
+print("Продолжаем запуск...")
+print("=" * 60 + "\n")
+# === КОНЕЦ ДИАГНОСТИКИ ===
 
 # --- ИМПОРТЫ ИЗ КОНФИГА И УТИЛИТ ---
 from config import (
@@ -45,6 +84,7 @@ from config import (
     SHEET_ID,
     CALENDAR_ID,
 )
+ 
 from utils.safe_google import (
     safe_get_sheet_data,
     safe_append_to_sheet,
@@ -53,8 +93,13 @@ from utils.safe_google import (
     safe_create_calendar_event,
     safe_update_calendar_event,
     safe_delete_calendar_event,
-    safe_log_missed_call,
+    # safe_log_missed_call,  # ← ЗАКОММЕНТИРУЙТЕ ЭТУ СТРОКУ
 )
+print("✅ Импорт safe_google успешен")
+except ImportError as e:
+    print(f"❌ Ошибка импорта safe_google: {e}")
+    print(f"🔧 Путь к utils: {os.path.dirname(os.path.abspath(__file__))}")
+    raise
 from utils.slots import find_available_slots
 from utils.reminders import (
     send_reminders,
