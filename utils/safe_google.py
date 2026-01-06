@@ -231,7 +231,7 @@ def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = "",
             row = [
                 str(int(time.time())),  # A: ID
                 timestamp,              # B: Дата запроса
-                client_name,            # C: Имя клиента ← ПЕРЕДАЕМ ИМЯ!
+                client_name or "Неизвестно",  # C: Имя клиента ← ПЕРЕДАЕМ ИМЯ!
                 phone_from,             # D: Контакты клиента
                 "Сообщение",           # E: Тип запроса
                 "ожидает",             # F: Статус
@@ -243,7 +243,7 @@ def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = "",
             row = [
                 str(int(time.time())),  # A: ID
                 timestamp,              # B: Дата запроса
-                client_name,            # C: Имя клиента ← ПЕРЕДАЕМ ИМЯ!
+                client_name or "Неизвестно",  # C: Имя клиента ← ПЕРЕДАЕМ ИМЯ!
                 phone_from,             # D: Контакты клиента
                 "Звонок",              # E: Тип запроса
                 "ожидает",             # F: Статус
