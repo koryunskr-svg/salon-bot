@@ -427,9 +427,10 @@ def remove_lock_file():
     AWAITING_WL_PRIORITY_CHOICE,
     AWAITING_PHONE_CONFIRMATION,
     AWAITING_CONTACT_CHOICE,
+    AWAITING_CALLBACK_NAME,
     AWAITING_CALLBACK_PHONE,
     AWAITING_CALLBACK_QUESTION,
-    AWAITING_CALLBACK_NAME,
+    
 ) = range(34)
 
 ACTIVE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано"}
@@ -1172,9 +1173,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     if data == "request_callback":
         await query.edit_message_text(
-            "📞 <b>Введите ваш телефон для обратного звонка:</b>\n\n"
-            "Пример: <code>89161234567</code>\n\n"
-            "Администратор перезвонит в рабочее время.",
+            "📞 <b>Введите ваше имя:</b>\n\n"
+            "Пример: <i>Иван Иванов</i>\n\n"
+            "Имя нужно, чтобы администратор знал, к кому обращаться.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("⬅️ Назад", callback_data="contact_admin")],  # ← ДОБАВЛЕНО
