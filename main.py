@@ -3924,7 +3924,7 @@ async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT
     # 2. Уведомляем админа
     admin_message = (
         f"📞 <b>Запрос на обратный звонок</b>\n"
-        f"👤 Клиент: TG:{user_id} (@{username})\n"
+        f"👤 Клиент: {callback_name}\n"
         f"📱 Телефон: {phone}\n"
         f"❓ Вопрос: {question}"
     )
