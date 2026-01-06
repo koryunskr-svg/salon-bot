@@ -216,19 +216,24 @@ def safe_delete_calendar_event(calendar_id, event_id):
         logger.error(f"❌ Ошибка при удалении события {event_id}: {e}")
         return False
 
-def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = "", is_message: bool = True):
+def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = "", 
+                         is_message: bool = True, client_name: str = None):
     """Записывает сообщение или запрос обратного звонка в таблицу"""
     try:
-        timestamp = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
+        timestamp = datetime.now(TIMEZONE).strftime("%d.%m.%Y  %H:%M")  # 2 пробела
+        
+        # Если имя не указано, используем "Неизвестно"
+        if not client_name or client_name.strip() == "":
+            client_name = "Неизвестно"
         
         if is_message:
             # Сообщение через Telegram
             row = [
-                str(int(time.time())),  # A: ID (timestamp)
+                str(int(time.time())),  # A: ID
                 timestamp,              # B: Дата запроса
-                "Неизвестно",           # C: Имя клиента
-                phone_from,             # D: Контакты клиента (TG ID)
-                "Сообщение",           # E: Тип запроса ← НОВАЯ КОЛОНКА!
+                client_name,            # C: Имя клиента ← ПЕРЕДАЕМ ИМЯ!
+                phone_from,             # D: Контакты клиента
+                "Сообщение",           # E: Тип запроса
                 "ожидает",             # F: Статус
                 note,                  # G: Примечание
                 "1"                    # H: Приоритет
@@ -236,11 +241,11 @@ def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = "", is_m
         else:
             # Запрос обратного звонка
             row = [
-                str(int(time.time())),  # A: ID (timestamp)
+                str(int(time.time())),  # A: ID
                 timestamp,              # B: Дата запроса
-                "Неизвестно",           # C: Имя клиента
-                phone_from,             # D: Контакты клиента (телефон)
-                "Звонок",              # E: Тип запроса ← НОВАЯ КОЛОНКА!
+                client_name,            # C: Имя клиента ← ПЕРЕДАЕМ ИМЯ!
+                phone_from,             # D: Контакты клиента
+                "Звонок",              # E: Тип запроса
                 "ожидает",             # F: Статус
                 note,                  # G: Примечание
                 "2"                    # H: Приоритет
@@ -253,6 +258,7 @@ def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = "", is_m
     except Exception as e:
         print(f"❌ Ошибка записи: {e}")
         return False
+
 
 print("✅ Модуль safe_google.py загружен.")
 
