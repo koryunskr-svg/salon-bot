@@ -53,6 +53,7 @@ from utils.safe_google import (
     safe_create_calendar_event,
     safe_update_calendar_event,
     safe_delete_calendar_event,
+    safe_log_missed_call,
 )
 from utils.slots import find_available_slots
 from utils.reminders import (
@@ -3829,11 +3830,16 @@ async def handle_callback_name(update: Update, context: ContextTypes.DEFAULT_TYP
 async def handle_callback_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ввода телефона для обратного звонка"""
     phone = update.message.text.strip()
-    
+
+    print(f"🔧 DEBUG: Введен телефон: '{phone}'")
+
     # Проверяем телефон
     from utils.validation import validate_phone
     normalized_phone = validate_phone(phone)
     
+    print(f"🔧 DEBUG: Нормализованный: '{normalized_phone}'")
+    print(f"🔧 DEBUG: Длина: {len(normalized_phone) if normalized_phone else 0}")
+
     if not normalized_phone:
         await update.message.reply_text(
             "❌ Неверный формат телефона. Введите 10-15 цифр.\n"
