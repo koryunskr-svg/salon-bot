@@ -36,7 +36,7 @@ def validate_phone(phone_str: str) -> str:
     digits_only = re.sub(r'\D', '', phone_str)
     
     # Проверяем длину
-    if not (10 <= len(digits_only) <= 15):
+    if not (10 <= len(digits_only) <= 15):   # 10-15 цифр
         return ""
     
     # Нормализуем российский номер
