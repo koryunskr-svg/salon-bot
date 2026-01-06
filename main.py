@@ -1062,8 +1062,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             from utils.safe_google import safe_log_missed_call     
             sys.stdout.write(f"   4. Вызываю safe_log_missed_call('{user_phone}', '{phone}')...\n")
-            sys.stdout.flush()            
-            result = safe_log_missed_call(user_phone, phone, is_message=False)
+            sys.stdout.flush()  
+          
+            # === ДОБАВИТЬ ЭТОТ БЛОК ===
+            # Получаем имя из профиля Telegram
+            user_first_name = update.effective_user.first_name or ""
+            user_last_name = update.effective_user.last_name or ""
+            full_name = f"{user_first_name} {user_last_name}".strip()
+            if not full_name:
+                full_name = "Неизвестно"
+            # === КОНЕЦ ДОБАВЛЕНИЯ ===
+            
+            result = safe_log_missed_call(
+                phone_from=user_phone,
+                admin_phone=phone,
+                client_name=full_name,
+                is_message=False
+            )
             
             sys.stdout.write(f"   5. Результат: {result}\n")
             sys.stdout.write(f"   6. Тип: {type(result)}\n")
@@ -3847,12 +3862,20 @@ async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT
         print(f"🔧 DEBUG: admin_phone='{admin_phone}', clean_phone='{clean_phone}'")
         print(f"🔧 DEBUG: Вызываю safe_log_missed_call(phone_from='{phone}', admin_phone='{clean_phone}', note='...')")
         
+        # Получаем имя из профиля Telegram
+        user_first_name = update.effective_user.first_name or ""
+        user_last_name = update.effective_user.last_name or ""
+        full_name = f"{user_first_name} {user_last_name}".strip()
+        if not full_name:
+            full_name = "Неизвестно"
+        
         # Модифицируем функцию для записи вопроса
         result = safe_log_missed_call(
             phone_from=phone,
             admin_phone=clean_phone,
             note=f"Вопрос: {question}",
-            is_message=False
+            is_message=False,
+            client_name=full_name
         )
 
         print(f"🔧 DEBUG: safe_log_missed_call вернула: {result}")
@@ -3925,11 +3948,19 @@ async def handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYP
             print(f"📱 Очищенный телефон: '{clean_phone}'")
             print("📝 Вызываю safe_log_missed_call...")
 
+            # Получаем имя из профиля Telegram
+            user_first_name = update.effective_user.first_name or ""
+            user_last_name = update.effective_user.last_name or ""
+            full_name = f"{user_first_name} {user_last_name}".strip()
+            if not full_name:
+                full_name = "Неизвестно"
+
             result = safe_log_missed_call(
                 phone_from=f"TG:{user_id}",
                 admin_phone=clean_phone,
                 note=f"Сообщение: {user_message}",
-                is_message=True
+                is_message=True,
+                client_name=full_name
             )
             print(f"✅ safe_log_missed_call вернула: {result}")
             
