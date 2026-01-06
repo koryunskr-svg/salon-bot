@@ -429,7 +429,8 @@ def remove_lock_file():
     AWAITING_CONTACT_CHOICE,
     AWAITING_CALLBACK_PHONE,
     AWAITING_CALLBACK_QUESTION,
-) = range(33)
+    AWAITING_CALLBACK_NAME,
+) = range(34)
 
 ACTIVE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано"}
 CANCELLABLE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано"}
@@ -3794,6 +3795,36 @@ async def notify_admins_of_new_calls_job(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"❌ Ошибка в notify_admins_of_new_calls_job: {e}", exc_info=True)
 
+async def handle_callback_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ввода имени для обратного звонка"""
+    name = update.message.text.strip()
+    
+    if not name or len(name) < 2:
+        await update.message.reply_text(
+            "❌ Имя должно содержать минимум 2 символа.\n"
+            "Пожалуйста, введите ваше имя:"
+        )
+        return AWAITING_CALLBACK_NAME
+    
+    # Сохраняем имя
+    context.user_data["callback_name"] = name
+    
+    # Просим телефон
+    await update.message.reply_text(
+        f"✅ Имя сохранено: <b>{name}</b>\n\n"
+        "📱 <b>Теперь введите ваш телефон:</b>\n\n"
+        "Пример: <code>89161234567</code>\n\n"
+        "Администратор перезвонит в рабочее время.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ Назад", callback_data="request_callback")],
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+        ])
+    )
+    
+    context.user_data["state"] = AWAITING_CALLBACK_PHONE
+    return AWAITING_CALLBACK_PHONE
+
 async def handle_callback_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ввода телефона для обратного звонка"""
     phone = update.message.text.strip()
@@ -3844,7 +3875,17 @@ async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT
     user_id = update.effective_user.id
     username = update.effective_user.username or "без username"
 
-    print(f"🔧 DEBUG: question='{question}', phone='{phone}'")
+    # === ИМЯ: сначала берем сохраненное, потом из Telegram ===
+    callback_name = context.user_data.get("callback_name", "")
+    if not callback_name:
+        # Если нет сохраненного имени, берем из Telegram
+        user_first_name = update.effective_user.first_name or ""
+        user_last_name = update.effective_user.last_name or ""
+        callback_name = f"{user_first_name} {user_last_name}".strip()
+        if not callback_name:
+            callback_name = "Неизвестно"
+
+    print(f"🔧 DEBUG: question='{question}', phone='{phone}', name='{callback_name}'")
 
     if not question:
         await update.message.reply_text(
@@ -3861,21 +3902,14 @@ async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT
 
         print(f"🔧 DEBUG: admin_phone='{admin_phone}', clean_phone='{clean_phone}'")
         print(f"🔧 DEBUG: Вызываю safe_log_missed_call(phone_from='{phone}', admin_phone='{clean_phone}', note='...')")
-        
-        # Получаем имя из профиля Telegram
-        user_first_name = update.effective_user.first_name or ""
-        user_last_name = update.effective_user.last_name or ""
-        full_name = f"{user_first_name} {user_last_name}".strip()
-        if not full_name:
-            full_name = "Неизвестно"
-        
+                
         # Модифицируем функцию для записи вопроса
         result = safe_log_missed_call(
             phone_from=phone,
             admin_phone=clean_phone,
             note=f"Вопрос: {question}",
             is_message=False,
-            client_name=full_name
+            client_name=callback_name
         )
 
         print(f"🔧 DEBUG: safe_log_missed_call вернула: {result}")
@@ -3909,6 +3943,7 @@ async def handle_callback_question(update: Update, context: ContextTypes.DEFAULT
     
     # 4. Очищаем данные
     context.user_data.pop("callback_phone", None)
+    context.user_data.pop("callback_name", None)  # ← ОЧИЩАЕМ ИМЯ
     context.user_data["state"] = MENU
     return MENU
 
@@ -4022,6 +4057,7 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
     handler_map = {
         ENTER_NAME: enter_name,
         ENTER_PHONE: enter_phone,
+        AWAITING_CALLBACK_NAME: handle_callback_name,
         AWAITING_CALLBACK_PHONE: handle_callback_phone,
         AWAITING_CALLBACK_QUESTION: handle_callback_question,
         AWAITING_WAITING_LIST_DETAILS: handle_waiting_list_input,
