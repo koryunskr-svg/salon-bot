@@ -34,9 +34,12 @@ def validate_phone(phone_str: str) -> str:
     
     # Извлекаем только цифры
     digits_only = re.sub(r'\D', '', phone_str)
-    
+
+    print(f"🔧 DEBUG validate_phone: '{phone_str}' → digits: '{digits_only}', len: {len(digits_only)}")
+
     # Проверяем длину
     if not (10 <= len(digits_only) <= 15):   # 10-15 цифр
+        print(f"🔧 DEBUG: Длина {len(digits_only)} не подходит (10-15)")
         return ""
     
     # Нормализуем российский номер
@@ -48,11 +51,16 @@ def validate_phone(phone_str: str) -> str:
         normalized = digits_only
     elif len(digits_only) == 10:
         # XXXXXXXXXX → 8XXXXXXXXXX
-        normalized = '8' + digits_only
+        normalized = '8' + digits_only   # ← Если digits_only=8903437143 (9 цифр), эта проверка НЕ сработает
     else:
-        # Международный формат - оставляем как есть
-        normalized = digits_only
+        # Международный формат или другой - возвращаем как есть
+        # НО: для России должны быть только 11-значные номера с 8 или 7
+        if digits_only.startswith('8') and len(digits_only) != 11:
+            print(f"🔧 DEBUG: Российский номер {digits_only} имеет длину {len(digits_only)}, ожидается 11")  # ← ДОБАВЬТЕ
+            return ""  # ← ВАЖНО! Российский номер не 11 цифр - ошибка!
+        normalized = digits_only    # ← Вот тут 9-значный номер проходит как "международный"!
     
+    print(f"🔧 DEBUG validate_phone: возвращаем '{normalized}'")
     return normalized
 
 # Для обратной совместимости (если где-то используется bool версия)
