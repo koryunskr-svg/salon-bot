@@ -881,8 +881,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pretty_schedule = schedule.replace(",", ", ")
                     
                     if len(days) == 1:
-                        # Один день
-                        schedule_parts.append(f"{days[0]:<6} {pretty_schedule}")
+                        # Один день - форматируем как таблицу
+                        schedule_parts.append(f"{days[0]}\t{pretty_schedule}")
                     else:
                         # Несколько дней
                         # Пробуем сгруппировать последовательные дни
@@ -898,17 +898,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if is_consecutive and len(days_sorted) > 1:
                             # Дни подряд: "Пн-Пт"
                             day_range = f"{days_sorted[0]}-{days_sorted[-1]}"
-                            schedule_parts.append(f"{day_range:<6} {pretty_schedule}")
+                            schedule_parts.append(f"{day_range}\t{pretty_schedule}")
                         else:
                             # Дни не подряд: "Пн, Ср, Пт"
                             days_str = ", ".join(days_sorted)
-                            schedule_parts.append(f"{days_str:<6} {pretty_schedule}")
+                            schedule_parts.append(f"{days_str}\t{pretty_schedule}")
 
                 # 3.2. Выходные дни
                 if off_days:
                     off_days_sorted = sorted(off_days, key=lambda x: day_names.index(x))
                     if len(off_days_sorted) == 1:
-                        schedule_parts.append(f"{off_days_sorted[0]:<6} Выходной")
+                        schedule_parts.append(f"{off_days_sorted[0]}\tВыходной")
                     else:
                         # Группируем выходные подряд
                         is_consecutive = True
@@ -919,18 +919,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         
                         if is_consecutive and len(off_days_sorted) > 1:
                             day_range = f"{off_days_sorted[0]}-{off_days_sorted[-1]}"
-                            schedule_parts.append(f"{day_range:<6} Выходной")
+                            schedule_parts.append(f"{day_range}\tВыходной")
                         else:
                             days_str = ", ".join(off_days_sorted)
-                            schedule_parts.append(f"{days_str:<6} Выходной")
+                            schedule_parts.append(f"{days_str}\tВыходной")
 
                 # 4. Собираем итоговую строку
                 if schedule_parts:
-                    schedule_text = "Мы работаем:\n" + "\n".join(schedule_parts)
+                    # Используем HTML тег <pre> для моноширинного шрифта
+                    schedule_text = "Мы работаем:\n<pre>"
+                    for part in schedule_parts:
+                        schedule_text += part + "\n"
+                    schedule_text += "</pre>"
                 else:
                     schedule_text = "График работы не указан."
-                # --- КОНЕЦ УЛУЧШЕННОЙ ЛОГИКИ ---
-                break  # Нашли строку, выходим из цикла
 
         if not found:
             org_name_display = f"⚠️ Заведение '{org_name_setting}' не найдено в графике."
@@ -958,10 +960,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"{greeting}\n\n{org_name_display}\nМы работаем: {schedule_text}"
 
     if update.message:
-        # Убран parse_mode="HTML", так как нет тегов
-        await update.message.reply_text(text, reply_markup=rm)
+        # Добавляем parse_mode="HTML" для тега <pre>
+        await update.message.reply_text(text, reply_markup=rm, parse_mode="HTML")
     elif update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=rm)
+        await update.callback_query.edit_message_text(text, reply_markup=rm, parse_mode="HTML")
     context.user_data["state"] = MENU
     return MENU
 
