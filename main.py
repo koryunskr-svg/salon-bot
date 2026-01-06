@@ -882,7 +882,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     
                     if len(days) == 1:
                         # Один день
-                        schedule_parts.append(f"{days[0]:<8} {pretty_schedule}")
+                        schedule_parts.append(f"{days[0]:<6} {pretty_schedule}")
                     else:
                         # Несколько дней
                         # Пробуем сгруппировать последовательные дни
@@ -898,17 +898,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if is_consecutive and len(days_sorted) > 1:
                             # Дни подряд: "Пн-Пт"
                             day_range = f"{days_sorted[0]}-{days_sorted[-1]}"
-                            schedule_parts.append(f"{day_range:<8} {pretty_schedule}")
+                            schedule_parts.append(f"{day_range:<6} {pretty_schedule}")
                         else:
                             # Дни не подряд: "Пн, Ср, Пт"
                             days_str = ", ".join(days_sorted)
-                            schedule_parts.append(f"{days_str:<8} {pretty_schedule}")
+                            schedule_parts.append(f"{days_str:<6} {pretty_schedule}")
 
                 # 3.2. Выходные дни
                 if off_days:
                     off_days_sorted = sorted(off_days, key=lambda x: day_names.index(x))
                     if len(off_days_sorted) == 1:
-                        schedule_parts.append(f"{off_days_sorted[0]:<8} Выходной")
+                        schedule_parts.append(f"{off_days_sorted[0]:<6} Выходной")
                     else:
                         # Группируем выходные подряд
                         is_consecutive = True
@@ -919,10 +919,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         
                         if is_consecutive and len(off_days_sorted) > 1:
                             day_range = f"{off_days_sorted[0]}-{off_days_sorted[-1]}"
-                            schedule_parts.append(f"{day_range:<8} Выходной")
+                            schedule_parts.append(f"{day_range:<6} Выходной")
                         else:
                             days_str = ", ".join(off_days_sorted)
-                            schedule_parts.append(f"{days_str:<8} Выходной")
+                            schedule_parts.append(f"{days_str:<6} Выходной")
 
                 # 4. Собираем итоговую строку
                 if schedule_parts:
