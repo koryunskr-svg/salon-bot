@@ -2983,12 +2983,6 @@ async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TY
     print(f"🔧 User ID: {update.effective_user.id}")
     print(f"🔧 Username: {update.effective_user.username}")
     
-    async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f"\n{'='*60}")
-    print(f"🔧 ВЫЗВАНА handle_record_command")
-    print(f"🔧 User ID: {update.effective_user.id}")
-    print(f"🔧 Username: {update.effective_user.username}")
-    
     user_id = str(update.effective_user.id)
     
     # Импортируем глобальную переменную
