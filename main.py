@@ -723,13 +723,19 @@ async def _validate_booking_checks(
     # ← КОНЕЦ ДОБАВЛЕНИЯ ↑↑↑
     
     # === ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
-    
-    # === ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
-    for r in records:
+
+    print(f"\n{'='*80}")
+    print(f"🔍 ПРОВЕРКА СПЕЦИАЛИСТА {specialist} на {date_str} {time_str}")
+    print(f"🔍 Всего записей: {len(records)}")
+
+    for i, r in enumerate(records):
         if len(r) > 8:
-            record_specialist = str(r[5]).strip()
-            record_status = str(r[8]).strip()
-            record_date = str(r[6]).strip()
+            record_specialist = str(r[5]).strip() if len(r) > 5 else "НЕТ"
+            record_status = str(r[8]).strip() if len(r) > 8 else "НЕТ"
+            record_date = str(r[6]).strip() if len(r) > 6 else "НЕТ"
+            record_time = str(r[7]).strip() if len(r) > 7 else "НЕТ"
+
+            print(f"  [{i}] Спец: '{record_specialist}', Дата: '{record_date}', Время: '{record_time}', Статус: '{record_status}'")
             
             # Проверяем только подтвержденные записи того же специалиста в тот же день
             if (record_specialist == specialist and 
@@ -2462,6 +2468,10 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    print(f"\n{'='*80}")
+    print(f"🔍 ВХОД В finalize_booking")
+    print(f"🔍 Проверяем вызов валидации...")
+
     # === 1. ОТМЕНА ТАЙМЕРОВ РЕЗЕРВИРОВАНИЯ ===
     chat_id = update.effective_chat.id
     job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
@@ -2514,6 +2524,12 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MENU
 
     # === 2.5. ПРОВЕРКА ВАЛИДНОСТИ БРОНИРОВАНИЯ ===
+
+    print(f"\n{'='*80}")
+    print(f"🔍 ВЫЗЫВАЮ ВАЛИДАЦИЮ")
+    print(f"🔍 Параметры: date='{date_str}', time='{time_str}', spec='{specialist}'")
+    print(f"🔍 name='{name}', phone='{phone}'")
+
     check_result, error_msg = await _validate_booking_checks(
         context=context,
         name=name,
