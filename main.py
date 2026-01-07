@@ -2978,15 +2978,41 @@ async def handle_waiting_list_input(update: Update, context: ContextTypes.DEFAUL
 
 
 async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"\n{'='*60}")
+    print(f"🔧 ВЫЗВАНА handle_record_command")
+    print(f"🔧 User ID: {update.effective_user.id}")
+    print(f"🔧 Username: {update.effective_user.username}")
+    
     user_id = str(update.effective_user.id)
+    
+    # Показываем что загружено
+    from utils.admin import ADMIN_CHAT_IDS
+    print(f"🔧 Загруженные ADMIN_CHAT_IDS: {ADMIN_CHAT_IDS}")
+    print(f"🔧 Мой ID как число: {int(user_id)}")
+    print(f"🔧 Есть ли мой ID в списке? {int(user_id) in ADMIN_CHAT_IDS}")
+    
     admins = load_admins() or []
+    print(f"🔧 Результат load_admins(): {admins}")
+    print(f"🔧 Тип user_id: {type(user_id)}")
+    print(f"🔧 Тип элемента в admins: {type(admins[0]) if admins else 'список пуст'}")
+    
     if not any(str(a) == user_id for a in admins):
+        print(f"❌ ПРОВЕРКА НЕ ПРОШЛА!")
+        print(f"   user_id: '{user_id}'")
+        print(f"   admins: {admins}")
+        print(f"   Сравниваем: str(a) == user_id")
+        for a in admins:
+            print(f"   - {a} (тип: {type(a)}) → str: '{str(a)}' == '{user_id}'? {str(a) == user_id}")
+        
         msg = "❌ У вас нет прав администратора."
         if update.message:
             await update.message.reply_text(msg)
         elif update.callback_query:
             await update.callback_query.edit_message_text(msg)
         return
+    
+    print(f"✅ ПРОВЕРКА ПРОШЛА УСПЕШНО!")
+    
     context.user_data.clear()
     context.user_data["admin_mode"] = True
     kb = [
@@ -3009,6 +3035,8 @@ async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TY
         await update.callback_query.edit_message_text(
             text, reply_markup=InlineKeyboardMarkup(kb)
         )
+    
+    print(f"{'='*60}\n")
 
 
 async def admin_book_for_client(update: Update, context: ContextTypes.DEFAULT_TYPE):
