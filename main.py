@@ -1027,6 +1027,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await start(update, context)
             return MENU
 
+    # === ДОПОЛНИТЕЛЬНАЯ ОТЛАДКА ДЛЯ Button_data_invalid ===
+    print(f"\n{'='*80}")
+    print(f"🔍 ДЕТАЛЬНАЯ ОТЛАДКА КНОПКИ:")
+    print(f"🔍 callback_data = '{data}'")
+    print(f"🔍 Длина: {len(data)} символов")
+    print(f"🔍 Первые 20 символов: '{data[:20]}'")
+    print(f"🔍 Последние 20 символов: '{data[-20:]}'")
+    print(f"🔍 Содержит ли спецсимволы? {any(c in data for c in ['@', '#', '$', '%', '&', '*', '+', '=', '<', '>'])}")
+    print(f"{'='*80}\n")
+    
+    # Проверка длины callback_data (Telegram ограничение 64 байта)
+    if len(data) > 64:
+        print(f"❌ ОШИБКА: callback_data слишком длинный ({len(data)} > 64)")
+        await query.edit_message_text("❌ Ошибка: техническая проблема. Попробуйте снова.")
+        return
+    # === КОНЕЦ ОТЛАДКИ ===
+
     if data.startswith("call_admin_"):
         phone = data.split("call_admin_", 1)[1]
         
@@ -1842,14 +1859,22 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         kb = []
         for specialist in sorted(available_specialists):
+            # Кодируем русские буквы для callback_data
+            specialist_code = specialist
+            specialist_code = specialist_code.replace("Любой", "any")
+            specialist_code = specialist_code.replace("Вера", "vera")
+            specialist_code = specialist_code.replace("Ольга", "olga")
+            specialist_code = specialist_code.replace("Галина", "galina")
+            # Добавь сюда других специалистов по мере появления
+            
             kb.append(
                 [
                     InlineKeyboardButton(
-                        specialist, callback_data=f"specialist_{specialist}"
+                        specialist, 
+                        callback_data=f"specialist_{specialist_code}"
                     )
                 ]
             )
-
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
 
         await query.edit_message_text(
@@ -1915,17 +1940,19 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 kb.append(
                     [
                         InlineKeyboardButton(
-                            specialist, callback_data=f"specialist_{specialist}"
+                            specialist, 
+                            callback_data=f"specialist_{specialist}"
                         )
                     ]
                 )
-        
+
         # Потом добавляем "Любой" в конце, если есть
         if "Любой" in available_specialists:
             kb.append(
                 [
                     InlineKeyboardButton(
-                        "👥 Любой специалист", callback_data="specialist_Любой"
+                        "👥 Любой специалист", 
+                        callback_data="specialist_Любой"
                     )
                 ]
             )
@@ -2503,7 +2530,9 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         
         await query.edit_message_text(           
-            f"Этот номер уже используется клиентом:\n"
+            f"⚠️ <b>Внимание!</b>\n\n"
+            f"Этот номер уже используется клиентом: <b>{conflict.get('existing_name', 'Неизвестно')}</b>\n"
+            f"У него есть запись: <b>{conflict.get('existing_time', 'Неизвестно')}</b>\n\n"
             f"Это ваш номер телефона?",
             reply_markup=InlineKeyboardMarkup(kb),
             parse_mode="HTML"
