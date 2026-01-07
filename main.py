@@ -2983,26 +2983,35 @@ async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TY
     print(f"🔧 User ID: {update.effective_user.id}")
     print(f"🔧 Username: {update.effective_user.username}")
     
+    async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"\n{'='*60}")
+    print(f"🔧 ВЫЗВАНА handle_record_command")
+    print(f"🔧 User ID: {update.effective_user.id}")
+    print(f"🔧 Username: {update.effective_user.username}")
+    
     user_id = str(update.effective_user.id)
     
-    # Показываем что загружено
+    # Импортируем глобальную переменную
     from utils.admin import ADMIN_CHAT_IDS
-    print(f"🔧 Загруженные ADMIN_CHAT_IDS: {ADMIN_CHAT_IDS}")
-    print(f"🔧 Мой ID как число: {int(user_id)}")
-    print(f"🔧 Есть ли мой ID в списке? {int(user_id) in ADMIN_CHAT_IDS}")
     
-    admins = load_admins() or []
-    print(f"🔧 Результат load_admins(): {admins}")
-    print(f"🔧 Тип user_id: {type(user_id)}")
-    print(f"🔧 Тип элемента в admins: {type(admins[0]) if admins else 'список пуст'}")
+    print(f"🔧 Глобальный ADMIN_CHAT_IDS: {ADMIN_CHAT_IDS}")
     
-    if not any(str(a) == user_id for a in admins):
+    # Проверяем напрямую в глобальной переменной
+    if not ADMIN_CHAT_IDS:
+        print(f"⚠️ ADMIN_CHAT_IDS пустой, вызываю load_admins()...")
+        admins = load_admins() or []
+    else:
+        admins = ADMIN_CHAT_IDS
+    
+    print(f"🔧 Используем admins: {admins}")
+    
+    # Проверяем права
+    user_id_num = int(user_id)  # Преобразуем в число
+    if user_id_num not in admins:
         print(f"❌ ПРОВЕРКА НЕ ПРОШЛА!")
-        print(f"   user_id: '{user_id}'")
+        print(f"   user_id: {user_id_num}")
         print(f"   admins: {admins}")
-        print(f"   Сравниваем: str(a) == user_id")
-        for a in admins:
-            print(f"   - {a} (тип: {type(a)}) → str: '{str(a)}' == '{user_id}'? {str(a) == user_id}")
+        print(f"   Есть ли в списке? {user_id_num in admins}")
         
         msg = "❌ У вас нет прав администратора."
         if update.message:
@@ -3012,6 +3021,7 @@ async def handle_record_command(update: Update, context: ContextTypes.DEFAULT_TY
         return
     
     print(f"✅ ПРОВЕРКА ПРОШЛА УСПЕШНО!")
+    print(f"{'='*60}\n")
     
     context.user_data.clear()
     context.user_data["admin_mode"] = True
