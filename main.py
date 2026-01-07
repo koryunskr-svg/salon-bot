@@ -2243,10 +2243,40 @@ async def reserve_slot(
         "created_at": datetime.now(TIMEZONE).isoformat(),
     }
 
+    # Получаем выбранные данные
+    service_type = context.user_data.get("service_type", "не указана")
+    subservice = context.user_data.get("subservice", "не указана")
+    date_str = context.user_data.get("date", "не указана")
+    selected_specialist = context.user_data.get("selected_specialist", "не указан")
+    time_str = context.user_data.get("time", "не указано")
+    
+    # Рассчитываем время окончания
+    step = calculate_service_step(subservice)
+    try:
+        dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+        end_dt = dt + timedelta(minutes=step)
+        end_time = end_dt.strftime("%H:%M")
+        time_display = f"{time_str}-{end_time}"
+    except:
+        time_display = time_str
+    
+    # Формируем сообщение со сводкой
+    summary_message = (
+        f"✅ <b>Сводка выбора:</b>\n\n"
+        f"• <b>Категория:</b> {service_type}\n"
+        f"• <b>Услуга:</b> {subservice}\n"
+        f"• <b>Дата:</b> {date_str}\n"
+        f"• <b>Время:</b> {time_display}\n"
+        f"• <b>Специалист:</b> {selected_specialist}\n\n"
+        f"⏳ <b>Слот зарезервирован!</b>\n"
+        f"Теперь введите ваше имя:"
+    )
+    
     kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
     await query.edit_message_text(
-        "⏳ Слот зарезервирован! Введите ваше имя:",
+        summary_message,
         reply_markup=InlineKeyboardMarkup(kb),
+        parse_mode="HTML"
     )
     context.user_data["state"] = ENTER_NAME
     return ENTER_NAME
@@ -2391,18 +2421,36 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
     ]
 
+    # Рассчитываем время окончания
+    ss = context.user_data.get('subservice', '')
+    time_str = context.user_data.get('time', 'N/A')
+    date_str = context.user_data.get('date', 'N/A')
+    
+    if ss and time_str != 'N/A' and date_str != 'N/A':
+        try:
+            step = calculate_service_step(ss)
+            dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+            end_dt = dt + timedelta(minutes=step)
+            end_time = end_dt.strftime("%H:%M")
+            time_display = f"{time_str}-{end_time}"
+        except:
+            time_display = time_str
+    else:
+        time_display = time_str
+    
     await update.message.reply_text(
-        "📋 Пожалуйста, подтвердите запись:\n\n"
-        f"Услуга: {context.user_data.get('subservice', 'N/A')} ({context.user_data.get('service_type', 'N/A')})\n"
-        f"Специалист: {context.user_data.get('selected_specialist', 'N/A')}\n"
-        f"Дата: {context.user_data.get('date', 'N/A')}\n"
-        f"Время: {context.user_data.get('time', 'N/A')}\n"
-        f"Имя: {context.user_data.get('name', 'N/A')}\n"
-        f"Телефон: {context.user_data.get('phone', 'N/A')}\n\n"
-        "Всё верно? Выберите действие:",
+        "📋 <b>Пожалуйста, подтвердите запись:</b>\n\n"
+        f"• <b>Услуга:</b> {context.user_data.get('subservice', 'N/A')} ({context.user_data.get('service_type', 'N/A')})\n"
+        f"• <b>Специалист:</b> {context.user_data.get('selected_specialist', 'N/A')}\n"
+        f"• <b>Дата:</b> {context.user_data.get('date', 'N/A')}\n"
+        f"• <b>Время:</b> {time_display}\n"
+        f"• <b>Имя:</b> {context.user_data.get('name', 'N/A')}\n"
+        f"• <b>Телефон:</b> {context.user_data.get('phone', 'N/A')}\n\n"
+        "<b>Всё верно? Выберите действие:</b>",
         reply_markup=InlineKeyboardMarkup(kb),
+        parse_mode="HTML"
     )
-
+    
     context.user_data["state"] = AWAITING_CONFIRMATION
     return AWAITING_CONFIRMATION
 
@@ -2594,6 +2642,14 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         created_at = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
 
         # Формируем полную запись
+        
+        # Рассчитываем время окончания
+        step = calculate_service_step(ss)
+        dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+        end_dt = dt + timedelta(minutes=step)
+        end_time = end_dt.strftime("%H:%M")
+        time_interval = f"{time_str}-{end_time}"
+        
         full_record = [
             record_id,  # A: ID записи
             name,  # B: Имя
@@ -2602,7 +2658,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ss,  # E: Услуга
             specialist,  # F: Специалист
             date_str,  # G: Дата
-            time_str,  # H: Время
+            time_interval,  # H: Время (интервал!)
             "подтверждено",  # I: Статус
             created_at,  # J: Дата создания
             "",  # K: Комментарий
@@ -2611,7 +2667,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             str(chat_id),  # N: Chat ID
             event_id or "",  # O: Event ID
         ]
-
         print(f"=== DEBUG: Формирую запись для таблицы ===")
         print(f"Запись выглядит так: {full_record}")
         print(f"Колонок в записи: {len(full_record)}")
@@ -2647,7 +2702,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💅 Услуга: {ss} ({st})\n"
         f"👩‍💼 Специалист: {specialist}\n"
         f"📅 Дата: {date_str}\n"
-        f"⏰ Время: {time_str}\n"
+        f"⏰ Время: {time_str}-{end_time}\n"
         f"🆔 ID записи: {record_id}"
     )
     try:
@@ -2657,13 +2712,20 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"⚠️ Не удалось уведомить админов: {e}")
 
     # === 6. ОТПРАВЛЯЕМ ПОЛЬЗОВАТЕЛЮ ФИНАЛЬНОЕ СООБЩЕНИЕ ===
+
+    # Рассчитываем время окончания
+    step = calculate_service_step(ss)
+    dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+    end_dt = dt + timedelta(minutes=step)
+    end_time = end_dt.strftime("%H:%M")
+    
     user_message = (
         f"✅ <b>Вы успешно записаны!</b>\n\n"
         f"<b>Детали записи:</b>\n"
         f"• Услуга: {ss}\n"
         f"• Специалист: {specialist}\n"
         f"• Дата: {date_str}\n"
-        f"• Время: {time_str}\n"
+        f"• Время: {time_str}-{end_time}\n"
         f"• Ваше имя: {name}\n\n"
         f"<i>ID записи: {record_id}</i>\n\n"
         f"Мы напомним вам о визите за 24 часа и за 1 час."
