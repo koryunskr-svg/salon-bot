@@ -20,6 +20,11 @@ def load_admins():
     print(f"🔧 НАЧИНАЮ ЗАГРУЗКУ АДМИНИСТРАТОРОВ")
     print(f"{'='*60}")
     
+    # Если уже загружены - возвращаем
+    if ADMIN_CHAT_IDS:
+        print(f"✅ Админы уже загружены: {ADMIN_CHAT_IDS}")
+        return ADMIN_CHAT_IDS
+    
     try:
         # Читаем с A3, предполагая, что A1 - название листа, а A2 - заголовки
         print(f"🔧 Читаю таблицу 'Администраторы!A3:C'...")
@@ -28,7 +33,7 @@ def load_admins():
         if not admins:
             print(f"❌ ТАБЛИЦА 'Администраторы' ПУСТАЯ ИЛИ НЕ НАЙДЕНА!")
             ADMIN_CHAT_IDS = []
-            return
+            return ADMIN_CHAT_IDS
             
         print(f"✅ Получено строк из таблицы: {len(admins)}")
         for i, row in enumerate(admins, start=1):
@@ -39,7 +44,7 @@ def load_admins():
         import traceback
         traceback.print_exc()
         ADMIN_CHAT_IDS = []
-        return
+        return ADMIN_CHAT_IDS
 
     ids = []
     for i, row in enumerate(admins, start=1):
@@ -110,6 +115,8 @@ def load_admins():
         print(f"   ⚠️ ВРЕМЕННО ДОБАВЛЯЮ {my_id} ВРУЧНУЮ")
     
     print(f"{'='*60}\n")
+    
+    return ADMIN_CHAT_IDS  # ← ВАЖНО: возвращаем список!
 
 async def notify_admins(context, message: str):
     """Асинхронно отправляет сообщение всем загруженным администраторам."""
