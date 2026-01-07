@@ -18,6 +18,7 @@ def load_admins():
     try:
         # Читаем с A3, предполагая, что A1 - название листа, а A2 - заголовки
         admins = safe_get_sheet_data(SHEET_ID, "Администраторы!A3:C")
+        print(f"🔧 DEBUG load_admins: сырые данные из таблицы: {admins}")
     except Exception as e:
         logger.exception("❌ Не удалось получить список админов из таблицы: %s", e)
         ADMIN_CHAT_IDS = []
@@ -25,21 +26,24 @@ def load_admins():
 
     ids = []
     for row in admins:
+        print(f"🔧 DEBUG load_admins: обработка строки: {row}")
         if len(row) >= 3:
             try:
                 chat_id = int(row[0])
                 access_flag = row[2].strip().lower()
+                print(f"🔧 DEBUG: chat_id={chat_id}, access='{access_flag}'")
                 if access_flag in ("да", "yes", "y", "true", "1"):
                     ids.append(chat_id)
+                    print(f"🔧 DEBUG: добавлен админ {chat_id}")
                 else:
-                    logger.debug(f"⚠️ Админ {chat_id} (имя: {row[1] if len(row) > 1 else 'не указано'}) имеет доступ = '{row[2]}', пропускаем.")
+                    print(f"🔧 DEBUG: пропущен (доступ='{access_flag}')")
             except ValueError:
-                logger.warning(f"⚠️ Неверный chat_id в таблице Администраторы: {row[0]}, строка: {row}")
+                print(f"🔧 DEBUG: ошибка преобразования chat_id: {row[0]}")
             except Exception as e:
-                logger.warning(f"⚠️ Ошибка при обработке строки администратора: {row}, ошибка: {e}")
+                print(f"🔧 DEBUG: ошибка обработки строки: {e}")
 
     ADMIN_CHAT_IDS = ids
-    logger.info(f"✅ Загружены админы: {ADMIN_CHAT_IDS}")
+    print(f"🔧 DEBUG load_admins: итоговый список админов: {ADMIN_CHAT_IDS}")
 
 async def notify_admins(context, message: str):
     """Асинхронно отправляет сообщение всем загруженным администраторам."""
