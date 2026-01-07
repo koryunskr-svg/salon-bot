@@ -2540,10 +2540,9 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"🔍 Параметры: date='{date_str}', time='{time_str}', spec='{specialist}'")
     print(f"🔍 name='{name}', phone='{phone}'")
 
-    # Получаем данные правильно
-    service_type = context.user_data.get("service_type", "Неизвестно")
+    print(f"=== DEBUG: Перед вызовом _validate_booking_checks ===")
 
-    check_result, error_msg = await _validate_booking_checks(
+    check_result, error_msg = _validate_booking_checks(
         context=context,
         name=name,
         phone=phone,
@@ -2553,6 +2552,8 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         specialist=specialist
     )
     
+    print(f"=== DEBUG: После вызова. Результат: {check_result}, ошибка: {error_msg} ===")
+
     if check_result is False:
         # Освобождаем временный слот
         if event_id:
@@ -3542,7 +3543,7 @@ async def admin_process_new_slot(
     name = orig[1] if len(orig) > 1 else ""
     phone = orig[2] if len(orig) > 2 else ""
     st = orig[3] if len(orig) > 3 else ""
-    check_result, error_msg = await _validate_booking_checks(
+    check_result, error_msg = _validate_booking_checks(
         context=context,
         name=name,
         phone=phone,
