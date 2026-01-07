@@ -635,7 +635,7 @@ async def _display_records(
         await update.message.reply_text(msg, reply_markup=rm, parse_mode="HTML")
 
 
-async def _validate_booking_checks(
+def _validate_booking_checks(
     context: ContextTypes.DEFAULT_TYPE,
     name: str,
     phone: str,
@@ -644,8 +644,21 @@ async def _validate_booking_checks(
     service_type: str,
     specialist: str
 ):
+    """
+    Проверяет возможность бронирования с учетом:
+    1. Занятости специалиста
+    2. Занятости клиента (по телефону)
+    3. Повторной записи в категории
+    """
+    print(f"\n{'='*80}")
+    print(f"🔍 ВХОД В _validate_booking_checks")
+    print(f"🔍 Дата: {date_str}, Время: {time_str}")
+    print(f"🔍 Специалист: {specialist}")
+    print(f"🔍 Клиент: {name}, Телефон: {phone}")
+    print(f"🔍 Услуга: {service_type}")
+    print(f"{'='*80}")
 
-# ПРОВЕРКА ВХОДНЫХ ДАННЫХ
+    # ПРОВЕРКА ВХОДНЫХ ДАННЫХ
     if not date_str or date_str in ["Неизвестно", "None", "none", ""]:
         return False, "❌ Ошибка: дата не указана."
     
@@ -654,119 +667,90 @@ async def _validate_booking_checks(
     
     if not specialist or specialist in ["любой", "None", "none", ""]:
         return False, "❌ Ошибка: специалист не выбран."
-    
-    # ДЛЯ ОТЛАДКИ: вывести полученные данные
-    print(f"=== DEBUG ВХОДНЫЕ ДАННЫЕ ВАЛИДАЦИИ ===")
-    print(f"date_str: '{date_str}'")
-    print(f"time_str: '{time_str}'")
-    print(f"specialist: '{specialist}'")
-    print(f"name: '{name}'")
-    print(f"phone: '{phone}'")
 
-    """
-    Проверяет возможность бронирования с учетом:
-    1. Занятости специалиста
-    2. Занятости клиента (по телефону)
-    3. Повторной записи в категории
-    """
-    
     # Получаем все записи
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
-    
+    print(f"🔍 Всего записей в таблице: {len(records)}")
+
     # Получаем данные текущей услуги
     ss = context.user_data.get("subservice", "")
     service_duration = calculate_service_step(ss)
-    
+    print(f"🔍 Длительность услуги '{ss}': {service_duration} мин")
+
     # Преобразуем новое время
     try:
         new_start = TIMEZONE.localize(
             datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
         )
         new_end = new_start + timedelta(minutes=service_duration)
-    except ValueError:
+        print(f"🔍 Новый интервал: {new_start.time()} - {new_end.time()}")
+    except ValueError as e:
+        print(f"❌ Ошибка парсинга времени: {e}")
         return False, "❌ Неверный формат даты/времени"
     
-    # ДЛЯ ОТЛАДКИ:
-    print(f"=== DEBUG ВАЛИДАЦИЯ ===")
-    print(f"Проверяем запись: {date_str} {time_str} к {specialist}")
-    print(f"Услуга: {ss}, Длительность: {service_duration} мин")
-    print(f"Новое время: {new_start.strftime('%H:%M')}-{new_end.strftime('%H:%M')}")
-    print(f"Ищем пересечения...")
-    
-    print(f"Всего записей в базе: {len(records)}")
-    for i, r in enumerate(records[:5]):  # первые 5 записей
-        if len(r) > 8:
-            print(f"  [{i}] {r[1]}: {r[6]} {r[7]} к {r[5]}")
-    
-    # ← ДОБАВИТЬ ЭТОТ БЛОК ↓↓↓
-    # РАСШИРЕННАЯ ОТЛАДКА ДЛЯ ТЕЛЕФОНА
-    print(f"=== DEBUG ТЕЛЕФОННАЯ ПРОВЕРКА ===")
-    print(f"Клиент: {name}, Телефон: {phone}")
-    print(f"Ищем записи с телефоном {phone}:")
-    phone_matches = 0
-    for i, r in enumerate(records):
-        if len(r) > 8 and str(r[2]).strip() == phone:
-            phone_matches += 1
-            try:
-                record_start = TIMEZONE.localize(
-                    datetime.strptime(f"{r[6]} {r[7]}", "%d.%m.%Y %H:%M")
-                )
-                record_duration = calculate_service_step(r[4] if len(r) > 4 else "")
-                record_end = record_start + timedelta(minutes=record_duration)
-                
-                print(f"  [{i}] {r[1]}: {r[6]} {r[7]} ({record_start.strftime('%H:%M')}-{record_end.strftime('%H:%M')})")
-                print(f"     Пересекается? {max(new_start, record_start) < min(new_end, record_end)}")
-            except (ValueError, TypeError):
-                print(f"  [{i}] {r[1]}: ОШИБКА парсинга времени")
-    print(f"Всего записей с этим телефоном: {phone_matches}")
-    print(f"=== КОНЕЦ ОТЛАДКИ ===")
-    # ← КОНЕЦ ДОБАВЛЕНИЯ ↑↑↑
-    
     # === ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
-
-    print(f"\n{'='*80}")
-    print(f"🔍 ПРОВЕРКА СПЕЦИАЛИСТА {specialist} на {date_str} {time_str}")
-    print(f"🔍 Всего записей: {len(records)}")
+    print(f"🔍 ПРОВЕРКА 1: Ищем записи специалиста '{specialist}' на {date_str}")
+    specialist_conflicts = 0
 
     for i, r in enumerate(records):
         if len(r) > 8:
-            record_specialist = str(r[5]).strip() if len(r) > 5 else "НЕТ"
-            record_status = str(r[8]).strip() if len(r) > 8 else "НЕТ"
-            record_date = str(r[6]).strip() if len(r) > 6 else "НЕТ"
-            record_time = str(r[7]).strip() if len(r) > 7 else "НЕТ"
-
-            print(f"  [{i}] Спец: '{record_specialist}', Дата: '{record_date}', Время: '{record_time}', Статус: '{record_status}'")
+            record_specialist = str(r[5]).strip() if len(r) > 5 else ""
+            record_status = str(r[8]).strip() if len(r) > 8 else ""
+            record_date = str(r[6]).strip() if len(r) > 6 else ""
+        
+            # ОТЛАДКА: показываем ВСЕ записи этого специалиста
+            if record_specialist == specialist and record_date == date_str:
+                client_name = str(r[1]).strip() if len(r) > 1 else "нет имени"
+                time_slot = str(r[7]).strip() if len(r) > 7 else "нет времени"
+                print(f"  📍 Найдена запись: {client_name} {time_slot}, статус: {record_status}")
             
             # Проверяем только подтвержденные записи того же специалиста в тот же день
             if (record_specialist == specialist and 
-                record_status == "подтверждено" and 
+                record_status in ["подтверждено", "в резерве", "ожидает оплаты"] and 
                 record_date == date_str):
                 
                 record_time = str(r[7]).strip()
                 record_service = str(r[4]).strip() if len(r) > 4 else ""
-                
+
+                print(f"  📍 Найдена запись {i}: {record_time} ({record_service}), статус: {record_status}")
+
                 try:
+                    # Извлекаем время начала из записи
+                    time_parts = record_time.split('-')
+                    if len(time_parts) == 2:
+                        record_start_time = time_parts[0].strip()
+                        print(f"  🔧 Извлекли время начала из интервала: {record_start_time}")
+                    else:
+                        record_start_time = record_time
+                    
                     record_start = TIMEZONE.localize(
-                        datetime.strptime(f"{record_date} {record_time}", "%d.%m.%Y %H:%M")
+                        datetime.strptime(f"{record_date} {record_start_time}", "%d.%m.%Y %H:%M")
                     )
                     record_duration = calculate_service_step(record_service)
                     record_end = record_start + timedelta(minutes=record_duration)
                     
-                    # ДЛЯ ОТЛАДКИ:
-                    print(f"  Сравниваем с: {r[1]} {record_time}-{record_end.strftime('%H:%M')} ({record_service})")
-                    
+                    print(f"  🔧 Интервал существующей записи: {record_start.time()} - {record_end.time()}")
+                    print(f"  🔧 Пересекается? {max(new_start, record_start) < min(new_end, record_end)}")
+
                     # Проверяем пересечение времени
                     if max(new_start, record_start) < min(new_end, record_end):
+                        print(f"  ❌ КОНФЛИКТ! Специалист занят")
+                        specialist_conflicts += 1
                         return (
                             False,
                             f"❌ Специалист {specialist} уже занят в это время.\n"
                             f"Выберите другое время или специалиста."
                         )
-                except (ValueError, TypeError):
+
+                except (ValueError, TypeError) as e:
+                    print(f"  ⚠️ Ошибка парсинга времени записи: {e}")
                     continue
+    print(f"🔍 Проверка 1 завершена. Конфликтов: {specialist_conflicts}")
     
     # === ПРОВЕРКА 2: КЛИЕНТ (ПО ТЕЛЕФОНУ) ЗАНЯТ? ===
-    for r in records:
+    print(f"🔍 ПРОВЕРКА 2: Ищем записи клиента по телефону '{phone}' на {date_str}")
+
+    for i, r in enumerate(records):
         if len(r) > 8:
             record_phone = str(r[2]).strip()
             record_status = str(r[8]).strip()
@@ -774,7 +758,7 @@ async def _validate_booking_checks(
             
             # Проверяем тот же телефон (разные люди могут использовать один телефон)
             if (record_phone == phone and 
-                record_status == "подтверждено" and 
+                record_status in ["подтверждено", "в резерве", "ожидает оплаты"] and 
                 record_date == date_str):
                 
                 record_name = str(r[1]).strip()
@@ -782,35 +766,56 @@ async def _validate_booking_checks(
                 record_service = str(r[4]).strip() if len(r) > 4 else ""
                 record_specialist = str(r[5]).strip()
                 
+                print(f"  📍 Найдена запись клиента {i}: {record_name} {record_time} у {record_specialist}")
+
                 try:
+                    # Извлекаем время начала
+                    time_parts = record_time.split('-')
+                    if len(time_parts) == 2:
+                        record_start_time = time_parts[0].strip()
+                        print(f"  🔧 Извлекли время начала из интервала: {record_start_time}")
+                    else:
+                        record_start_time = record_time
+                    
                     record_start = TIMEZONE.localize(
-                        datetime.strptime(f"{record_date} {record_time}", "%d.%m.%Y %H:%M")
+                        datetime.strptime(f"{record_date} {record_start_time}", "%d.%m.%Y %H:%M")
                     )
                     record_duration = calculate_service_step(record_service)
                     record_end = record_start + timedelta(minutes=record_duration)
+
+                    print(f"  🔧 Интервал существующей записи: {record_start.time()} - {record_end.time()}")
+                    print(f"  🔧 Пересекается? {max(new_start, record_start) < min(new_end, record_end)}")
                     
                     # Проверяем пересечение времени
                     if max(new_start, record_start) < min(new_end, record_end):
                         # Если имя совпадает - это тот же человек
                         if record_name.lower() == name.lower():
+                            print(f"  ❌ КОНФЛИКТ! У клиента уже есть запись на это время")
                             return (
                                 False,
                                 f"❌ У вас уже есть запись на это время:\n"
-                                f"Выберите другое время или специалиста."                            )
+                                f"{record_service} у {record_specialist}\n"
+                                f"Выберите другое время или специалиста."
+                            )
                         else:
                             # Разные люди, но один телефон (семья)
-                            # НЕ запрещаем, а просим подтвердить
+                            print(f"  ⚠️ КОНФЛИКТ ТЕЛЕФОНА: номер используется другим клиентом")
                             context.user_data["phone_conflict"] = {
                                 "existing_name": record_name,
-                                "existing_time": f"{record_time}-{record_end.strftime('%H:%M')}",
+                                "existing_time": f"{record_start_time}-{record_end.strftime('%H:%M')}",
                                 "existing_specialist": record_specialist,
                                 "existing_service": record_service
                             }
                             return "CONFIRM_PHONE", None
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as e:
+                    print(f"  ⚠️ Ошибка парсинга времени записи: {e}")
                     continue
+
+    print(f"🔍 Проверка 2 завершена")
     
     # === ПРОВЕРКА 3: ПОВТОРНАЯ ЗАПИСЬ В КАТЕГОРИИ ===
+    print(f"🔍 ПРОВЕРКА 3: Ищем повторные записи в категории '{service_type}'")
+
     # Проверяем только для ОДНОГО человека (имя + телефон)
     repeat_records = []
     for r in records:
@@ -824,7 +829,7 @@ async def _validate_booking_checks(
             if (record_name.lower() == name.lower() and 
                 record_phone == phone and 
                 record_category == service_type and 
-                record_status == "подтверждено"):
+                record_status in ["подтверждено", "в резерве", "ожидает оплаты"]):
                 
                 repeat_records.append({
                     "category": record_category,
@@ -835,12 +840,17 @@ async def _validate_booking_checks(
                 })
     
     if repeat_records:
+        print(f"  ⚠️ Найдены повторные записи: {len(repeat_records)}")
         context.user_data["repeat_booking_conflict"] = repeat_records[0]
         return "CONFIRM_REPEAT", None
     
+    print(f"🔍 Проверка 3 завершена")
+    print(f"🔍 ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ УСПЕШНО!")
+    print(f"{'='*80}\n")
+
     return True, None
 
-# --- HANDLERS ---
+
 # --- HANDLERS ---
 
 
@@ -2530,13 +2540,16 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"🔍 Параметры: date='{date_str}', time='{time_str}', spec='{specialist}'")
     print(f"🔍 name='{name}', phone='{phone}'")
 
+    # Получаем данные правильно
+    service_type = context.user_data.get("service_type", "Неизвестно")
+
     check_result, error_msg = await _validate_booking_checks(
         context=context,
         name=name,
         phone=phone,
         date_str=date_str,
         time_str=time_str,
-        service_type=st,
+        service_type=context.user_data.get("service_type", ""),
         specialist=specialist
     )
     
@@ -3458,7 +3471,6 @@ async def admin_process_new_date(
         reply_markup=InlineKeyboardMarkup(kb),
         parse_mode="HTML",
     )
-
 
 async def admin_process_new_specialist(
     update: Update, context: ContextTypes.DEFAULT_TYPE, specialist: str
