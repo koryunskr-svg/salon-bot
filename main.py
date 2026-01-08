@@ -1,4 +1,4 @@
-# main.py-Q-3256-24.12.25-D. - для изм.
+# main.py- D -4339-06.01.26 - для изм.
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
