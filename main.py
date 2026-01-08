@@ -2667,6 +2667,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏰ Время: {time_range}\n"  # ← ИЗМЕНЕНО: time_range вместо time_str
         f"⏳ Длительность: {total_duration} мин\n"  # ← ДОБАВЛЕНО
         f"🆔 ID записи: {record_id}"
+    )
     try:
         await notify_admins(context, admin_message)
         logger.info(f"✅ Админы уведомлены о записи {record_id}")
