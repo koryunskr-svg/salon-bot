@@ -2397,10 +2397,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
     # === ОТЛАДКА: проверяем что есть в user_data ===
     print(f"=== DEBUG finalize_booking: Начало ===")
     print(f"ID чата: {update.effective_chat.id}")
