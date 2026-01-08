@@ -2643,6 +2643,20 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MENU
 
     # === 5. УВЕДОМЛЯЕМ АДМИНИСТРАТОРОВ ===
+    # Рассчитываем время окончания для уведомления
+    try:
+        time_str = context.user_data.get("time", "Неизвестно")
+        total_duration = calculate_service_step(ss)
+        hour = int(time_str.split(':')[0])
+        minute = int(time_str.split(':')[1])
+        end_minutes = hour * 60 + minute + total_duration
+        end_hour = end_minutes // 60
+        end_minute = end_minutes % 60
+        end_time = f"{end_hour:02d}:{end_minute:02d}"
+        time_range = f"{time_str}-{end_time}"
+    except:
+        time_range = time_str
+    
     admin_message = (
         f"📢 <b>Новая запись</b>\n"
         f"👤 Клиент: {name}\n"
@@ -2650,9 +2664,9 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💅 Услуга: {ss} ({st})\n"
         f"👩‍💼 Специалист: {specialist}\n"
         f"📅 Дата: {date_str}\n"
-        f"⏰ Время: {time_str}\n"
+        f"⏰ Время: {time_range}\n"  # ← ИЗМЕНЕНО: time_range вместо time_str
+        f"⏳ Длительность: {total_duration} мин\n"  # ← ДОБАВЛЕНО
         f"🆔 ID записи: {record_id}"
-    )
     try:
         await notify_admins(context, admin_message)
         logger.info(f"✅ Админы уведомлены о записи {record_id}")
