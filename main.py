@@ -242,12 +242,24 @@ def setup_production_logging():
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s - [%(filename)s:%(lineno)d]"
     )
     os.makedirs("logs", exist_ok=True)
+    logging.basicConfig(level=logging.DEBUG, force=True)  # ← force=True сбрасывает старые настройки
     file_handler = logging.handlers.RotatingFileHandler(
         "logs/bot.log", maxBytes=10 * 1024 * 1024, backupCount=5
     )
     file_handler.setFormatter(formatter)
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
+
+    # ОЧИСТИТЬ СТАРЫЕ ОБРАБОТЧИКИ
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
+    
+    root.addHandler(file_handler)
+    root.addHandler(console_handler)
+    
+    # ДОБАВЬ ЭТУ СТРОКУ ДЛЯ МГНОВЕННОЙ ЗАПИСИ:
+    file_handler.flush()
+
     if not root.handlers:
         root.addHandler(file_handler)
         root.addHandler(console_handler)
@@ -1951,9 +1963,7 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"=== DEBUG select_time ВХОД ===")
     print(f"context.user_data keys: {list(context.user_data.keys())}")
     print(f"date из context: {context.user_data.get('date')}")
-    print(
-        f"selected_specialist из context: {context.user_data.get('selected_specialist')}"
-    )
+    print(f"selected_specialist из context: {context.user_data.get('selected_specialist')}")
     print(f"service_type из context: {context.user_data.get('service_type')}")
     print(f"subservice из context: {context.user_data.get('subservice')}")
 
@@ -2386,6 +2396,32 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    # === ОТЛАДКА: проверяем что есть в user_data ===
+    print(f"=== DEBUG finalize_booking: Начало ===")
+    print(f"ID чата: {update.effective_chat.id}")
+    print(f"Данные из context.user_data: {list(context.user_data.keys())}")
+    
+    # Если нет temp_booking, пытаемся восстановить из других полей
+    temp_booking = context.user_data.get("temp_booking", {})
+    
+    if not temp_booking:
+        print(f"⚠️ ВНИМАНИЕ: temp_booking пустой! Пытаюсь восстановить...")
+        
+        # Собираем данные вручную
+        temp_booking = {
+            "specialist": context.user_data.get("selected_specialist", "неизвестно"),
+            "time": context.user_data.get("time", "неизвестно"),
+            "date": context.user_data.get("date", "неизвестно"),
+            "event_id": "unknown",  # будет создан новый
+            "subservice": context.user_data.get("subservice", "неизвестно"),
+        }
+        context.user_data["temp_booking"] = temp_booking
+        print(f"✅ Восстановлен temp_booking: {temp_booking}")
 
     # === 1. ОТМЕНА ТАЙМЕРОВ РЕЗЕРВИРОВАНИЯ ===
     chat_id = update.effective_chat.id
