@@ -956,6 +956,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
     data = query.data
 
+    # === ЗАЩИТА ОТ ПОВТОРНЫХ НАЖАТИЙ ===
+    current_time = time.time()
+    last_click_time = context.user_data.get("_last_click_time", 0)
+    
+    if current_time - last_click_time < 0.5:  # 0.5 секунды между кликами
+        print(f"⚠️ Слишком быстрое нажатие, игнорирую: {query.data}")
+        return
+    
+    context.user_data["_last_click_time"] = current_time
+    # === /ЗАЩИТА ===
+    
+    await update_last_activity(update, context)
+    data = query.data
+
 # === СИГНАЛЬНЫЙ ПРИНТ (для уверенности что функция вызывается) ===
     # Этот print используем sys.stdout напрямую чтобы обойти логирование
     import sys
@@ -2675,13 +2689,27 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"⚠️ Не удалось уведомить админов: {e}")
 
     # === 6. ОТПРАВЛЯЕМ ПОЛЬЗОВАТЕЛЮ ФИНАЛЬНОЕ СООБЩЕНИЕ ===
+    
+    # Рассчитываем диапазон времени
+    try:
+        total_duration = calculate_service_step(ss)
+        hour = int(time_str.split(':')[0])
+        minute = int(time_str.split(':')[1])
+        end_minutes = hour * 60 + minute + total_duration
+        end_hour = end_minutes // 60
+        end_minute = end_minutes % 60
+        end_time = f"{end_hour:02d}:{end_minute:02d}"
+        time_display = f"{time_str}-{end_time}"
+    except:
+        time_display = time_str
+
     user_message = (
         f"✅ <b>Вы успешно записаны!</b>\n\n"
         f"<b>Детали записи:</b>\n"
         f"• Услуга: {ss}\n"
         f"• Специалист: {specialist}\n"
         f"• Дата: {date_str}\n"
-        f"• Время: {time_str}\n"
+        f"• Время: {time_display}\n"  
         f"• Ваше имя: {name}\n\n"
         f"<i>ID записи: {record_id}</i>\n\n"
         f"Мы напомним вам о визите за 24 часа и за 1 час."
