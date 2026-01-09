@@ -1,8 +1,5 @@
-# utils/validation.py
+# utils/validation.py - новый
 import re
-import logging
-
-logger = logging.getLogger(__name__)
 
 def validate_name(name_str: str) -> bool:
     """
@@ -10,83 +7,74 @@ def validate_name(name_str: str) -> bool:
     """
     if not name_str or not (2 <= len(name_str) <= 30):
         return False
-    # Проверяем, содержит ли строка только разрешённые символы
     if not re.match(r"^[a-zA-Zа-яА-ЯёЁ\s\-]+$", name_str):
         return False
-    # Проверяем количество дефисов
     if name_str.count('-') > 1:
         return False
-    # Проверяем, не начинается/заканчивается ли на пробел/дефис
     if name_str.startswith((' ', '-')) or name_str.endswith((' ', '-')):
         return False
-    # Проверяем, нет ли двойных пробелов или дефисов
     if '  ' in name_str or '--' in name_str or '- ' in name_str or ' -' in name_str:
         return False
     return True
 
+
 def validate_phone(phone_str: str) -> str:
     """
     Проверяет телефон:
-    - Российские: 8XXXXXXXXXX (11 цифр, начинается с 7 или 8)
+    - Российские: 8XXXXXXXXXX (11 цифр) или +7XXXXXXXXXX → 8XXXXXXXXXX
     - Международные: +XXXXXXXXX (10-15 цифр, сохраняем +)
+    
     Возвращает нормализованный номер или пустую строку при ошибке.
     """
     if not phone_str:
-        print(f"🔧 validate_phone: пустой ввод")
         return ""
     
-    # Убираем пробелы, скобки, дефисы, но сохраняем + если есть
+    # Убираем пробелы, скобки, дефисы
     cleaned = re.sub(r'[\s\(\)\-]', '', phone_str)
-    print(f"🔧 validate_phone: '{phone_str}' → очищено: '{cleaned}'")
     
     # МЕЖДУНАРОДНЫЙ НОМЕР (начинается с +)
     if cleaned.startswith('+'):
         digits_after_plus = cleaned[1:]  # Убираем +
-        digits_only = re.sub(r'\D', '', digits_after_plus)  # Убираем всё кроме цифр
-        
-        print(f"🔧 validate_phone: международный, цифры: '{digits_only}', длина: {len(digits_only)}")
+        digits_only = re.sub(r'\D', '', digits_after_plus)  # Только цифры
         
         # Проверяем длину (10-15 цифр после +)
         if not (10 <= len(digits_only) <= 15):
-            print(f"🔧 validate_phone: ОШИБКА - международный номер длина {len(digits_only)} не в диапазоне 10-15")
             return ""
         
-        # Возвращаем с +
-        normalized = '+' + digits_only
-        print(f"🔧 validate_phone: Международный номер: '{normalized}'")
-        return normalized
+        # Российский номер +7XXXXXXXXXX → 8XXXXXXXXXX (ТОЛЬКО 11 цифр)
+        if cleaned.startswith('+7'):
+            if len(digits_only) == 11:
+                return '8' + digits_only[1:]  # +79034371439 → 89034371439
+            else:
+                return ""  # +7 с не 11 цифрами - ОШИБКА!
+        
+        # Другие международные - оставляем с +
+        return '+' + digits_only
     
     # РОССИЙСКИЙ НОМЕР (без +)
     else:
-        digits_only = re.sub(r'\D', '', cleaned)  # Убираем всё кроме цифр
-        print(f"🔧 validate_phone: российский, цифры: '{digits_only}', длина: {len(digits_only)}")
+        digits_only = re.sub(r'\D', '', cleaned)  # Только цифры
         
         # Проверяем длину
         if not (10 <= len(digits_only) <= 15):
-            print(f"🔧 validate_phone: ОШИБКА - длина {len(digits_only)} не в диапазоне 10-15")
             return ""
         
-        # РОССИЙСКИЕ НОМЕРА: начинаются с 7 или 8, ДОЛЖНЫ БЫТЬ 11 ЦИФР
-        if digits_only.startswith(('7', '8')):
+        # РОССИЙСКИЕ НОМЕРА: начинаются с 8, должны быть 11 ЦИФР
+        if digits_only.startswith('8'):
             if len(digits_only) == 11:
-                # 7XXXXXXXXXX → 8XXXXXXXXXX
-                if digits_only.startswith('7'):
-                    normalized = '8' + digits_only[1:]
-                    print(f"🔧 validate_phone: Российский 7→8: '{normalized}'")
-                else:  # начинается с 8
-                    normalized = digits_only
-                    print(f"🔧 validate_phone: Российский 8: '{normalized}'")
-                return normalized
-            else:
-                # Российский номер, но не 11 цифр → ОШИБКА
-                print(f"🔧 validate_phone: ОШИБКА - российский номер '{digits_only}' длина {len(digits_only)}, нужно 11")
-                return ""
+                return digits_only  # 89034371439 → 89034371439
+            return ""
         
-        # ДРУГОЙ НОМЕР (не начинается с +, 7, 8) - оставляем как есть
-        print(f"🔧 validate_phone: Другой номер: '{digits_only}'")
+        # НОМЕР начинается с 7 без + - автоисправляем на 8 (только 11 цифр)
+        if digits_only.startswith('7'):
+            if len(digits_only) == 11:
+                return '8' + digits_only[1:]  # 79034371439 → 89034371439
+            return ""
+        
+        # ДРУГОЙ НОМЕР (не начинается с +, 8, 7) - оставляем как есть
         return digits_only
 
-# Для обратной совместимости (если где-то используется bool версия)
+
 def validate_phone_bool(phone_str: str) -> bool:
     """Совместимость: возвращает bool вместо строки"""
     return bool(validate_phone(phone_str))
