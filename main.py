@@ -2658,16 +2658,15 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time_range = time_str
     
     admin_message = (
-        f"📢 <b>Новая запись</b>\n"
-        f"👤 Клиент: {name}\n"
-        f"📞 Телефон: {phone}\n"
-        f"💅 Услуга: {ss} ({st})\n"
-        f"👩‍💼 Специалист: {specialist}\n"
-        f"📅 Дата: {date_str}\n"
-        f"⏰ Время: {time_range}\n"  # ← ИЗМЕНЕНО: time_range вместо time_str
-        f"⏳ Длительность: {total_duration} мин\n"  # ← ДОБАВЛЕНО
-        f"🆔 ID записи: {record_id}"
-    )
+    f"📢 <b>Новая запись</b>\n"
+    f"👤 Клиент: {name}\n"
+    f"📞 Телефон: {phone}\n"
+    f"💅 Услуга: {ss} ({st})\n"
+    f"👩‍💼 Специалист: {specialist}\n"
+    f"📅 Дата: {date_str}\n"
+    f"⏰ Время: {time_str}-{end_time}\n"
+    f"🆔 ID записи: {record_id}"
+)  
     try:
         await notify_admins(context, admin_message)
         logger.info(f"✅ Админы уведомлены о записи {record_id}")
