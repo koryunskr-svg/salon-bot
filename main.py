@@ -846,9 +846,7 @@ async def _validate_booking_checks(
     
     return True, None
 
-# --- HANDLERS ---
-# --- HANDLERS ---
-
+# --- HANDLERS -
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update_last_activity(update, context)
@@ -919,6 +917,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not found:
             org_name_display = f"⚠️ Заведение '{org_name_setting}' не найдено в графике."
             schedule_text = "Не могу отобразить расписание."
+
+        # === ПРОВЕРКА: ЕСТЬ ЛИ НЕЗАВЕРШЕННАЯ ЗАПИСЬ? ===
+    has_booking_data = any(key in context.user_data for key in ["date", "time", "selected_specialist", "subservice"])
+    
+    if has_booking_data:
+        # Есть незавершенная запись - показываем специальное меню
+        kb = [
+            [InlineKeyboardButton("📋 Продолжить запись", callback_data="continue_booking")],
+            [InlineKeyboardButton("🔄 Начать новую запись", callback_data="start_new")],
+            [InlineKeyboardButton("📱 Связаться с админом", callback_data="contact_admin")]
+        ]
+        rm = InlineKeyboardMarkup(kb)
+        
+        # Собираем информацию о незавершенной записи
+        booking_info = []
+        if context.user_data.get("subservice"):
+            booking_info.append(f"• Услуга: {context.user_data.get('subservice')}")
+        if context.user_data.get("selected_specialist"):
+            booking_info.append(f"• Специалист: {context.user_data.get('selected_specialist')}")
+        if context.user_data.get("date"):
+            booking_info.append(f"• Дата: {context.user_data.get('date')}")
+        if context.user_data.get("time"):
+            booking_info.append(f"• Время: {context.user_data.get('time')}")
+        
+        if booking_info:
+            text = f"📋 У вас есть незавершенная запись:\n" + "\n".join(booking_info) + "\n\nЧто хотите сделать?"
+        else:
+            text = "📋 У вас есть незавершенная запись. Продолжить или начать заново?"
+        
+        if update.message:
+            await update.message.reply_text(text, reply_markup=rm)
+        elif update.callback_query:
+            await update.callback_query.edit_message_text(text, reply_markup=rm)
+        
+        context.user_data["state"] = MENU
+        return MENU
+    # === КОНЕЦ ПРОВЕРКИ ===
 
     # Формируем клавиатуру
     kb = [
