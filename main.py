@@ -2411,27 +2411,38 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    # === ОТЛАДКА: проверяем что есть в user_data ===
-    print(f"=== DEBUG finalize_booking: Начало ===")
+    # === ОТЛАДКА ДАТЫ ===
+    print(f"\n{'='*60}")
+    print(f"=== DEBUG FINALIZE_BOOKING ВЫЗВАНА ===")
     print(f"ID чата: {update.effective_chat.id}")
-    print(f"Данные из context.user_data: {list(context.user_data.keys())}")
+    print(f"Все ключи в user_data: {list(context.user_data.keys())}")
     
-    # Если нет temp_booking, пытаемся восстановить из других полей
+    date_str = context.user_data.get("date")
+    time_str = context.user_data.get("time")
+    
+    print(f"date из user_data: '{date_str}'")
+    print(f"time из user_data: '{time_str}'")
+    print(f"selected_specialist: {context.user_data.get('selected_specialist')}")
+    print(f"service_type: {context.user_data.get('service_type')}")
+    print(f"subservice: {context.user_data.get('subservice')}")
+    print(f"name: {context.user_data.get('name')}")
+    print(f"phone: {context.user_data.get('phone')}")
+    
+    # Проверяем temp_booking
     temp_booking = context.user_data.get("temp_booking", {})
+    print(f"temp_booking keys: {list(temp_booking.keys()) if temp_booking else 'НЕТ'}")
+    if temp_booking:
+        print(f"temp_booking['date']: {temp_booking.get('date')}")
+        print(f"temp_booking['time']: {temp_booking.get('time')}")
     
-    if not temp_booking:
-        print(f"⚠️ ВНИМАНИЕ: temp_booking пустой! Пытаюсь восстановить...")
-        
-        # Собираем данные вручную
-        temp_booking = {
-            "specialist": context.user_data.get("selected_specialist", "неизвестно"),
-            "time": context.user_data.get("time", "неизвестно"),
-            "date": context.user_data.get("date", "неизвестно"),
-            "event_id": "unknown",  # будет создан новый
-            "subservice": context.user_data.get("subservice", "неизвестно"),
-        }
-        context.user_data["temp_booking"] = temp_booking
-        print(f"✅ Восстановлен temp_booking: {temp_booking}")
+    print(f"{'='*60}\n")
+    
+    # Если дата пустая, логируем ВСЁ
+    if not date_str or date_str == "Неизвестно":
+        print(f"⚠️ КРИТИЧЕСКАЯ ОШИБКА: date_str = '{date_str}'")
+        print(f"Полное содержимое user_data:")
+        for key, value in context.user_data.items():
+            print(f"  {key}: {value}")
 
     # === 1. ОТМЕНА ТАЙМЕРОВ РЕЗЕРВИРОВАНИЯ ===
     chat_id = update.effective_chat.id
@@ -2700,7 +2711,8 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         end_minute = end_minutes % 60
         end_time = f"{end_hour:02d}:{end_minute:02d}"
         time_display = f"{time_str}-{end_time}"
-    except:
+    except Exception as e:
+        logger.error(f"Ошибка расчета времени: {e}")
         time_display = time_str
 
     user_message = (
@@ -2709,7 +2721,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Услуга: {ss}\n"
         f"• Специалист: {specialist}\n"
         f"• Дата: {date_str}\n"
-        f"• Время: {time_display}\n"  
+        f"• Время: {time_display}\n"  # ← ВОТ ТУТ ДИАПАЗОН
         f"• Ваше имя: {name}\n\n"
         f"<i>ID записи: {record_id}</i>\n\n"
         f"Мы напомним вам о визите за 24 часа и за 1 час."
