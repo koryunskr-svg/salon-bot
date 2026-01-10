@@ -995,7 +995,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_time = time.time()
     last_click_time = context.user_data.get("_last_click_time", 0)
     
-    if current_time - last_click_time < 0.5:  # 0.5 секунды между кликами
+    if current_time - last_click_time < 1.0:  # 1.0 секунды между кликами
         print(f"⚠️ Слишком быстрое нажатие, игнорирую: {query.data}")
         return
     
@@ -2005,24 +2005,35 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         kb = []
-        # Сначала добавляем всех специалистов кроме "Любой"
-        sorted_specialists = sorted(available_specialists)
-        for specialist in sorted_specialists:
-            if specialist.lower() != "любой":
-                kb.append(
-                    [
-                        InlineKeyboardButton(
-                            specialist, callback_data=f"specialist_{specialist}"
-                        )
-                    ]
-                )
         
-        # Потом добавляем "Любой" в конце, если есть
-        if "Любой" in available_specialists:
+        # Разделяем специалистов: обычные и "Любой"
+        regular_specialists = []
+        any_specialist_variant = None
+        
+        for specialist in available_specialists:
+            if specialist.lower() not in ["любой", "любой специалист"]:
+                regular_specialists.append(specialist)
+            else:
+                # Сохраняем оригинальное написание "Любой" для callback_data
+                any_specialist_variant = specialist
+        
+        # Сортируем обычных специалистов по алфавиту
+        for specialist in sorted(regular_specialists):
             kb.append(
                 [
                     InlineKeyboardButton(
-                        "👥 Любой специалист", callback_data="specialist_Любой"
+                        specialist, callback_data=f"specialist_{specialist}"
+                    )
+                ]
+            )
+        
+        # Добавляем "Любой" ВСЕГДА в конце, если он есть
+        if any_specialist_variant:
+            kb.append(
+                [
+                    InlineKeyboardButton(
+                        "👥 Любой", 
+                        callback_data=f"specialist_{any_specialist_variant}"
                     )
                 ]
             )
