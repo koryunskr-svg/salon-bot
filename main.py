@@ -2234,6 +2234,30 @@ async def reserve_slot(
     query = update.callback_query
     await query.answer()
 
+    # ← ДОБАВИТЬ ЭТУ ПРОВЕРКУ В НАЧАЛО
+    date_str = context.user_data.get("date")
+    if date_str:
+        try:
+            # Проверяем, не прошла ли дата/время
+            slot_datetime = TIMEZONE.localize(
+                datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+            )
+            now = datetime.now(TIMEZONE)
+            
+            if slot_datetime < now:
+                await query.edit_message_text(
+                    "❌ Нельзя записаться на прошедшее время!\n\n"
+                    "Выберите другое время или дату.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🕐 Выбрать другое время", callback_data="refresh_time")],
+                        [InlineKeyboardButton("📅 Выбрать другую дату", callback_data="back")]
+                    ])
+                )
+                return
+        except Exception as e:
+            logger.error(f"Ошибка проверки времени: {e}")
+    # ← КОНЕЦ ДОБАВЛЕНИЯ
+
     # Проверка на длинную услугу
     if time_str == "Требуется согласование":
         await query.edit_message_text(
@@ -2494,12 +2518,30 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
     ]
 
+    # Рассчитываем диапазон времени
+    ss = context.user_data.get("subservice", "")
+    time_str = context.user_data.get("time", "N/A")
+    time_display = time_str  # по умолчанию
+    
+    if ss and time_str != "N/A":
+        try:
+            total_duration = calculate_service_step(ss)
+            hour = int(time_str.split(':')[0])
+            minute = int(time_str.split(':')[1])
+            end_minutes = hour * 60 + minute + total_duration
+            end_hour = end_minutes // 60
+            end_minute = end_minutes % 60
+            end_time = f"{end_hour:02d}:{end_minute:02d}"
+            time_display = f"{time_str}-{end_time}"
+        except Exception as e:
+            logger.error(f"Ошибка расчета времени: {e}")
+    
     await update.message.reply_text(
         "📋 Пожалуйста, подтвердите запись:\n\n"
         f"Услуга: {context.user_data.get('subservice', 'N/A')} ({context.user_data.get('service_type', 'N/A')})\n"
         f"Специалист: {context.user_data.get('selected_specialist', 'N/A')}\n"
         f"Дата: {context.user_data.get('date', 'N/A')}\n"
-        f"Время: {context.user_data.get('time', 'N/A')}\n"
+        f"Время: {time_display}\n"  # ← ТЕПЕРЬ С ДИАПАЗОНОМ!
         f"Имя: {context.user_data.get('name', 'N/A')}\n"
         f"Телефон: {context.user_data.get('phone', 'N/A')}\n\n"
         "Всё верно? Выберите действие:",
