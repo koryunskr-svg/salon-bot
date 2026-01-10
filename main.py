@@ -1229,7 +1229,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await start(update, context)
         return MENU
-    # --- /ОБРАБОТКА КНОПОК НЕЗАВЕРШЕННОЙ ЗАПИСИ ---
+    # --- /ОБРАБОТКА КНОПОК НЕЗАВЕРШЕННОЙ ЗАПИСИ ---    
+
+    if data == "start":
+        await start(update, context)
+        return MENU
 
     if data == "start":
         await start(update, context)
@@ -1436,6 +1440,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await finalize_booking(update, context)
     if data == "refresh_time":
         return await select_time(update, context)
+    if data == "back_to_date_select":
+        # Возвращаемся именно к выбору даты, игнорируя back_map
+        print(f"=== back_to_date_select: принудительный возврат к выбору даты ===")
+        # Очищаем время чтобы не было конфликта
+        context.user_data.pop("time", None)
+        return await select_date(update, context)
     if data == "confirm_phone_yes":
         await query.answer()
         await query.message.edit_reply_markup(reply_markup=None)
@@ -2250,7 +2260,7 @@ async def reserve_slot(
                     "Выберите другое время или дату.",
                     reply_markup=InlineKeyboardMarkup([
                         [InlineKeyboardButton("🕐 Выбрать другое время", callback_data="refresh_time")],
-                        [InlineKeyboardButton("📅 Выбрать другую дату", callback_data="back")]
+                        [InlineKeyboardButton("📅 Выбрать другую дату", callback_data="back_to_date_select")]
                     ])
                 )
                 return
@@ -2770,6 +2780,21 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         created_at = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
 
         # Формируем полную запись
+
+        # Рассчитываем диапазон для таблицы
+        time_range = time_str
+        try:
+            total_duration = calculate_service_step(ss)
+            hour = int(time_str.split(':')[0])
+            minute = int(time_str.split(':')[1])
+            end_minutes = hour * 60 + minute + total_duration
+            end_hour = end_minutes // 60
+            end_minute = end_minutes % 60
+            end_time = f"{end_hour:02d}:{end_minute:02d}"
+            time_range = f"{time_str}-{end_time}"
+        except Exception as e:
+            logger.error(f"Ошибка расчета диапазона для таблицы: {e}")
+
         full_record = [
             record_id,  # A: ID записи
             name,  # B: Имя
@@ -2778,7 +2803,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ss,  # E: Услуга
             specialist,  # F: Специалист
             date_str,  # G: Дата
-            time_str,  # H: Время
+            time_range,  # H: Время с диапазоном
             "подтверждено",  # I: Статус
             created_at,  # J: Дата создания
             "",  # K: Комментарий
@@ -3709,10 +3734,28 @@ async def _admin_save_reschedule(
             old_date = str(r[6]).strip() if len(r) > 6 else ""
             old_time = str(r[7]).strip() if len(r) > 7 else ""
             old_specialist = str(r[5]).strip() if len(r) > 5 else ""
+
+            # Рассчитываем диапазон для нового времени
+            new_time_range = new_time  # по умолчанию
+            try:
+                # Нужно найти услугу для расчета длительности
+                ss = r[4] if len(r) > 4 else ""
+                if ss:
+                    total_duration = calculate_service_step(ss)
+                    hour = int(new_time.split(':')[0])
+                    minute = int(new_time.split(':')[1])
+                    end_minutes = hour * 60 + minute + total_duration
+                    end_hour = end_minutes // 60
+                    end_minute = end_minutes % 60
+                    end_time = f"{end_hour:02d}:{end_minute:02d}"
+                    new_time_range = f"{new_time}-{end_time}"
+            except Exception as e:
+                logger.error(f"Ошибка расчета диапазона при переносе: {e}")
+
             updated = list(r)
             updated[5] = new_specialist
             updated[6] = new_date
-            updated[7] = new_time
+            updated[7] = new_time_range
             updated[9] = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
             note = f"Перенесено админом {datetime.now(TIMEZONE).strftime('%d.%m.%Y %H:%M')}"
             if force:
