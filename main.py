@@ -1195,6 +1195,42 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # --- ОБРАБОТКА КНОПОК НЕЗАВЕРШЕННОЙ ЗАПИСИ ---
+    if data == "continue_booking":
+        print(f"=== continue_booking: продолжаем запись ===")
+        
+        if context.user_data.get("name"):
+            context.user_data["state"] = ENTER_PHONE
+            await query.edit_message_text(
+                "📞 Введите ваш телефон для продолжения:",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("⬅️ Назад", callback_data="back")]
+                ])
+            )
+            return ENTER_PHONE
+        else:
+            context.user_data["state"] = ENTER_NAME
+            await query.edit_message_text(
+                "⏳ Продолжаем запись. Введите ваше имя:",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("⬅️ Назад", callback_data="back")]
+                ])
+            )
+            return ENTER_NAME
+
+    if data == "start_new":
+        print(f"=== start_new: очищаем данные для новой записи ===")
+        
+        keys_to_remove = ["date", "time", "selected_specialist", "subservice", 
+                         "service_type", "name", "phone", "temp_booking", "state"]
+        
+        for key in keys_to_remove:
+            context.user_data.pop(key, None)
+        
+        await start(update, context)
+        return MENU
+    # --- /ОБРАБОТКА КНОПОК НЕЗАВЕРШЕННОЙ ЗАПИСИ ---
+
     if data == "start":
         await start(update, context)
         return MENU
