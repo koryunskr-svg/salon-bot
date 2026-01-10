@@ -1971,7 +1971,7 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
             )
 
-        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")]
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
 
         await query.edit_message_text(
             f"👩‍💼 Выберите специалиста на {date_str} для услуги '{subservice}':",
