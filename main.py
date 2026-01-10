@@ -1938,7 +1938,20 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         kb = []
-        for specialist in sorted(available_specialists):
+        
+        # Разделяем специалистов: обычные и "Любой"
+        regular_specialists = []
+        any_specialist_variant = None
+        
+        for specialist in available_specialists:
+            if specialist.lower() not in ["любой", "любой специалист"]:
+                regular_specialists.append(specialist)
+            else:
+                # Сохраняем оригинальное написание "Любой" для callback_data
+                any_specialist_variant = specialist
+        
+        # Сортируем обычных специалистов по алфавиту
+        for specialist in sorted(regular_specialists):
             kb.append(
                 [
                     InlineKeyboardButton(
@@ -1946,8 +1959,19 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 ]
             )
+        
+        # Добавляем "Любой" ВСЕГДА в конце, если он есть
+        if any_specialist_variant:
+            kb.append(
+                [
+                    InlineKeyboardButton(
+                        "👥 Любой", 
+                        callback_data=f"specialist_{any_specialist_variant}"
+                    )
+                ]
+            )
 
-        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")]
 
         await query.edit_message_text(
             f"👩‍💼 Выберите специалиста на {date_str} для услуги '{subservice}':",
