@@ -143,6 +143,21 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     """
     logger.info(f"ПОИСК СЛОТОВ: Дата={date_str}, Специалист={selected_specialist}, Услуга={subservice}")
     
+    # Проверяем, не прошла ли выбранная дата
+    try:
+        from datetime import datetime
+        from config import TIMEZONE
+        
+        now = datetime.now(TIMEZONE)
+        selected_date = datetime.strptime(date_str, "%d.%m.%Y").date()
+        
+        # Если выбрана прошедшая дата (вчера и раньше) - возвращаем пустой список
+        if selected_date < now.date():
+            logger.info(f"⏰ Выбрана прошедшая дата: {date_str}, сегодня: {now.date()}")
+            return []
+    except Exception as e:
+        logger.error(f"Ошибка проверки даты: {e}")
+
     if not date_str or not selected_specialist:
         logger.warning(f"Пустые параметры: date_str='{date_str}', specialist='{selected_specialist}'")
         return []
