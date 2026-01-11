@@ -300,16 +300,24 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     busy_intervals = []  # список кортежей (начало, конец) в минутах от 00:00
     
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
-    for r in records:
+    
+    logger.info(f"=== DEBUG SLOTS: Ищу занятые слоты для {selected_specialist} на {date_str} ===")
+    logger.info(f"Всего записей в таблице: {len(records)}")
+    
+    for idx, r in enumerate(records, start=3):
         if len(r) > 7:
             record_date = str(r[6]).strip()
             record_specialist = str(r[5]).strip() if len(r) > 5 else ""
             record_status = str(r[8]).strip() if len(r) > 8 else ""
             record_time = str(r[7]).strip()
             
+            debug_msg = f"Запись {idx}: дата='{record_date}', спец='{record_specialist}', статус='{record_status}', время='{record_time}'"
+            
             if (record_date == date_str and 
                 record_status == "подтверждено" and
                 record_specialist == selected_specialist):
+                
+                logger.info(f"{debug_msg} ✓ ПОДХОДИТ!")
                 
                 try:
                     # Получаем время начала
@@ -334,8 +342,12 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                     
                 except Exception as e:
                     logger.error(f"Ошибка парсинга времени записи: {e}")
+                
+                else:
+                    logger.info(f"{debug_msg} ✗ НЕ ПОДХОДИТ")
     
-    logger.info(f"Найдено занятых интервалов: {len(busy_intervals)}")
+        logger.info(f"=== DEBUG SLOTS: Найдено занятых интервалов: {len(busy_intervals)} ===")     
+
     
     # === 4. ГЕНЕРИРУЕМ СВОБОДНЫЕ СЛОТЫ ===
     available_slots = []
