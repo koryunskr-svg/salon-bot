@@ -991,7 +991,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_time = time.time()
     last_click_time = context.user_data.get("_last_click_time", 0)
     
-    if current_time - last_click_time < 1.0:  # 1.0 секунды между кликами
+    if current_time - last_click_time < 2.5:  # 2.5 секунды между кликами
         print(f"⚠️ Слишком быстрое нажатие, игнорирую: {query.data}")
         return
     
