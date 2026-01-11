@@ -804,15 +804,11 @@ async def _validate_booking_checks(
                                 f"❌ У вас уже есть запись на это время:\n"
                                 f"Выберите другое время или специалиста."                            )
                         else:
-                            # Разные люди, но один телефон (семья)
-                            # НЕ запрещаем, а просим подтвердить
-                            context.user_data["phone_conflict"] = {
-                                "existing_name": record_name,
-                                "existing_time": f"{record_time}-{record_end.strftime('%H:%M')}",
-                                "existing_specialist": record_specialist,
-                                "existing_service": record_service
-                            }
-                            return "CONFIRM_PHONE", None
+                            # Разные люди, но один телефон (семья) - РАЗРЕШАЕМ
+                            logger.info(f"⚠️ Разные люди используют один телефон: {record_name} и {name}")
+                            # Пропускаем проверку, разрешаем запись
+                            continue
+
                 except (ValueError, TypeError):
                     continue
     
@@ -1716,6 +1712,13 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await update_last_activity(update, context)
+
+    # ← ДОБАВЬТЕ ОТЛАДКУ
+    print(f"=== DEBUG select_date ===")
+    print(f"selected_specialist: {context.user_data.get('selected_specialist')}")
+    print(f"time: {context.user_data.get('time')}")
+    print(f"date: {context.user_data.get('date')}")
+    # ← КОНЕЦ ОТЛАДКИ
 
     # Получаем выбранного специалиста, категорию услуги, приоритет
     selected_specialist = context.user_data.get(
