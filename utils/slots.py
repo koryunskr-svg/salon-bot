@@ -143,21 +143,6 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     """
     logger.info(f"ПОИСК СЛОТОВ: Дата={date_str}, Специалист={selected_specialist}, Услуга={subservice}")
     
-    # Проверяем, не прошла ли выбранная дата
-    try:
-        from datetime import datetime
-        from config import TIMEZONE
-        
-        now = datetime.now(TIMEZONE)
-        selected_date = datetime.strptime(date_str, "%d.%m.%Y").date()
-        
-        # Если выбрана прошедшая дата (вчера и раньше) - возвращаем пустой список
-        if selected_date < now.date():
-            logger.info(f"⏰ Выбрана прошедшая дата: {date_str}, сегодня: {now.date()}")
-            return []
-    except Exception as e:
-        logger.error(f"Ошибка проверки даты: {e}")
-
     if not date_str or not selected_specialist:
         logger.warning(f"Пустые параметры: date_str='{date_str}', specialist='{selected_specialist}'")
         return []
@@ -236,8 +221,23 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                         # Создаем дефолтный интервал в минутах
                         work_intervals = [(10*60, 20*60)]  # 10:00-20:00 в минутах
             break  # Выходим из цикла после нахождения специалиста
-     
 
+    # Получаем текущее время
+    from datetime import datetime
+    from config import TIMEZONE
+    now = datetime.now(TIMEZONE)
+    
+    # Проверяем, не прошла ли выбранная дата
+    try:
+        selected_date = datetime.strptime(date_str, "%d.%m.%Y").date()
+        if selected_date < now.date():
+            logger.info(f"⏰ Выбрана прошедшая дата: {date_str}, сегодня: {now.date()}")
+            return []  # Возвращаем пустой список слотов
+    except Exception as e:
+        logger.error(f"Ошибка проверки даты: {e}")
+    
+    # Генерируем все возможные слоты в рамках рабочих интервалов
+    available_slots = []
     
     # === 2. ПОЛУЧАЕМ ДЛИТЕЛЬНОСТЬ УСЛУГИ ===
     service_duration = 60  # по умолчанию
@@ -357,6 +357,24 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
         # Перебираем 15-минутные интервалы
         current_minutes = interval_start_minutes
         while current_minutes + total_duration <= interval_end_minutes:
+            
+            # Проверяем, не прошло ли это время
+            hour = current_minutes // 60
+            minute = current_minutes % 60
+            time_str = f"{hour:02d}:{minute:02d}"
+            
+            try:
+                slot_datetime = TIMEZONE.localize(
+                    datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+                )
+              
+                # Если слот уже прошел - пропускаем
+                if slot_datetime < now:
+                    current_minutes += 15
+                    continue  # Переходим к следующему слоту
+            except Exception as e:
+                logger.error(f"Ошибка проверки времени слота: {e}")
+            
             slot_start_minutes = current_minutes
             slot_end_minutes = current_minutes + total_duration
             
