@@ -2866,7 +2866,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👩‍💼 Специалист: {specialist}\n"
         f"📅 Дата: {date_str}\n"
         f"⏰ Время: {time_range}\n"  # ← ИЗМЕНЕНО: time_range вместо time_str
-        f"⏳ Длительность: {total_duration} мин\n"  # ← ДОБАВЛЕНО
+        f"⏳ Длительность: {format_duration(total_duration)}\n"
         f"🆔 ID записи: {record_id}"
     )
     try:
