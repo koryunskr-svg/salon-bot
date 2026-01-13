@@ -143,16 +143,8 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     """
     logger.info(f"ПОИСК СЛОТОВ: Дата={date_str}, Специалист={selected_specialist}, Услуга={subservice}")
     
-    # === ПРОВЕРКА ДАННЫХ ===
-    logger.info(f"=== ПРОВЕРКА: Ищем слоты для {selected_specialist} на {date_str} ===")
-    
-    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
-    logger.info(f"Загружено записей: {len(records)}")
-    
-    # Проверим есть ли вообще Ольга в данных
-    for i, r in enumerate(records[:20]):  # первые 20 записей
-        if len(r) > 5 and "Ольга" in str(r[5]):
-            logger.info(f"Нашлась Ольга в записи {i+3}: {r[5]} {r[6]} {r[7]}")
+    # === ПРОСТАЯ ДИАГНОСТИКА ===
+    logger.info(f"=== ДИАГНОСТИКА: ищем {selected_specialist} на {date_str} ===")
 
     if not date_str or not selected_specialist:
         logger.warning(f"Пустые параметры: date_str='{date_str}', specialist='{selected_specialist}'")
