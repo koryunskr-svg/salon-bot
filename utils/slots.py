@@ -304,6 +304,14 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     logger.info(f"=== DEBUG SLOTS: Ищу занятые слоты для {selected_specialist} на {date_str} ===")
     logger.info(f"Всего записей в таблице: {len(records)}")
     
+    if len(records) > 0:
+        logger.info("=== DEBUG: Первые 3 записи из таблицы ===")
+        for i in range(min(3, len(records))):
+            r = records[i]
+            logger.info(f"  Строка {i+3}: {r}")
+    else:
+        logger.error("❌ Таблица 'Записи' пустая или не загрузилась")
+
     for idx, r in enumerate(records, start=3):
         if len(r) > 7:
             record_date = str(r[6]).strip()
