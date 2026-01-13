@@ -328,9 +328,10 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
             debug_msg = f"Запись {idx}: дата='{record_date}', спец='{record_specialist}', статус='{record_status}', время='{record_time}'"
             
             # === ДИАГНОСТИКА ===
-            if record_specialist == selected_specialist and record_date == date_str:
-                logger.info(f"  ДИАГНОСТИКА: Нашлась запись Ольги {idx}: статус='{record_status}'")
-                logger.info(f"  ДИАГНОСТИКА: Сравнение: '{record_status}' == 'подтверждено' = {record_status == 'подтверждено'}")        
+            if record_specialist.strip().lower() == selected_specialist.strip().lower() and record_date.strip() == date_str.strip():
+                logger.info(f"  ДИАГНОСТИКА: Нашлась запись {idx}: '{record_specialist}' == '{selected_specialist}' = {record_specialist.strip().lower() == selected_specialist.strip().lower()}")
+                logger.info(f"  ДИАГНОСТИКА: '{record_date}' == '{date_str}' = {record_date.strip() == date_str.strip()}")
+                logger.info(f"  ДИАГНОСТИКА: Статус: '{record_status.strip()}'")
 
             if (record_date == date_str and 
                 record_status == "подтверждено" and
