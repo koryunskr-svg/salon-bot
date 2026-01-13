@@ -314,6 +314,9 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
 
     for idx, r in enumerate(records, start=3):
         if len(r) > 7:
+            # СУПЕРПРОСТАЯ ДИАГНОСТИКА
+            if idx <= 80:  # Первые 80 записей
+                logger.info(f"СУПЕРДИАГНОСТИКА строка {idx}: спец='{r[5]}', дата='{r[6]}', статус='{r[8]}'")
             record_date = str(r[6]).strip()
             record_specialist = str(r[5]).strip() if len(r) > 5 else ""
             record_status = str(r[8]).strip() if len(r) > 8 else ""
