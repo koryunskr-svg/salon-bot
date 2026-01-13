@@ -328,9 +328,16 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                 logger.info(f"{debug_msg} ✓ ПОДХОДИТ!")
                 
                 try:
+                    # Парсим время начала из диапазона "10:15-11:30"
+                    if "-" in record_time:
+                        start_time_str = record_time.split("-")[0].strip()  # Берём "10:15"
+                        logger.info(f"   Преобразуем диапазон: '{record_time}' -> '{start_time_str}'")
+                    else:
+                        start_time_str = record_time
+
                     # Получаем время начала
                     start_dt = TIMEZONE.localize(
-                        datetime.datetime.strptime(f"{record_date} {record_time}", "%d.%m.%Y %H:%M")
+                        datetime.datetime.strptime(f"{record_date} {start_time_str}", "%d.%m.%Y %H:%M")
                     )
                     
                     # Получаем длительность этой записи
