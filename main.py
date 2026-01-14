@@ -2142,6 +2142,30 @@ date_str, st, ss]):
     logger.info(f"specialist: '{specialist}'")
     logger.info(f"priority: '{context.user_data.get('priority', 'date')}'")
 
+    # === ДОБАВИТЬ ЭТОТ БЛОК ПРОВЕРКИ (ВСТАВКА) ===
+    logger.info(f"=== ПРОВЕРКА ДАННЫХ ДЛЯ ПОИСКА СЛОТОВ ===")
+    logger.info(f"Дата: '{date_str}'")
+    logger.info(f"Специалист: '{specialist}'")
+    logger.info(f"Услуга: '{ss}' ({st})")
+    logger.info(f"TIMEZONE: {TIMEZONE}")
+    
+    # Проверяем, что дата в правильном формате
+    try:
+        test_date = datetime.strptime(date_str, "%d.%m.%Y")
+        logger.info(f"✅ Дата '{date_str}' парсится правильно")
+    except ValueError as e:
+        logger.error(f"❌ Ошибка парсинга даты '{date_str}': {e}")
+        await query.edit_message_text("❌ Ошибка формата даты. Пожалуйста, выберите дату заново.")
+        return
+    
+    # Проверяем, что специалист выбран
+    if not specialist or specialist.lower() in ["любой", "любой специалист"]:
+        logger.warning(f"⚠️ Специалист не выбран или выбран 'любой': {specialist}")
+        # Это нормально, продолжаем
+    else:
+        logger.info(f"✅ Специалист выбран: {specialist}")
+    # === КОНЕЦ ВСТАВКИ ===
+
     slots = find_available_slots(
         st, ss, date_str, specialist, context.user_data.get("priority", "date")
     )
@@ -2239,7 +2263,6 @@ date_str, st, ss]):
 
 
 # --- RESERVE SLOT ---
-
 
 async def reserve_slot(
     update: Update, context: ContextTypes.DEFAULT_TYPE, specialist: str, time_str: str
