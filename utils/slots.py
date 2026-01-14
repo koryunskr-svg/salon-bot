@@ -141,22 +141,31 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     Находит доступные слоты на основе типа услуги, подуслуги, даты, специалиста и приоритета.
     Возвращает список словарей с ключами: time, specialist.
     """
-    logger.info(f"ПОИСК СЛОТОВ: Дата={date_str}, Специалист={selected_specialist}, Услуга={subservice}")
+    logger.info(f"🎯 ПОИСК СЛОТОВ: Дата={date_str}, Специалист={selected_specialist}, Услуга={subservice} ({service_type})")
     
-    # === ПРОСТАЯ ДИАГНОСТИКА ===
-    logger.info(f"=== ДИАГНОСТИКА: ищем {selected_specialist} на {date_str} ===")
-
-    if not date_str or not selected_specialist:
-        logger.warning(f"Пустые параметры: date_str='{date_str}', specialist='{selected_specialist}'")
+    # === МЕГА-ОТЛАДКА: проверяем входные параметры ===
+    logger.info(f"=== ВХОДНЫЕ ПАРАМЕТРЫ find_available_slots ===")
+    logger.info(f"  1. service_type: '{service_type}'")
+    logger.info(f"  2. subservice: '{subservice}'")
+    logger.info(f"  3. date_str: '{date_str}'")
+    logger.info(f"  4. selected_specialist: '{selected_specialist}'")
+    logger.info(f"  5. priority: '{priority}'")
+    logger.info(f"  6. TIMEZONE: {TIMEZONE} (type: {type(TIMEZONE)})")
+    
+    if not date_str:
+        logger.error("❌ date_str пустая!")
         return []
+    
+    if not selected_specialist:
+        logger.warning("⚠️ selected_specialist пустой, но продолжаем...")
     
     # === 1. ПОЛУЧАЕМ ГРАФИК РАБОТЫ СПЕЦИАЛИСТА ===
     from config import CALENDAR_ID, TIMEZONE, SHEET_ID
-    import datetime
+    import datetime as dt_module
     
     # Определяем день недели
     try:
-        search_date = datetime.datetime.strptime(date_str, "%d.%m.%Y")
+        search_date = dt_module.datetime.strptime(date_str, "%d.%m.%Y")
         day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
         day_of_week = day_names[search_date.weekday()]
         logger.info(f"День недели для {date_str}: {day_of_week}")
@@ -166,8 +175,7 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     
     # Получаем график специалиста
     schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
-    work_start = 10  # по умолчанию
-    work_end = 20    # по умолчанию
+    work_intervals = []  # список интервалов в минутах [(start_minutes, end_minutes), ...]
     
     for row in schedule_data:
         if len(row) > 0 and row[0] == selected_specialist:
@@ -180,9 +188,6 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                     return []
                 elif "-" in schedule:
                     try:
-                        # Создаем список рабочих интервалов в МИНУТАХ
-                        work_intervals = []
-                        
                         if "," in schedule:
                             # Есть перерыв: "10:00-13:00,14:00-20:00"
                             interval_strings = schedule.split(",")
@@ -225,22 +230,21 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                         work_intervals = [(10*60, 20*60)]  # 10:00-20:00 в минутах
             break  # Выходим из цикла после нахождения специалиста
 
+    # Проверяем, есть ли рабочие интервалы
+    if not work_intervals:
+        work_intervals = [(10*60, 20*60)]  # fallback 10:00-20:00 в минутах
+    
     # Получаем текущее время
-    from datetime import datetime
-    from config import TIMEZONE
-    now = datetime.now(TIMEZONE)
+    now = dt_module.datetime.now(TIMEZONE)
     
     # Проверяем, не прошла ли выбранная дата
     try:
-        selected_date = datetime.strptime(date_str, "%d.%m.%Y").date()
+        selected_date = dt_module.datetime.strptime(date_str, "%d.%m.%Y").date()
         if selected_date < now.date():
             logger.info(f"⏰ Выбрана прошедшая дата: {date_str}, сегодня: {now.date()}")
             return []  # Возвращаем пустой список слотов
     except Exception as e:
         logger.error(f"Ошибка проверки даты: {e}")
-    
-    # Генерируем все возможные слоты в рамках рабочих интервалов
-    available_slots = []
     
     # === 2. ПОЛУЧАЕМ ДЛИТЕЛЬНОСТЬ УСЛУГИ ===
     service_duration = 60  # по умолчанию
@@ -267,21 +271,6 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     logger.info(f"Общая длительность с округлением: {total_duration} мин")
     logger.info(f"ПРОВЕРКА ДЛИТЕЛЬНОСТИ: услуга='{subservice}', total_duration={total_duration}, порог=240 мин (4 часа)")
 
-    # === АВТОМАТИЧЕСКОЕ ОГРАНИЧЕНИЕ ДЛЯ ДЛИННЫХ УСЛУГ ===
-    # Вычисляем общее рабочее время за день (сумма всех интервалов)
-    total_work_minutes = 0
-    for int_start, int_end in work_intervals:
-        total_work_minutes += (int_end - int_start) * 60
-    
-    # Сколько таких услуг можно сделать за день?
-    max_services_per_day = total_work_minutes // total_duration
-    
-    # Вычисляем границы рабочего дня ДО условия
-    latest_interval_end = max([end for _, end in work_intervals])
-    earliest_interval_start = min([start for start, _ in work_intervals])
-
-    logger.info(f"ПРОВЕРКА ДЛИТЕЛЬНОСТИ: total_duration={total_duration}, порог=240")
-
     # Если услуга очень длинная (больше 4 часов) - создаем специальный слот
     if total_duration > 240:  # Более 4 часов
         logger.info(f"⚠️ Очень длинная услуга ({total_duration} мин) - требуется согласование с админом")
@@ -292,12 +281,6 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
             "specialist": f"{selected_specialist} (длинная услуга)",
             "long_service": True  # Флаг длинной услуги
         }]
-
-    # Стандартное ограничение для обычных услуг
-    max_start_minutes = latest_interval_end * 60 - total_duration
-    
-    logger.info(f"Общее рабочее время: {total_work_minutes//60}ч{total_work_minutes%60}мин")
-    logger.info(f"Максимальное начало слота: {max_start_minutes//60}:{max_start_minutes%60:02d}")
 
     # === 3. ПОЛУЧАЕМ ЗАНЯТЫЕ ИНТЕРВАЛЫ ===
     busy_intervals = []  # список кортежей (начало, конец) в минутах от 00:00
@@ -327,42 +310,52 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                     else:
                         start_time_str = record_time
 
-                    # === ОТЛАДКА ПЕРЕД ПАРСИНГОМ ===
+                    # === ФИКС: Используем правильный парсинг datetime ===
                     logger.info(f"  ОТЛАДКА: Парсим '{record_date} {start_time_str}'")
-
-                    # Получаем время начала
-                    start_dt = TIMEZONE.localize(
-                        datetime.datetime.strptime(f"{record_date} {start_time_str}", "%d.%m.%Y %H:%M")
-                    )
+                    
+                    # Создаем datetime БЕЗ часового пояса
+                    naive_datetime = dt_module.datetime.strptime(f"{record_date} {start_time_str}", "%d.%m.%Y %H:%M")
+                    
+                    # Добавляем часовой пояс
+                    if naive_datetime.tzinfo is None:
+                        start_dt = TIMEZONE.localize(naive_datetime)
+                    else:
+                        start_dt = naive_datetime
                     
                     # Получаем длительность этой записи
                     record_service = str(r[4]).strip() if len(r) > 4 else ""
-                    from main import calculate_service_step
-                    record_duration = calculate_service_step(record_service)
+                    
+                    # Вычисляем длительность локально (избегаем циклического импорта)
+                    record_service_duration = 60  # значение по умолчанию
+                    for svc_row in services_data:
+                        if len(svc_row) > 1 and svc_row[1] == record_service:
+                            try:
+                                base_duration = int(svc_row[2]) if svc_row[2] else 60
+                                buffer_duration = int(svc_row[3]) if len(svc_row) > 3 and svc_row[3] else 0
+                                record_service_duration = base_duration + buffer_duration
+                                break
+                            except (ValueError, TypeError):
+                                pass
                     
                     # Конец записи
-                    end_dt = start_dt + datetime.timedelta(minutes=record_duration)
+                    end_dt = start_dt + dt_module.timedelta(minutes=record_service_duration)
                     
                     # Конвертируем в минуты от начала дня
                     start_minutes = start_dt.hour * 60 + start_dt.minute
                     end_minutes = end_dt.hour * 60 + end_dt.minute
                     
                     busy_intervals.append((start_minutes, end_minutes))
-                    logger.info(f"   Занято: {start_time_str}-{end_dt.strftime('%H:%M')} ({record_service}, {record_duration} мин)")
+                    logger.info(f"   Занято: {start_time_str}-{end_dt.strftime('%H:%M')} ({record_service}, {record_service_duration} мин)")
                     
                 except Exception as e:
                     logger.error(f"Ошибка обработки записи {idx}: {e}")
                     logger.error(f"   record_date='{record_date}', start_time_str='{start_time_str}'")
+                    logger.error(f"   Полная строка: {r}")
 
     logger.info(f"=== DEBUG SLOTS: Найдено занятых интервалов: {len(busy_intervals)} ===")
-
     
     # === 4. ГЕНЕРИРУЕМ СВОБОДНЫЕ СЛОТЫ ===
     available_slots = []
-    
-    # Проверяем, есть ли рабочие интервалы
-    if not work_intervals:
-        work_intervals = [(10*60, 20*60)]  # fallback 10:00-20:00 в минутах
     
     logger.info(f"Генерация слотов по интервалам (в минутах): {work_intervals}")
 
@@ -385,7 +378,7 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
             
             try:
                 slot_datetime = TIMEZONE.localize(
-                    datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+                    dt_module.datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
                 )
               
                 # Если слот уже прошел - пропускаем
@@ -442,6 +435,5 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
         available_slots = available_slots[:40]
     
     return available_slots
-
 
 print("✅ Модуль slots.py загружен.")
