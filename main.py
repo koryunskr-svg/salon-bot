@@ -1396,16 +1396,58 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             return await select_time(update, context)  # Сценарий A
     
+    if data.startswith("slot_any_"):
+        # Обработка выбора специалиста для "Любой"
+        time_str = data.split("slot_any_", 1)[1]
+        logger.info(f"🎯 Выбор специалиста для времени: {time_str}")
+        
+        # Получаем список свободных специалистов для этого времени
+        date_str = context.user_data.get("date", "")
+        service_type = context.user_data.get("service_type", "")
+        subservice = context.user_data.get("subservice", "")
+        
+        # Ищем снова слоты, чтобы получить список специалистов
+        slots = find_available_slots(
+            service_type, subservice, date_str, "любой", context.user_data.get("priority", "date")
+        )
+        
+        # Находим нужный слот
+        available_specialists = []
+        for slot in slots:
+            if slot.get("time") == time_str and slot.get("is_any_mode", False):
+                available_specialists = slot.get("available_specialists", [])
+                break
+        
+        if not available_specialists:
+            await query.edit_message_text("❌ Ошибка: специалисты не найдены.")
+            return
+        
+        if len(available_specialists) == 1:
+            # Только один свободный - сразу резервируем
+            return await reserve_slot(update, context, available_specialists[0], time_str)
+        
+        # Показываем выбор между несколькими специалистами
+        kb = []
+        for spec in available_specialists:
+            kb.append([InlineKeyboardButton(f"👩‍💼 {spec}", callback_data=f"slot_{spec}_{time_str}")])
+        
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="refresh_time")])
+        
+        await query.edit_message_text(
+            f"⏰ Время: {time_str}\n\n"
+            f"Выберите специалиста:",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+        return
+    
     if data.startswith("slot_"):
-        # ДОБАВИТЬ ОТЛАДКУ:
-        logger.info(f"DEBUG button_handler: data='{data}'")
-        parts = data.split("_", 2)
-        logger.info(f"DEBUG button_handler: parts={parts}")
-        if len(parts) == 3:
-            return await reserve_slot(update, context, parts[1], parts[2])
+        # Обычный слот (уже выбран специалист)
         parts = data.split("_", 2)
         if len(parts) == 3:
             return await reserve_slot(update, context, parts[1], parts[2])
+        else:
+            await query.edit_message_text("❌ Неверный формат слота.")
+            return
         else:
             await query.edit_message_text("❌ Неверный формат слота.")
             return
@@ -2226,28 +2268,29 @@ date_str, st, ss]):
     
     # ЕСЛИ ЕСТЬ СЛОТЫ - ПОКАЗЫВАЕМ ИХ С ИНТЕРВАЛАМИ
     kb = []
-    for s in slots:
-        t = s.get("time", "N/A")
-        m = s.get("specialist", "N/A")
-        
-        # === ОТОБРАЖЕНИЕ ДЛЯ "ЛЮБОЙ" ===
-        if is_any_mode:
-            display_name = f"{m} (авто)"
-        else:
-            display_name = m
-        
-        logger.info(f"=== DEBUG: Расчет для слота {t} ===")
-        logger.info(f"  subservice: {ss}")
-
-    # ЕСЛИ ЕСТЬ СЛОТЫ - ПОКАЗЫВАЕМ ИХ С ИНТЕРВАЛАМИ
-    kb = []
-    for s in slots:
-        t = s.get("time", "N/A")
-        m = s.get("specialist", "N/A")
-
-        logger.info(f"=== DEBUG: Расчет для слота {t} ===")
-        logger.info(f"  subservice: {ss}")
+    is_any_mode = context.user_data.get("selected_specialist", "").lower() in ["любой", "любой специалист"]
     
+    for s in slots:
+        t = s.get("time", "N/A")
+        m = s.get("specialist", "N/A")
+        
+        # === НОВАЯ ЛОГИКА ДЛЯ "ЛЮБОЙ" ===
+        available_count = s.get("available_count", 1)
+        available_specialists = s.get("available_specialists", [m])
+        
+        if is_any_mode and available_count > 1:
+            # Несколько специалистов свободны - кнопка "Выбрать"
+            display_text = f"{t} — 👥 Выбрать ({available_count} свободны)"
+            callback_data = f"slot_any_{t}"
+        else:
+            # Один специалист или обычный режим
+            display_text = f"{t} — {m}"
+            if is_any_mode and available_count == 1:
+                display_text += " (единственный свободный)"
+            callback_data = f"slot_{m}_{t}"
+        
+        logger.info(f"=== DEBUG: Расчет для слота {t} ===")
+        logger.info(f"  subservice: {ss}")
     
         # Рассчитываем время окончания
         ss = context.user_data.get("subservice", "")
@@ -2264,8 +2307,15 @@ date_str, st, ss]):
             end_minute = end_minutes % 60
             end_time = f"{end_hour:02d}:{end_minute:02d}"
         
-            # Отображаем как "10:00-11:45 — Специалист"
-            kb.append([InlineKeyboardButton(f"{t}-{end_time} — {display_name}", callback_data=f"slot_{m}_{t}")])
+            # Отображаем с правильным текстом
+            if is_any_mode and available_count > 1:
+                display_with_time = f"{t}-{end_time} — 👥 Выбрать ({available_count} свободны)"
+            else:
+                display_with_time = f"{t}-{end_time} — {m}"
+                if is_any_mode and available_count == 1:
+                    display_with_time += " (единственный свободный)"
+            
+            kb.append([InlineKeyboardButton(display_with_time, callback_data=callback_data)])
         except Exception as e:
             # Если ошибка - старый формат
             logger.error(f"Ошибка расчета времени для слота {t}: {e}")
