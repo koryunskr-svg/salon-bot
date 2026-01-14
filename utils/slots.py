@@ -333,6 +333,11 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                 logger.info(f"  ДИАГНОСТИКА: '{record_date}' == '{date_str}' = {record_date.strip() == date_str.strip()}")
                 logger.info(f"  ДИАГНОСТИКА: Статус: '{record_status.strip()}'")
 
+                # === ТОЧЕЧНАЯ ДИАГНОСТИКА ПРОБЛЕМЫ ===
+                logger.info(f"  ПРОБЛЕМА: record_date='{record_date}' == date_str='{date_str}' ? {record_date == date_str}")
+                logger.info(f"  ПРОБЛЕМА: record_status='{record_status}' == 'подтверждено' ? {record_status == 'подтверждено'}")
+                logger.info(f"  ПРОБЛЕМА: record_specialist='{record_specialist}' == selected_specialist='{selected_specialist}' ? {record_specialist == selected_specialist}")
+
             if (record_date == date_str and 
                 record_status == "подтверждено" and
                 record_specialist == selected_specialist):
