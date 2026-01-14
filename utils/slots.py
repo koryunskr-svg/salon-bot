@@ -326,7 +326,10 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                         start_time_str = record_time.split("-")[0].strip()
                     else:
                         start_time_str = record_time
-                    
+
+                    # === ОТЛАДКА ПЕРЕД ПАРСИНГОМ ===
+                    logger.info(f"  ОТЛАДКА: Парсим '{record_date} {start_time_str}'")
+
                     # Получаем время начала
                     start_dt = TIMEZONE.localize(
                         datetime.datetime.strptime(f"{record_date} {start_time_str}", "%d.%m.%Y %H:%M")
@@ -349,7 +352,8 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                     
                 except Exception as e:
                     logger.error(f"Ошибка обработки записи {idx}: {e}")
-    
+                    logger.error(f"   record_date='{record_date}', start_time_str='{start_time_str}'")
+
     logger.info(f"=== DEBUG SLOTS: Найдено занятых интервалов: {len(busy_intervals)} ===")
 
     
