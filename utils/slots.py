@@ -159,6 +159,33 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     if not selected_specialist:
         logger.warning("⚠️ selected_specialist пустой, но продолжаем...")
     
+    # === ОСОБЫЙ СЛУЧАЙ: Если "Любой" - находим первого работающего специалиста ===
+    original_specialist = selected_specialist
+    if selected_specialist and selected_specialist.lower() in ["любой", "любой специалист"]:
+        logger.info(f"🔍 'Любой' выбран. Ищем работающих специалистов категории '{service_type}'")
+        
+        # Ищем первого работающего специалиста
+        found_specialist = None
+        for row in schedule_data:
+            if len(row) > 1 and row[0] and row[0].strip():
+                spec_name = row[0].strip()
+                spec_categories = row[1].strip().lower() if len(row) > 1 else ""
+                
+                if service_type.lower() in spec_categories:
+                    # Проверяем, работает ли в этот день
+                    day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(day_of_week) + 2
+                    if day_index < len(row) and row[day_index].strip().lower() != "выходной":
+                        found_specialist = spec_name
+                        logger.info(f"✅ Для 'Любой' используем специалиста: {found_specialist}")
+                        selected_specialist = found_specialist
+                        break
+        
+        if not found_specialist:
+            logger.error(f"❌ Нет работающих специалистов категории '{service_type}'")
+            return []
+    
+    logger.info(f"🎯 Фактический специалист для поиска: {selected_specialist}")
+
     # === 1. ПОЛУЧАЕМ ГРАФИК РАБОТЫ СПЕЦИАЛИСТА ===
     import datetime as dt_module
     
@@ -433,6 +460,11 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     if len(available_slots) > 40:
         available_slots = available_slots[:40]
     
+    # Восстанавливаем оригинальное значение для отображения
+    if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
+        for slot in available_slots:
+            slot["original_specialist"] = original_specialist
+
     return available_slots
 
 print("✅ Модуль slots.py загружен.")
