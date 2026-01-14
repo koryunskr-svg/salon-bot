@@ -341,8 +341,12 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
             if (record_date == date_str and 
                 record_status == "подтверждено" and
                 record_specialist == selected_specialist):
-                
+             
                 logger.info(f"{debug_msg} ✓ ПОДХОДИТ!")
+                
+                # === ОТЛАДКА ВНУТРИ БЛОКА ===
+                logger.info(f"  ВНУТРИ: record_time='{record_time}'")
+                logger.info(f"  ВНУТРИ: Длина record_time={len(record_time)}")
                 
                 try:
                     # Парсим время начала из диапазона "10:15-11:30"
