@@ -160,7 +160,6 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
         logger.warning("⚠️ selected_specialist пустой, но продолжаем...")
     
     # === 1. ПОЛУЧАЕМ ГРАФИК РАБОТЫ СПЕЦИАЛИСТА ===
-    from config import CALENDAR_ID, TIMEZONE, SHEET_ID
     import datetime as dt_module
     
     # Определяем день недели
