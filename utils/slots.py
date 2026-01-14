@@ -307,65 +307,30 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
     logger.info(f"=== DEBUG SLOTS: Ищу занятые слоты для {selected_specialist} на {date_str} ===")
     logger.info(f"Всего записей в таблице: {len(records)}")
     
-    if len(records) > 0:
-        logger.info("=== DEBUG: Первые 3 записи из таблицы ===")
-        for i in range(min(3, len(records))):
-            r = records[i]
-            logger.info(f"  Строка {i+3}: {r}")
-    else:
-        logger.error("❌ Таблица 'Записи' пустая или не загрузилась")
-
     for idx, r in enumerate(records, start=3):
         if len(r) > 7:
-            # СУПЕРПРОСТАЯ ДИАГНОСТИКА
-            if idx <= 80:  # Первые 80 записей
-                logger.info(f"СУПЕРДИАГНОСТИКА строка {idx}: спец='{r[5]}', дата='{r[6]}', статус='{r[8]}'")
             record_date = str(r[6]).strip()
             record_specialist = str(r[5]).strip() if len(r) > 5 else ""
             record_status = str(r[8]).strip() if len(r) > 8 else ""
             record_time = str(r[7]).strip()
             
-            debug_msg = f"Запись {idx}: дата='{record_date}', спец='{record_specialist}', статус='{record_status}', время='{record_time}'"
-            
-            # === ДИАГНОСТИКА ===
-            if record_specialist.strip().lower() == selected_specialist.strip().lower() and record_date.strip() == date_str.strip():
-                logger.info(f"  ДИАГНОСТИКА: Нашлась запись {idx}: '{record_specialist}' == '{selected_specialist}' = {record_specialist.strip().lower() == selected_specialist.strip().lower()}")
-                logger.info(f"  ДИАГНОСТИКА: '{record_date}' == '{date_str}' = {record_date.strip() == date_str.strip()}")
-                logger.info(f"  ДИАГНОСТИКА: Статус: '{record_status.strip()}'")
-
-                # === ТОЧЕЧНАЯ ДИАГНОСТИКА ПРОБЛЕМЫ ===
-                logger.info(f"  ПРОБЛЕМА: record_date='{record_date}' == date_str='{date_str}' ? {record_date == date_str}")
-                logger.info(f"  ПРОБЛЕМА: record_status='{record_status}' == 'подтверждено' ? {record_status == 'подтверждено'}")
-                logger.info(f"  ПРОБЛЕМА: record_specialist='{record_specialist}' == selected_specialist='{selected_specialist}' ? {record_specialist == selected_specialist}")
-
             if (record_date == date_str and 
                 record_status == "подтверждено" and
                 record_specialist == selected_specialist):
              
-                logger.info(f"{debug_msg} ✓ ПОДХОДИТ!")
-                
-                # === ОТЛАДКА ВНУТРИ БЛОКА ===
-                logger.info(f"  ВНУТРИ: record_time='{record_time}'")
-                logger.info(f"  ВНУТРИ: Длина record_time={len(record_time)}")
+                logger.info(f"Запись {idx}: дата='{record_date}', спец='{record_specialist}', время='{record_time}' ✓ ПОДХОДИТ!")
                 
                 try:
-                    # Парсим время начала из диапазона "10:15-11:30"
+                    # Парсим время начала из диапазона "18:45-20:00"
                     if "-" in record_time:
-                        start_time_str = record_time.split("-")[0].strip()  # Берём "10:15"
-                        logger.info(f"   Преобразуем диапазон: '{record_time}' -> '{start_time_str}'")
+                        start_time_str = record_time.split("-")[0].strip()
                     else:
                         start_time_str = record_time
-
-                    # === НОВАЯ ОТЛАДКА 2: ПОСЛЕ парсинга === <-- ДОБАВИТЬ
-                    logger.info(f"  ОТЛАДКА2: start_time_str='{start_time_str}'")
-
+                    
                     # Получаем время начала
                     start_dt = TIMEZONE.localize(
                         datetime.datetime.strptime(f"{record_date} {start_time_str}", "%d.%m.%Y %H:%M")
                     )
-
-                    # === НОВАЯ ОТЛАДКА 3: ПОСЛЕ парсинга datetime === <-- ДОБАВИТЬ
-                    logger.info(f"  ОТЛАДКА3: start_dt={start_dt}")
                     
                     # Получаем длительность этой записи
                     record_service = str(r[4]).strip() if len(r) > 4 else ""
@@ -380,15 +345,12 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                     end_minutes = end_dt.hour * 60 + end_dt.minute
                     
                     busy_intervals.append((start_minutes, end_minutes))
-                    logger.info(f"   Занято в таблице: {record_time}-{end_dt.strftime('%H:%M')} ({record_service}, {record_duration} мин)")
+                    logger.info(f"   Занято: {start_time_str}-{end_dt.strftime('%H:%M')} ({record_service}, {record_duration} мин)")
                     
                 except Exception as e:
-                    logger.error(f"Ошибка парсинга времени записи: {e}")
-                
-                else:
-                    logger.info(f"{debug_msg} ✗ НЕ ПОДХОДИТ")
+                    logger.error(f"Ошибка обработки записи {idx}: {e}")
     
-        logger.info(f"=== DEBUG SLOTS: Найдено занятых интервалов: {len(busy_intervals)} ===")     
+    logger.info(f"=== DEBUG SLOTS: Найдено занятых интервалов: {len(busy_intervals)} ===")
 
     
     # === 4. ГЕНЕРИРУЕМ СВОБОДНЫЕ СЛОТЫ ===
