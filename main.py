@@ -1448,9 +1448,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.edit_message_text("❌ Неверный формат слота.")
             return
-        else:
-            await query.edit_message_text("❌ Неверный формат слота.")
-            return
+       
     if data.startswith("confirm_reminder_"):
         await handle_confirm_reminder(
             data.split("confirm_reminder_", 1)[1], query, context
