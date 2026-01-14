@@ -356,10 +356,16 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
                     else:
                         start_time_str = record_time
 
+                    # === НОВАЯ ОТЛАДКА 2: ПОСЛЕ парсинга === <-- ДОБАВИТЬ
+                    logger.info(f"  ОТЛАДКА2: start_time_str='{start_time_str}'")
+
                     # Получаем время начала
                     start_dt = TIMEZONE.localize(
                         datetime.datetime.strptime(f"{record_date} {start_time_str}", "%d.%m.%Y %H:%M")
                     )
+
+                    # === НОВАЯ ОТЛАДКА 3: ПОСЛЕ парсинга datetime === <-- ДОБАВИТЬ
+                    logger.info(f"  ОТЛАДКА3: start_dt={start_dt}")
                     
                     # Получаем длительность этой записи
                     record_service = str(r[4]).strip() if len(r) > 4 else ""
