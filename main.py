@@ -991,7 +991,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_time = time.time()
     last_click_time = context.user_data.get("_last_click_time", 0)
     
-    if current_time - last_click_time < 2.5:  # 2.5 секунды между кликами
+    if current_time - last_click_time < 1.0:  # 1.0 секунды между кликами
         print(f"⚠️ Слишком быстрое нажатие, игнорирую: {query.data}")
         return
     
@@ -2217,6 +2217,28 @@ date_str, st, ss]):
     logger.info(f"Слоты: {[s['time'] for s in slots]}")
     # ← КОНЕЦ ДОБАВЛЕНИЯ ↑↑↑
 
+    # === ПРОВЕРКА РЕЖИМА "ЛЮБОЙ" ===
+    is_any_mode = False
+    original_specialist = context.user_data.get("selected_specialist", "")
+    if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
+        is_any_mode = True
+        logger.info(f"🔍 Режим 'Любой': {original_specialist}")
+    
+    # ЕСЛИ ЕСТЬ СЛОТЫ - ПОКАЗЫВАЕМ ИХ С ИНТЕРВАЛАМИ
+    kb = []
+    for s in slots:
+        t = s.get("time", "N/A")
+        m = s.get("specialist", "N/A")
+        
+        # === ОТОБРАЖЕНИЕ ДЛЯ "ЛЮБОЙ" ===
+        if is_any_mode:
+            display_name = f"{m} (авто)"
+        else:
+            display_name = m
+        
+        logger.info(f"=== DEBUG: Расчет для слота {t} ===")
+        logger.info(f"  subservice: {ss}")
+
     # ЕСЛИ ЕСТЬ СЛОТЫ - ПОКАЗЫВАЕМ ИХ С ИНТЕРВАЛАМИ
     kb = []
     for s in slots:
@@ -2242,8 +2264,8 @@ date_str, st, ss]):
             end_minute = end_minutes % 60
             end_time = f"{end_hour:02d}:{end_minute:02d}"
         
-            # Отображаем как "10:00-11:45 — Татьяна"
-            kb.append([InlineKeyboardButton(f"{t}-{end_time} — {m}", callback_data=f"slot_{m}_{t}")])
+            # Отображаем как "10:00-11:45 — Специалист"
+            kb.append([InlineKeyboardButton(f"{t}-{end_time} — {display_name}", callback_data=f"slot_{m}_{t}")])
         except Exception as e:
             # Если ошибка - старый формат
             logger.error(f"Ошибка расчета времени для слота {t}: {e}")
@@ -2269,6 +2291,14 @@ async def reserve_slot(
 ):
     query = update.callback_query
     await query.answer()
+
+    # === СОХРАНЯЕМ РЕАЛЬНОГО СПЕЦИАЛИСТА (для режима "Любой") ===
+    original_specialist = context.user_data.get("selected_specialist", "")
+    if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
+        logger.info(f"🎯 Режим 'Любой': сохраняем реального специалиста {specialist}")
+        context.user_data["actual_specialist"] = specialist
+    else:
+        context.user_data["actual_specialist"] = specialist
 
     # ← ДОБАВИТЬ ЭТУ ПРОВЕРКУ В НАЧАЛО
     date_str = context.user_data.get("date")
@@ -2572,12 +2602,28 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Ошибка расчета времени: {e}")
     
+    # Определяем, что показывать для специалиста
+    specialist_display = context.user_data.get('selected_specialist', 'N/A')
+    original_specialist = context.user_data.get('original_specialist', '')  # Будет добавлено позже
+    
+    if specialist_display.lower() in ["любой", "любой специалист"] and original_specialist:
+        specialist_display = f"{original_specialist} (автоматически назначен)"
+
+        # Определяем отображаемого специалиста
+    display_specialist = context.user_data.get('selected_specialist', 'N/A')
+    original_specialist = context.user_data.get('selected_specialist', '')
+    
+    if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
+        # Если выбран "Любой", показываем реального специалиста
+        actual_specialist = context.user_data.get('actual_specialist', 'N/A')
+        display_specialist = f"{actual_specialist} (автоматически назначен)"
+    
     await update.message.reply_text(
         "📋 Пожалуйста, подтвердите запись:\n\n"
         f"Услуга: {context.user_data.get('subservice', 'N/A')} ({context.user_data.get('service_type', 'N/A')})\n"
-        f"Специалист: {context.user_data.get('selected_specialist', 'N/A')}\n"
+        f"Специалист: {display_specialist}\n"  # ← ИЗМЕНЕНО!
         f"Дата: {context.user_data.get('date', 'N/A')}\n"
-        f"Время: {time_display}\n"  # ← ТЕПЕРЬ С ДИАПАЗОНОМ!
+        f"Время: {time_display}\n"
         f"Имя: {context.user_data.get('name', 'N/A')}\n"
         f"Телефон: {context.user_data.get('phone', 'N/A')}\n\n"
         "Всё верно? Выберите действие:",
