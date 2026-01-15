@@ -2270,11 +2270,58 @@ date_str, st, ss]):
     
     for s in slots:
         t = s.get("time", "N/A")
-        m = s.get("specialist", "N/A")
         
-        # === НОВАЯ ЛОГИКА ДЛЯ "ЛЮБОЙ" ===
-        available_count = s.get("available_count", 1)
-        available_specialists = s.get("available_specialists", [m])
+        if is_any_mode:
+            # РЕЖИМ "ЛЮБОЙ": показываем только время
+            available_count = s.get("available_count", 1)
+            
+            # Рассчитываем диапазон времени
+            try:
+                total_duration = calculate_service_step(ss)
+                hour = int(t.split(':')[0])
+                minute = int(t.split(':')[1])
+                end_minutes = hour * 60 + minute + total_duration
+                end_hour = end_minutes // 60
+                end_minute = end_minutes % 60
+                end_time = f"{end_hour:02d}:{end_minute:02d}"
+                time_display = f"{t}-{end_time}"
+            except Exception as e:
+                logger.error(f"Ошибка расчета времени: {e}")
+                time_display = t
+            
+            # Текст кнопки
+            if available_count == 1:
+                button_text = f"{time_display}"
+            else:
+                button_text = f"{time_display} ({available_count} свободны)"
+            
+            callback_data = f"slot_any_{t}"
+            kb.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+            
+        else:
+            # ОБЫЧНЫЙ РЕЖИМ: показываем "время — специалист"
+            m = s.get("specialist", "N/A")
+            logger.info(f"=== DEBUG: Расчет для слота {t} ===")
+            logger.info(f"  subservice: {ss}")
+            
+            # Рассчитываем время окончания
+            total_duration = calculate_service_step(ss)
+            
+            try:
+                hour = int(t.split(':')[0])
+                minute = int(t.split(':')[1])
+                start_minutes = hour * 60 + minute
+                end_minutes = start_minutes + total_duration
+                
+                end_hour = end_minutes // 60
+                end_minute = end_minutes % 60
+                end_time = f"{end_hour:02d}:{end_minute:02d}"
+                
+                # Отображаем как "10:00-11:45 — Специалист"
+                kb.append([InlineKeyboardButton(f"{t}-{end_time} — {m}", callback_data=f"slot_{m}_{t}")])
+            except Exception as e:
+                logger.error(f"Ошибка расчета времени для слота {t}: {e}")
+                kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
         
         if is_any_mode and available_count > 1:
             # Несколько специалистов свободны - кнопка "Выбрать"
