@@ -2282,11 +2282,8 @@ date_str, st, ss]):
                 logger.error(f"Ошибка расчета времени: {e}")
                 time_display = t
             
-            # Текст кнопки
-            if available_count == 1:
-                button_text = f"{time_display}"
-            else:
-                button_text = f"{time_display} ({available_count} свободны)"
+            # Текст кнопки - ВСЕГДА БЕЗ СКОБОК
+            button_text = f"{time_display}"         
             
             callback_data = f"slot_any_{t}"
             kb.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
