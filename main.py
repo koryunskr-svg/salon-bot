@@ -1922,14 +1922,10 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = SELECT_DATE
         return SELECT_DATE
 
-
-# --- /SELECT DATE ---
-
 # --- /SELECT DATE ---
 
 # --- SELECT SPECIALIST ---
 # --- ПОЛНАЯ ЗАМЕНА select_specialist ---
-
 
 async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2252,22 +2248,19 @@ date_str, st, ss]):
         context.user_data["state"] = SELECT_TIME
         return SELECT_TIME
 
-     # ← ДОБАВИТЬ ЗДЕСЬ ↓↓↓
+    # ← ДОБАВИТЬ ЗДЕСЬ ↓↓↓
     logger.info(f"=== DEBUG: В select_time получено {len(slots)} слотов ===")
     logger.info(f"Слоты: {[s['time'] for s in slots]}")
     # ← КОНЕЦ ДОБАВЛЕНИЯ ↑↑↑
 
     # === ПРОВЕРКА РЕЖИМА "ЛЮБОЙ" ===
-    is_any_mode = False
-    original_specialist = context.user_data.get("selected_specialist", "")
-    if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
-        is_any_mode = True
-        logger.info(f"🔍 Режим 'Любой': {original_specialist}")
-    
+    is_any_mode = context.user_data.get("selected_specialist", "").lower() in ["любой", "любой специалист"]
+    if is_any_mode:
+        logger.info(f"🔍 Режим 'Любой': {context.user_data.get('selected_specialist')}")
+
     # ЕСЛИ ЕСТЬ СЛОТЫ - ПОКАЗЫВАЕМ ИХ С ИНТЕРВАЛАМИ
     kb = []
-    is_any_mode = context.user_data.get("selected_specialist", "").lower() in ["любой", "любой специалист"]
-    
+
     for s in slots:
         t = s.get("time", "N/A")
         
@@ -2301,18 +2294,13 @@ date_str, st, ss]):
         else:
             # ОБЫЧНЫЙ РЕЖИМ: показываем "время — специалист"
             m = s.get("specialist", "N/A")
-            logger.info(f"=== DEBUG: Расчет для слота {t} ===")
-            logger.info(f"  subservice: {ss}")
             
-            # Рассчитываем время окончания
-            total_duration = calculate_service_step(ss)
-            
+            # Рассчитываем диапазон времени
             try:
+                total_duration = calculate_service_step(ss)
                 hour = int(t.split(':')[0])
                 minute = int(t.split(':')[1])
-                start_minutes = hour * 60 + minute
-                end_minutes = start_minutes + total_duration
-                
+                end_minutes = hour * 60 + minute + total_duration
                 end_hour = end_minutes // 60
                 end_minute = end_minutes % 60
                 end_time = f"{end_hour:02d}:{end_minute:02d}"
@@ -2322,51 +2310,6 @@ date_str, st, ss]):
             except Exception as e:
                 logger.error(f"Ошибка расчета времени для слота {t}: {e}")
                 kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
-        
-        if is_any_mode and available_count > 1:
-            # Несколько специалистов свободны - кнопка "Выбрать"
-            display_text = f"{t} — 👥 Выбрать ({available_count} свободны)"
-            callback_data = f"slot_any_{t}"
-        else:
-            # Один специалист или обычный режим
-            display_text = f"{t} — {m}"
-            if is_any_mode and available_count == 1:
-                display_text += " (единственный свободный)"
-            callback_data = f"slot_{m}_{t}"
-        
-        logger.info(f"=== DEBUG: Расчет для слота {t} ===")
-        logger.info(f"  subservice: {ss}")
-    
-        # Рассчитываем время окончания
-        ss = context.user_data.get("subservice", "")
-        total_duration = calculate_service_step(ss)
-    
-        # Преобразуем время
-        try:
-            hour = int(t.split(':')[0])
-            minute = int(t.split(':')[1])
-            start_minutes = hour * 60 + minute
-            end_minutes = start_minutes + total_duration
-        
-            end_hour = end_minutes // 60
-            end_minute = end_minutes % 60
-            end_time = f"{end_hour:02d}:{end_minute:02d}"
-        
-            # Отображаем с правильным текстом
-            if is_any_mode and available_count > 1:
-                display_with_time = f"{t}-{end_time} — 👥 Выбрать ({available_count} свободны)"
-            else:
-                display_with_time = f"{t}-{end_time} — {m}"
-                if is_any_mode and available_count == 1:
-                    display_with_time += " (единственный свободный)"
-            
-            kb.append([InlineKeyboardButton(display_with_time, callback_data=callback_data)])
-        except Exception as e:
-            # Если ошибка - старый формат
-            logger.error(f"Ошибка расчета времени для слота {t}: {e}")
-            kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
-    
-    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
     logger.info(f"=== DEBUG ИТОГ: Отображаем {len(kb)-1} слотов (без кнопки Назад) ===")
     for i, button_row in enumerate(kb):
         if i < len(kb) - 1:  # Все кроме последней кнопки (Назад)
