@@ -459,11 +459,14 @@ def find_available_slots(service_type: str, subservice: str, date_str: str = Non
         
         # Преобразуем в формат для бота
         for time_str, specialists in sorted(time_to_specialists.items()):
+            # Фильтруем "Любой" из списка специалистов
+            real_specialists = [spec for spec in specialists if spec.lower() not in ["любой", "любой специалист"]]
+            real_count = len(real_specialists)
             available_slots.append({
                 "time": time_str,
-                "specialist": specialists[0],  # для совместимости
-                "available_specialists": specialists,
-                "available_count": len(specialists),
+                "specialist": "любой",
+                "available_specialists": real_specialists,
+                "available_count": real_count,
                 "is_any_mode": True
             })
         
