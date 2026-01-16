@@ -2375,30 +2375,6 @@ else:
     context.user_data["actual_specialist"] = specialist
     context.user_data["was_auto_assigned"] = False  # клиент сам выбрал
 
-# ← ДОБАВИТЬ ЭТУ ПРОВЕРКУ В НАЧАЛО
-date_str = context.user_data.get("date")
-if date_str:
-    try:
-        # Проверяем, не прошла ли дата/время
-        slot_datetime = TIMEZONE.localize(
-            datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
-        )
-        now = datetime.now(TIMEZONE)
-        
-        if slot_datetime < now:
-            await query.edit_message_text(
-                "❌ Нельзя записаться на прошедшее время!\n\n"
-                "Выберите другое время или дату.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🕐 Выбрать другое время", callback_data="refresh_time")],
-                    [InlineKeyboardButton("📅 Выбрать другую дату", callback_data="back_to_date_select")]
-                ])
-            )
-            return
-    except Exception as e:
-        logger.error(f"Ошибка проверки времени: {e}")
-# ← КОНЕЦ ДОБАВЛЕНИЯ
-
     # Проверка на длинную услугу
     if time_str == "Требуется согласование":
         await query.edit_message_text(
