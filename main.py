@@ -850,7 +850,7 @@ async def _validate_booking_checks(
                     "specialist": str(r[5]).strip() if len(r) > 5 else "",
                     "date": record_date_str,
                     "time": str(r[7]).strip() if len(r) > 7 else "",
-                }
+               })
     
     if repeat_records:
         context.user_data["repeat_booking_conflict"] = repeat_records[0]
