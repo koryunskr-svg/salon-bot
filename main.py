@@ -1,4 +1,4 @@
-# main.py- D -4339-06.01.26 - для изм.
+# main.py- D -4339-16.01.26 - для изм.
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -813,26 +813,42 @@ async def _validate_booking_checks(
                     continue
     
     # === ПРОВЕРКА 3: ПОВТОРНАЯ ЗАПИСЬ В КАТЕГОРИИ ===
-    # Проверяем только для ОДНОГО человека (имя + телефон)
+    # Проверяем только для ОДНОГО человека (имя + телефон) И ТОЛЬКО БУДУЩИЕ записи
     repeat_records = []
+    today_date = datetime.now(TIMEZONE).date()
+
     for r in records:
-        if len(r) > 4:
+        if len(r) > 8:  # Должно быть достаточно данных
             record_name = str(r[1]).strip()
             record_phone = str(r[2]).strip()
             record_category = str(r[3]).strip()
             record_status = str(r[8]).strip()
-            
-            # Тот же человек (имя И телефон) в той же категории
+            record_date_str = str(r[6]).strip()
+        
+            # Пропускаем записи без даты
+            if not record_date_str or record_date_str.lower() in ["неизвестно", "none", "n/a"]:
+                continue
+        
+            # Проверяем, что запись будущая
+            try:
+                record_date = datetime.strptime(record_date_str, "%d.%m.%Y").date()
+                is_future = record_date >= today_date
+            except ValueError:
+                logger.warning(f"Неверный формат даты в записи: {record_date_str}")
+                continue  # пропускаем записи с неверной датой
+        
+            # Тот же человек (имя И телефон) в той же категории, подтверждено И будущая
             if (record_name.lower() == name.lower() and 
                 record_phone == phone and 
                 record_category == service_type and 
-                record_status == "подтверждено"):
-                
+                record_status == "подтверждено" and
+                is_future):  # ← ВОТ ЭТА СТРОКА ВАЖНА!
+            
                 repeat_records.append({
                     "category": record_category,
                     "service": str(r[4]).strip() if len(r) > 4 else "",
                     "specialist": str(r[5]).strip() if len(r) > 5 else "",
-                    "date": str(r[6]).strip() if len(r) > 6 else "",
+                    "date": record_date_str,
                     "time": str(r[7]).strip() if len(r) > 7 else "",
                 })
     
