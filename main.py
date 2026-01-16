@@ -2331,7 +2331,7 @@ async def reserve_slot(
     original_specialist = context.user_data.get("selected_specialist", "")
     if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
         logger.info(f"🎯 Режим 'Любой': сохраняем реального специалиста {specialist}")
-        context.user_data["actual_specialist"] = specialist
+        context.user_data["actual_specialist"] = specialist  # ← СОХРАНЯЕМ!
     else:
         context.user_data["actual_specialist"] = specialist
 
@@ -2902,18 +2902,27 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Ошибка расчета диапазона для таблицы: {e}")
 
+        # Определяем реального специалиста
+        real_specialist = specialist  # по умолчанию
+        comment = ""  # примечание пустое
+
+        if specialist.lower() in ["любой", "любой специалист"]:
+            # Если был выбран "Любой", берем реального из actual_specialist
+            real_specialist = context.user_data.get("actual_specialist", "не назначен")
+            comment = f"Клиент выбрал 'Любой', назначен: {real_specialist}"
+
         full_record = [
             record_id,  # A: ID записи
             name,  # B: Имя
             phone,  # C: Телефон
             st,  # D: Категория услуги
             ss,  # E: Услуга
-            specialist,  # F: Специалист
+            real_specialist,  # F: Специалист ← РЕАЛЬНЫЙ СПЕЦИАЛИСТ!
             date_str,  # G: Дата
             time_range,  # H: Время с диапазоном
             "подтверждено",  # I: Статус
             created_at,  # J: Дата создания
-            "",  # K: Комментарий
+            comment,  # K: Комментарий ← ПРИМЕЧАНИЕ О ВЫБОРЕ "Любой"
             "❌",  # L: Напоминание 24ч
             "❌",  # M: Напоминание 1ч
             str(chat_id),  # N: Chat ID
@@ -2962,12 +2971,18 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         time_range = time_str
     
+    # Определяем для уведомления
+    display_specialist = specialist
+    if specialist.lower() in ["любой", "любой специалист"]:
+        real_spec = context.user_data.get("actual_specialist", "не назначен")
+        display_specialist = f"{real_spec} (автоматически назначен)"
+
     admin_message = (
         f"📢 <b>Новая запись</b>\n"
         f"👤 Клиент: {name}\n"
         f"📞 Телефон: {phone}\n"
         f"💅 Услуга: {ss} ({st})\n"
-        f"👩‍💼 Специалист: {specialist}\n"
+        f"👩‍💼 Специалист: {specialist}\n"  # ← СЕЙЧАС "Любой"
         f"📅 Дата: {date_str}\n"
         f"⏰ Время: {time_range}\n"  # ← ИЗМЕНЕНО: time_range вместо time_str
         f"⏳ Длительность: {format_duration(total_duration)}\n"
