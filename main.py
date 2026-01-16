@@ -2281,8 +2281,7 @@ date_str, st, ss]):
         t = s.get("time", "N/A")
         
         if is_any_mode:
-            # РЕЖИМ "ЛЮБОЙ": показываем только время
-            available_count = s.get("available_count", 1)
+            # РЕЖИМ "ЛЮБОЙ": показываем время с диапазоном
             
             # Рассчитываем диапазон времени
             try:
@@ -2293,10 +2292,13 @@ date_str, st, ss]):
                 end_hour = end_minutes // 60
                 end_minute = end_minutes % 60
                 end_time = f"{end_hour:02d}:{end_minute:02d}"
-                time_display = f"{t}-{end_time}"
+                time_display = f"{t}-{end_time}"   # ← ВСЕГДА ПОКАЗЫВАЕМ ДИАПАЗОН
             except Exception as e:
                 logger.error(f"Ошибка расчета времени: {e}")
-                time_display = t
+                time_display = t   # fallback
+
+                callback_data = f"slot_any_{t}"
+                kb.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
             
             # Текст кнопки - ВСЕГДА БЕЗ СКОБОК
             button_text = f"{time_display}"         
@@ -2343,6 +2345,18 @@ async def reserve_slot(
     query = update.callback_query
     await query.answer()
 
+    # === ПРОВЕРКА: ЕСТЬ ЛИ ДАТА? ===
+    date_str = context.user_data.get("date")
+    if not date_str:
+        logger.error(f"❌ ОШИБКА: date_str is None! context.user_data keys: {list(context.user_data.keys())}")
+        await query.edit_message_text(
+            "❌ Ошибка: дата не выбрана. Начните заново.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+            ])
+        )
+        return
+
     # === СОХРАНЯЕМ РЕАЛЬНОГО СПЕЦИАЛИСТА (для режима "Любой") ===
     original_specialist = context.user_data.get("selected_specialist", "")
     if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
@@ -2350,6 +2364,17 @@ async def reserve_slot(
         context.user_data["actual_specialist"] = specialist  # ← СОХРАНЯЕМ!
     else:
         context.user_data["actual_specialist"] = specialist
+
+    # Определяем, было ли автоматическое назначение
+    # Если callback_data начинается с "slot_any_" - клиент выбирал из списка → НЕ автоматически
+    if query.data and query.data.startswith("slot_any_"):
+        context.user_data["was_auto_assigned"] = False
+    else:
+        # Бот назначил автоматически (один свободный специалист)
+        context.user_data["was_auto_assigned"] = True
+else:
+    context.user_data["actual_specialist"] = specialist
+    context.user_data["was_auto_assigned"] = False  # клиент сам выбрал
 
     # ← ДОБАВИТЬ ЭТУ ПРОВЕРКУ В НАЧАЛО
     date_str = context.user_data.get("date")
@@ -2691,6 +2716,17 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    # === СОХРАНЕНИЕ ДАННЫХ ИЗ TEMP_BOOKING (чтобы не потерялись) ===
+    temp_booking = context.user_data.get("temp_booking", {})
+    if temp_booking:
+        # Копируем важные данные в основной контекст
+        if not context.user_data.get("date") and temp_booking.get("date"):
+            context.user_data["date"] = temp_booking["date"]
+        if not context.user_data.get("time") and temp_booking.get("time"):
+            context.user_data["time"] = temp_booking["time"]
+        if not context.user_data.get("actual_specialist") and temp_booking.get("specialist"):
+            context.user_data["actual_specialist"] = temp_booking["specialist"]
 
     # === ОТЛАДКА ДАТЫ ===
     print(f"\n{'='*60}")
