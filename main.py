@@ -2357,14 +2357,12 @@ async def reserve_slot(
         )
         return
 
-    # === СОХРАНЯЕМ РЕАЛЬНОГО СПЕЦИАЛИСТА (для режима "Любой") ===
-    original_specialist = context.user_data.get("selected_specialist", "")
-    if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
-        logger.info(f"🎯 Режим 'Любой': сохраняем реального специалиста {specialist}")
-        context.user_data["actual_specialist"] = specialist  # ← СОХРАНЯЕМ!
-    else:
-        context.user_data["actual_specialist"] = specialist
-
+# === СОХРАНЯЕМ РЕАЛЬНОГО СПЕЦИАЛИСТА (для режима "Любой") ===
+original_specialist = context.user_data.get("selected_specialist", "")
+if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
+    logger.info(f"🎯 Режим 'Любой': сохраняем реального специалиста {specialist}")
+    context.user_data["actual_specialist"] = specialist  # ← СОХРАНЯЕМ!
+    
     # Определяем, было ли автоматическое назначение
     # Если callback_data начинается с "slot_any_" - клиент выбирал из списка → НЕ автоматически
     if query.data and query.data.startswith("slot_any_"):
@@ -2373,32 +2371,33 @@ async def reserve_slot(
         # Бот назначил автоматически (один свободный специалист)
         context.user_data["was_auto_assigned"] = True
 else:
+    # Клиент сам выбрал конкретного специалиста
     context.user_data["actual_specialist"] = specialist
     context.user_data["was_auto_assigned"] = False  # клиент сам выбрал
 
-    # ← ДОБАВИТЬ ЭТУ ПРОВЕРКУ В НАЧАЛО
-    date_str = context.user_data.get("date")
-    if date_str:
-        try:
-            # Проверяем, не прошла ли дата/время
-            slot_datetime = TIMEZONE.localize(
-                datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+# ← ДОБАВИТЬ ЭТУ ПРОВЕРКУ В НАЧАЛО
+date_str = context.user_data.get("date")
+if date_str:
+    try:
+        # Проверяем, не прошла ли дата/время
+        slot_datetime = TIMEZONE.localize(
+            datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+        )
+        now = datetime.now(TIMEZONE)
+        
+        if slot_datetime < now:
+            await query.edit_message_text(
+                "❌ Нельзя записаться на прошедшее время!\n\n"
+                "Выберите другое время или дату.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🕐 Выбрать другое время", callback_data="refresh_time")],
+                    [InlineKeyboardButton("📅 Выбрать другую дату", callback_data="back_to_date_select")]
+                ])
             )
-            now = datetime.now(TIMEZONE)
-            
-            if slot_datetime < now:
-                await query.edit_message_text(
-                    "❌ Нельзя записаться на прошедшее время!\n\n"
-                    "Выберите другое время или дату.",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🕐 Выбрать другое время", callback_data="refresh_time")],
-                        [InlineKeyboardButton("📅 Выбрать другую дату", callback_data="back_to_date_select")]
-                    ])
-                )
-                return
-        except Exception as e:
-            logger.error(f"Ошибка проверки времени: {e}")
-    # ← КОНЕЦ ДОБАВЛЕНИЯ
+            return
+    except Exception as e:
+        logger.error(f"Ошибка проверки времени: {e}")
+# ← КОНЕЦ ДОБАВЛЕНИЯ
 
     # Проверка на длинную услугу
     if time_str == "Требуется согласование":
