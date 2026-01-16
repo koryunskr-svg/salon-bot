@@ -835,14 +835,14 @@ async def _validate_booking_checks(
                 is_future = record_date >= today_date
             except ValueError:
                 logger.warning(f"Неверный формат даты в записи: {record_date_str}")
-                continue  # пропускаем записи с неверной датой
+                continue  # пропускаем записи с неверной дататой
             
             # Тот же человек (имя И телефон) в той же категории, подтверждено И будущая
             if (record_name.lower() == name.lower() and 
                 record_phone == phone and 
                 record_category == service_type and 
                 record_status == "подтверждено" and
-                is_future):  # ← ВОТ ЭТА СТРОКА ВАЖНА!
+                is_future):  # ← ЗАКРЫВАЮЩАЯ СКОБКА ЗДЕСЬ!
                 
                 repeat_records.append({
                     "category": record_category,
@@ -850,7 +850,7 @@ async def _validate_booking_checks(
                     "specialist": str(r[5]).strip() if len(r) > 5 else "",
                     "date": record_date_str,
                     "time": str(r[7]).strip() if len(r) > 7 else "",
-               })
+                })
     
     if repeat_records:
         context.user_data["repeat_booking_conflict"] = repeat_records[0]
