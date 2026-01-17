@@ -2668,7 +2668,7 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Рассчитываем диапазон времени
     time_display = time_str
-    if ss:
+    if subservice:
         try:
             total_duration = calculate_service_step(ss)
             hour = int(time_str.split(':')[0])
