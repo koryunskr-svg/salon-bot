@@ -1419,6 +1419,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         logger.info(f"🎯 Диапазон времени: {time_display}")
 
+        # Сохраняем время с диапазоном для отображения
+        context.user_data["time_display"] = time_display
+
         # Получаем список свободных специалистов для этого времени
         date_str = context.user_data.get("date", "")
         service_type = context.user_data.get("service_type", "")
@@ -2662,6 +2665,22 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subservice = context.user_data.get("subservice", "N/A")
     date = context.user_data.get("date", "N/A")
     time = context.user_data.get("time", "N/A")
+
+    # Рассчитываем диапазон времени
+    time_display = time_str
+    if ss:
+        try:
+            total_duration = calculate_service_step(ss)
+            hour = int(time_str.split(':')[0])
+            minute = int(time_str.split(':')[1])
+            end_minutes = hour * 60 + minute + total_duration
+            end_hour = end_minutes // 60
+            end_minute = end_minutes % 60
+            end_time = f"{end_hour:02d}:{end_minute:02d}"
+            time_display = f"{time_str}-{end_time}"
+        except Exception as e:
+            logger.error(f"Ошибка расчета времени в enter_name: {e}")
+
     specialist = context.user_data.get("actual_specialist", 
                      context.user_data.get("selected_specialist", "N/A"))
     
@@ -3143,11 +3162,11 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🆔 ID записи: {record_id}"
         )
 
-        try:
-            await notify_admins(context, admin_message)
-            logger.info(f"✅ Админы уведомлены о записи {record_id}")
-        except Exception as e:
-            logger.error(f"⚠️ Не удалось уведомить админов: {e}")
+    try:
+        await notify_admins(context, admin_message)
+        logger.info(f"✅ Админы уведомлены о записи {record_id}")
+    except Exception as e:
+        logger.error(f"⚠️ Не удалось уведомить админов: {e}")
 
     # === 6. ОТПРАВЛЯЕМ ПОЛЬЗОВАТЕЛЮ ФИНАЛЬНОЕ СООБЩЕНИЕ ===
     
