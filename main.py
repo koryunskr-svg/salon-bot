@@ -1401,6 +1401,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time_str = data.split("slot_any_", 1)[1]
         logger.info(f"🎯 Выбор специалиста для времени: {time_str}")
         
+        # Рассчитываем диапазон времени
+        ss = context.user_data.get("subservice", "")
+        time_display = time_str
+        if ss:
+            try:
+                total_duration = calculate_service_step(ss)
+                hour = int(time_str.split(':')[0])
+                minute = int(time_str.split(':')[1])
+                end_minutes = hour * 60 + minute + total_duration
+                end_hour = end_minutes // 60
+                end_minute = end_minutes % 60
+                end_time = f"{end_hour:02d}:{end_minute:02d}"
+                time_display = f"{time_str}-{end_time}"
+            except Exception as e:
+                logger.error(f"Ошибка расчета диапазона: {e}")
+        
+        logger.info(f"🎯 Диапазон времени: {time_display}")
+
         # Получаем список свободных специалистов для этого времени
         date_str = context.user_data.get("date", "")
         service_type = context.user_data.get("service_type", "")
@@ -2399,6 +2417,18 @@ async def reserve_slot(
         context.user_data["available_count"] = 1
         logger.info(f"🎯 Обычный выбор: специалист {specialist}")
 
+    # Проверяем, что дата сохранена
+    date_str = context.user_data.get("date")
+    if not date_str:
+        logger.error(f"❌ Ошибка: дата не найдена в user_data для времени {time_str}")
+        await query.edit_message_text(
+            "❌ Ошибка: дата не указана. Начните выбор заново.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+            ])
+        )
+        return
+
     # ← ДОБАВИТЬ ЭТУ ПРОВЕРКУ В НАЧАЛО
     date_str = context.user_data.get("date")
     if date_str:
@@ -2822,7 +2852,16 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # === 2. ПОЛУЧАЕМ ДАННЫЕ ===
     temp_booking = context.user_data.get("temp_booking", {})
     if not temp_booking:
-        await query.edit_message_text("❌ Ошибка: данные бронирования не найдены.")
+        logger.error(f"❌ Ошибка: temp_booking не найден для chat_id {chat_id}")
+        logger.error(f"❌ Ключи user_data: {list(context.user_data.keys())}")
+        logger.error(f"❌ Содержимое user_data: {context.user_data}")
+        await query.edit_message_text(
+            "❌ Ошибка: данные бронирования не найдены. Начните запись заново.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+            ])
+        )
+        context.user_data.clear()
         return MENU
 
     st = context.user_data.get("service_type", "Неизвестно")
