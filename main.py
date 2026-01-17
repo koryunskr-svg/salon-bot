@@ -1400,27 +1400,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Обработка выбора специалиста для "Любой"
         time_str = data.split("slot_any_", 1)[1]
         logger.info(f"🎯 Выбор специалиста для времени: {time_str}")
-        
-        # Рассчитываем диапазон времени
-        ss = context.user_data.get("subservice", "")
-        time_display = time_str
-        if ss:
-            try:
-                total_duration = calculate_service_step(ss)
-                hour = int(time_str.split(':')[0])
-                minute = int(time_str.split(':')[1])
-                end_minutes = hour * 60 + minute + total_duration
-                end_hour = end_minutes // 60
-                end_minute = end_minutes % 60
-                end_time = f"{end_hour:02d}:{end_minute:02d}"
-                time_display = f"{time_str}-{end_time}"
-            except Exception as e:
-                logger.error(f"Ошибка расчета диапазона: {e}")
-        
-        logger.info(f"🎯 Диапазон времени: {time_display}")
-
-        # Сохраняем время с диапазоном для отображения
-        context.user_data["time_display"] = time_display
 
         # Получаем список свободных специалистов для этого времени
         date_str = context.user_data.get("date", "")
@@ -2665,24 +2644,19 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subservice = context.user_data.get("subservice", "N/A")
     date = context.user_data.get("date", "N/A")
     time = context.user_data.get("time", "N/A")
-
-    # Рассчитываем диапазон времени
-    time_display = time_str
-    if subservice:
-        try:
-            total_duration = calculate_service_step(ss)
-            hour = int(time_str.split(':')[0])
-            minute = int(time_str.split(':')[1])
-            end_minutes = hour * 60 + minute + total_duration
-            end_hour = end_minutes // 60
-            end_minute = end_minutes % 60
-            end_time = f"{end_hour:02d}:{end_minute:02d}"
-            time_display = f"{time_str}-{end_time}"
-        except Exception as e:
-            logger.error(f"Ошибка расчета времени в enter_name: {e}")
-
     specialist = context.user_data.get("actual_specialist", 
                      context.user_data.get("selected_specialist", "N/A"))
+    
+    summary = (
+        f"📋 <b>Продолжаем запись:</b>\n\n"
+        f"• Категория: {service_type}\n"
+        f"• Услуга: {subservice}\n"
+        f"• Дата: {date}\n"
+        f"• Время: {time}\n"
+        f"• Специалист: {specialist}\n"
+        f"• Имя: {name}\n\n"
+        f"📞 <b>Теперь введите ваш телефон:</b>"
+    )
     
     summary = (
         f"📋 <b>Продолжаем запись:</b>\n\n"
