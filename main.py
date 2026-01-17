@@ -2357,11 +2357,47 @@ async def reserve_slot(
 
     # === СОХРАНЯЕМ РЕАЛЬНОГО СПЕЦИАЛИСТА (для режима "Любой") ===
     original_specialist = context.user_data.get("selected_specialist", "")
-    if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
-        logger.info(f"🎯 Режим 'Любой': сохраняем реального специалиста {specialist}")
+    is_any_mode = original_specialist.lower() in ["любой", "любой специалист"]
+    
+    if is_any_mode:
+        # Режим "Любой" - определяем сколько было доступно специалистов
+        date_str = context.user_data.get("date")
+        service_type = context.user_data.get("service_type")
+        subservice = context.user_data.get("subservice")
+        
+        # Получаем слоты для определения количества доступных специалистов
+        slots = find_available_slots(
+            service_type,
+            subservice,
+            date_str,
+            original_specialist,
+            context.user_data.get("priority", "date")
+        )
+        
+        # Находим слот с нужным временем
+        available_count = 1  # по умолчанию 1
+        for slot in slots:
+            if slot.get("time") == time_str:
+                available_count = slot.get("available_count", 1)
+                break
+        
+        # Сохраняем информацию
         context.user_data["actual_specialist"] = specialist
+        context.user_data["available_count"] = available_count
+        
+        # Автоназначение только если был 1 свободный специалист
+        if available_count == 1:
+            context.user_data["was_auto_assigned"] = True
+            logger.info(f"🎯 Режим 'Любой': автоматически назначен {specialist} (1 доступен)")
+        else:
+            context.user_data["was_auto_assigned"] = False
+            logger.info(f"🎯 Режим 'Любой': клиент выбрал {specialist} из {available_count}")
     else:
+        # Обычный выбор
         context.user_data["actual_specialist"] = specialist
+        context.user_data["was_auto_assigned"] = False
+        context.user_data["available_count"] = 1
+        logger.info(f"🎯 Обычный выбор: специалист {specialist}")
 
     # ← ДОБАВИТЬ ЭТУ ПРОВЕРКУ В НАЧАЛО
     date_str = context.user_data.get("date")
@@ -2693,13 +2729,16 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         specialist_display = f"{original_specialist} (автоматически назначен)"
 
     # Определяем отображаемого специалиста
-    display_specialist = context.user_data.get('selected_specialist', 'N/A')
-    original_specialist = context.user_data.get('selected_specialist', '')
-
-    if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
-        # Если выбран "Любой", показываем реального специалиста
-        actual_specialist = context.user_data.get('actual_specialist', 'N/A')
-        display_specialist = f"{actual_specialist} (автоматически назначен)" 
+    display_specialist = context.user_data.get('actual_specialist', 'N/A')
+    was_auto_assigned = context.user_data.get('was_auto_assigned', False)
+    available_count = context.user_data.get('available_count', 1)
+    
+    if was_auto_assigned:
+        # Автоматическое назначение (был только 1 свободный)
+        display_specialist = f"{display_specialist} (автоматически назначен)"
+    elif available_count > 1:
+        # Клиент выбирал из нескольких
+        display_specialist = f"{display_specialist}" 
     
     await update.message.reply_text(
         "📋 Пожалуйста, подтвердите запись:\n\n"
@@ -2765,6 +2804,20 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for job in current_jobs:
             job.schedule_removal()
     # === /ОТМЕНА ТАЙМЕРОВ ===
+
+    # === 1.5. ПРОВЕРКА TEMP_BOOKING ===
+    temp_booking = context.user_data.get("temp_booking", {})
+    if not temp_booking:
+        logger.error(f"❌ Ошибка: temp_booking не найден для chat_id {chat_id}")
+        logger.error(f"❌ Содержимое user_data: {context.user_data}")
+        await query.edit_message_text(
+            "❌ Ошибка: данные бронирования не найдены. Начните запись заново.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+            ])
+        )
+        context.user_data.clear()
+        return MENU
 
     # === 2. ПОЛУЧАЕМ ДАННЫЕ ===
     temp_booking = context.user_data.get("temp_booking", {})
@@ -2962,7 +3015,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         comment = ""
         was_auto_assigned = context.user_data.get('was_auto_assigned', False)
         if was_auto_assigned:
-            comment = "Автоматически назначен ботом"
+            comment = "автоматически"
 
         full_record = [
             record_id,  # A: ID записи
@@ -3024,12 +3077,19 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         time_range = time_str
     
+        # Добавляем информацию об автоматическом назначении
+        was_auto_assigned = context.user_data.get('was_auto_assigned', False)
+        if was_auto_assigned:
+            specialist_display = f"{specialist} (автоматически назначен)"
+        else:
+            specialist_display = f"{specialist}"
+
     admin_message = (
         f"📢 <b>Новая запись</b>\n"
         f"👤 Клиент: {name}\n"
         f"📞 Телефон: {phone}\n"
         f"💅 Услуга: {ss} ({st})\n"
-        f"👩‍💼 Специалист: {specialist}\n"
+        f"👩‍💼 Специалист: {specialist_display}\n"  # ← ИЗМЕНЕНО
         f"📅 Дата: {date_str}\n"
         f"⏰ Время: {time_range}\n"  # ← ИЗМЕНЕНО: time_range вместо time_str
         f"⏳ Длительность: {format_duration(total_duration)}\n"
