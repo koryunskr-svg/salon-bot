@@ -2357,44 +2357,40 @@ async def reserve_slot(
         )
         return
 
-# === СОХРАНЯЕМ РЕАЛЬНОГО СПЕЦИАЛИСТА (для режима "Любой") ===
-original_specialist = context.user_data.get("selected_specialist", "")
-if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
-    logger.info(f"🎯 Режим 'Любой': сохраняем реального специалиста {specialist}")
-    context.user_data["actual_specialist"] = specialist  # ← СОХРАНЯЕМ!
-    
-    # Определяем, было ли автоматическое назначение
-    # Если callback_data начинается с "slot_any_" - клиент выбирал из списка → НЕ автоматически
-    if query.data and query.data.startswith("slot_any_"):
-        context.user_data["was_auto_assigned"] = False
+    # === СОХРАНЯЕМ РЕАЛЬНОГО СПЕЦИАЛИСТА (для режима "Любой") ===
+    original_specialist = context.user_data.get("selected_specialist", "")
+    if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
+        logger.info(f"🎯 Режим 'Любой': сохраняем реального специалиста {specialist}")
+        context.user_data["actual_specialist"] = specialist
+        
+        # Определяем, было ли автоматическое назначение
+        if query.data and query.data.startswith("slot_any_"):
+            context.user_data["was_auto_assigned"] = False
+        else:
+            context.user_data["was_auto_assigned"] = True
     else:
-        # Бот назначил автоматически (один свободный специалист)
-        context.user_data["was_auto_assigned"] = True
-else:
-    # Клиент сам выбрал конкретного специалиста
-    context.user_data["actual_specialist"] = specialist
-    context.user_data["was_auto_assigned"] = False  # клиент сам выбрал
+        context.user_data["actual_specialist"] = specialist
+        context.user_data["was_auto_assigned"] = False
 
-# Проверка на длинную услугу
-if time_str == "Требуется согласование":
-    await query.edit_message_text(
-        f"⚠️ <b>Услуга требует согласования!</b>\n\n"
-        f"Выбранная услуга слишком длинная для онлайн-записи.\n"
-        f"Пожалуйста, свяжитесь с администратором для уточнения времени.\n\n"
-        f"📞 Телефон: {get_setting('Телефон администратора', 'не указан')}\n"
-        f"💬 Или напишите сообщение:",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("💬 Написать сообщение", callback_data="contact_admin")],
-            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
-        ])
-    )
-    return
+    # Проверка на длинную услугу
+    if time_str == "Требуется согласование":
+        await query.edit_message_text(
+            f"⚠️ <b>Услуга требует согласования!</b>\n\n"
+            f"Выбранная услуга слишком длинная для онлайн-записи.\n"
+            f"Пожалуйста, свяжитесь с администратором для уточнения времени.\n\n"
+            f"📞 Телефон: {get_setting('Телефон администратора', 'не указан')}\n"
+            f"💬 Или напишите сообщение:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💬 Написать сообщение", callback_data="contact_admin")],
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+            ])
+        )
+        return
 
     logger.info(
         f"DEBUG reserve_slot: получен specialist='{specialist}', time='{time_str}'"
     )
-    date_str = context.user_data.get("date")
     ss = context.user_data.get("subservice")
     logger.info(f"DEBUG reserve_slot: date='{date_str}', subservice='{ss}'")
 
@@ -2455,7 +2451,7 @@ if time_str == "Требуется согласование":
         for job in current_jobs:
             job.schedule_removal()
 
-    # Добавляем предупреждение через 1 минуту
+    # Добавляем предупреждение через 1 минута
     context.job_queue.run_once(
         warn_reservation,
         when=WARNING_TIMEOUT,
@@ -2474,6 +2470,26 @@ if time_str == "Требуется согласование":
     logger.info(
         f"⏰ Таймеры установлены: предупреждение через {WARNING_TIMEOUT}с, освобождение через {RESERVATION_TIMEOUT}с"
     )
+    # === /ТАЙМЕРЫ ===
+
+    context.user_data["temp_booking"] = {
+        "specialist": specialist,
+        "time": time_str,
+        "date": date_str,
+        "event_id": event_id,
+        "start_dt": start_dt,
+        "end_dt": end_dt,
+        "subservice": ss,
+        "created_at": datetime.now(TIMEZONE).isoformat(),
+    }
+
+    kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
+    await query.edit_message_text(
+        "⏳ Слот зарезервирован! Введите ваше имя:",
+        reply_markup=InlineKeyboardMarkup(kb),
+    )
+    context.user_data["state"] = ENTER_NAME
+    return ENTER_NAME
     # === /ТАЙМЕРЫ ===
 
     context.user_data["temp_booking"] = {
