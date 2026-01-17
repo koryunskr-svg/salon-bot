@@ -2311,18 +2311,20 @@ date_str, st, ss]):
             except Exception as e:
                 logger.error(f"Ошибка расчета времени для слота {t}: {e}")
                 kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
-    logger.info(f"=== DEBUG ИТОГ: Отображаем {len(kb)-1} слотов (без кнопки Назад) ===")
-    for i, button_row in enumerate(kb):
-        if i < len(kb) - 1:  # Все кроме последней кнопки (Назад)
-            for button in button_row:
-                logger.info(f"  Слот {i+1}: {button.text}")
-
-    if not kb or len(kb) == 1:  # Только кнопка "Назад"
+    # Добавить кнопку "Назад" в конец
+    if kb:  # Если есть слоты, добавляем кнопку "Назад"
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+    else:  # Если слотов нет, создаем список с кнопкой "Назад"
+        kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
+    
+    logger.info(f"=== DEBUG ИТОГ: Отображаем {len(kb)} кнопок (последняя - Назад) ===")
+    
+    if len(kb) == 1:  # Только кнопка "Назад" (нет слотов)
         await query.edit_message_text(
             "❌ Нет доступных слотов на выбранное время.",
             reply_markup=InlineKeyboardMarkup(kb)
         )
-    else:
+    else:  # Есть слоты + кнопка "Назад"
         await query.edit_message_text(
             "Выберите время:", reply_markup=InlineKeyboardMarkup(kb)
         )
@@ -2589,11 +2591,31 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTER_NAME
     context.user_data["name"] = name
 
+    # Собираем информацию о выборе
+    service_type = context.user_data.get("service_type", "N/A")
+    subservice = context.user_data.get("subservice", "N/A")
+    date = context.user_data.get("date", "N/A")
+    time = context.user_data.get("time", "N/A")
+    specialist = context.user_data.get("actual_specialist", 
+                     context.user_data.get("selected_specialist", "N/A"))
+    
+    summary = (
+        f"📋 <b>Продолжаем запись:</b>\n\n"
+        f"• Категория: {service_type}\n"
+        f"• Услуга: {subservice}\n"
+        f"• Дата: {date}\n"
+        f"• Время: {time}\n"
+        f"• Специалист: {specialist}\n"
+        f"• Имя: {name}\n\n"
+        f"📞 <b>Теперь введите ваш телефон:</b>"
+    )
+    
     kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
 
     await update.message.reply_text(
-        "📞 Теперь введите ваш телефон:",
+        summary,
         reply_markup=InlineKeyboardMarkup(kb),
+        parse_mode="HTML"
     )
     context.user_data["state"] = ENTER_PHONE
     return ENTER_PHONE
@@ -2936,12 +2958,11 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Ошибка расчета диапазона для таблицы: {e}")
 
-        # Определяем, нужно ли добавить комментарий об автоматическом назначении
+        # Определяем комментарий для таблицы
         comment = ""
         was_auto_assigned = context.user_data.get('was_auto_assigned', False)
         if was_auto_assigned:
-            original_choice = context.user_data.get('selected_specialist', 'Любой')
-            comment = f"Автоматически назначен из '{original_choice}'"
+            comment = "Автоматически назначен ботом"
 
         full_record = [
             record_id,  # A: ID записи
@@ -2954,7 +2975,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             time_range,  # H: Время с диапазоном
             "подтверждено",  # I: Статус
             created_at,  # J: Дата создания
-            "",  # K: Комментарий
+            comment,  # K: Комментарий ← ИСПРАВЛЕНО
             "❌",  # L: Напоминание 24ч
             "❌",  # M: Напоминание 1ч
             str(chat_id),  # N: Chat ID
@@ -3039,7 +3060,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = (
         f"✅ <b>Вы успешно записаны!</b>\n\n"
         f"<b>Детали записи:</b>\n"
-        f"• Услуга: {ss}\n"
+        f"• Услуга: {ss} ({st})\n"  # ← ИСПРАВЛЕНО
         f"• Специалист: {specialist}\n"
         f"• Дата: {date_str}\n"
         f"• Время: {time_display}\n"  # ← ВОТ ТУТ ДИАПАЗОН
