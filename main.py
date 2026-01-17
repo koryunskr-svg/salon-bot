@@ -2327,6 +2327,20 @@ async def reserve_slot(
     query = update.callback_query
     await query.answer()
 
+    # === ЕДИНАЯ ЛОГИКА ДЛЯ "ЛЮБОЙ" ===
+    original_specialist = context.user_data.get("selected_specialist", "")
+    is_any_mode = original_specialist.lower() in ["любой", "любой специалист"]
+    
+    if is_any_mode:
+        # Сохраняем реального специалиста, который был выбран из списка
+        context.user_data["actual_specialist"] = specialist
+        context.user_data["was_auto_assigned"] = True
+        logger.info(f"🎯 Режим 'Любой': выбрал специалиста {specialist}")
+    else:
+        # Обычный выбор - сохраняем выбранного специалиста
+        context.user_data["actual_specialist"] = specialist
+        context.user_data["was_auto_assigned"] = False
+
     # === СОХРАНЯЕМ РЕАЛЬНОГО СПЕЦИАЛИСТА (для режима "Любой") ===
     original_specialist = context.user_data.get("selected_specialist", "")
     if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
@@ -2644,14 +2658,14 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if specialist_display.lower() in ["любой", "любой специалист"] and original_specialist:
         specialist_display = f"{original_specialist} (автоматически назначен)"
 
-        # Определяем отображаемого специалиста
-    display_specialist = context.user_data.get('selected_specialist', 'N/A')
-    original_specialist = context.user_data.get('selected_specialist', '')
-    
-    if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
-        # Если выбран "Любой", показываем реального специалиста
-        actual_specialist = context.user_data.get('actual_specialist', 'N/A')
-        display_specialist = f"{actual_specialist} (автоматически назначен)"
+    # Определяем отображаемого специалиста
+    display_specialist = context.user_data.get('actual_specialist', 'N/A')
+    was_auto_assigned = context.user_data.get('was_auto_assigned', False)
+
+    if was_auto_assigned:
+        # Если специалист был назначен автоматически (из режима "Любой")
+        original_choice = context.user_data.get('selected_specialist', 'Любой')
+        display_specialist = f"{display_specialist} (автоматически назначен из '{original_choice}')"  
     
     await update.message.reply_text(
         "📋 Пожалуйста, подтвердите запись:\n\n"
@@ -2726,7 +2740,15 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     st = context.user_data.get("service_type", "Неизвестно")
     ss = context.user_data.get("subservice", "Неизвестно")
-    specialist = context.user_data.get("selected_specialist", "любой")
+    # Исправление: берём реального специалиста, а не "Любой"
+    specialist = context.user_data.get("actual_specialist", 
+                      context.user_data.get("selected_specialist", "любой"))
+    # Логирование для отладки
+    logger.info(f"=== DEBUG finalize_booking: specialist selection ===")
+    logger.info(f"actual_specialist: {context.user_data.get('actual_specialist')}")
+    logger.info(f"selected_specialist: {context.user_data.get('selected_specialist')}")
+    logger.info(f"was_auto_assigned: {context.user_data.get('was_auto_assigned')}")
+    logger.info(f"Используемый специалист: {specialist}")
     date_str = context.user_data.get("date", "Неизвестно")
     time_str = context.user_data.get("time", "Неизвестно")
     name = context.user_data.get("name", "Неизвестно")
