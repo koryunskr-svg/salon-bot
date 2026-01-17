@@ -813,42 +813,26 @@ async def _validate_booking_checks(
                     continue
     
     # === ПРОВЕРКА 3: ПОВТОРНАЯ ЗАПИСЬ В КАТЕГОРИИ ===
-    # Проверяем только для ОДНОГО человека (имя + телефон) И ТОЛЬКО БУДУЩИЕ записи
+    # Проверяем только для ОДНОГО человека (имя + телефон)
     repeat_records = []
-    today_date = datetime.now(TIMEZONE).date()
-    
     for r in records:
-        if len(r) > 8:  # Должно быть достаточно данных
+        if len(r) > 4:
             record_name = str(r[1]).strip()
             record_phone = str(r[2]).strip()
             record_category = str(r[3]).strip()
             record_status = str(r[8]).strip()
-            record_date_str = str(r[6]).strip()
             
-            # Пропускаем записи без даты
-            if not record_date_str or record_date_str.lower() in ["неизвестно", "none", "n/a"]:
-                continue
-            
-            # Проверяем, что запись будущая
-            try:
-                record_date = datetime.strptime(record_date_str, "%d.%m.%Y").date()
-                is_future = record_date >= today_date
-            except ValueError:
-                logger.warning(f"Неверный формат даты в записи: {record_date_str}")
-                continue  # пропускаем записи с неверной дататой
-            
-            # Тот же человек (имя И телефон) в той же категории, подтверждено И будущая
+            # Тот же человек (имя И телефон) в той же категории
             if (record_name.lower() == name.lower() and 
                 record_phone == phone and 
                 record_category == service_type and 
-                record_status == "подтверждено" and
-                is_future):  # ← ЗАКРЫВАЮЩАЯ СКОБКА ЗДЕСЬ!
+                record_status == "подтверждено"):
                 
                 repeat_records.append({
                     "category": record_category,
                     "service": str(r[4]).strip() if len(r) > 4 else "",
                     "specialist": str(r[5]).strip() if len(r) > 5 else "",
-                    "date": record_date_str,
+                    "date": str(r[6]).strip() if len(r) > 6 else "",
                     "time": str(r[7]).strip() if len(r) > 7 else "",
                 })
     
@@ -2281,7 +2265,8 @@ date_str, st, ss]):
         t = s.get("time", "N/A")
         
         if is_any_mode:
-            # РЕЖИМ "ЛЮБОЙ": показываем время с диапазоном
+            # РЕЖИМ "ЛЮБОЙ": показываем только время
+            available_count = s.get("available_count", 1)
             
             # Рассчитываем диапазон времени
             try:
@@ -2292,13 +2277,10 @@ date_str, st, ss]):
                 end_hour = end_minutes // 60
                 end_minute = end_minutes % 60
                 end_time = f"{end_hour:02d}:{end_minute:02d}"
-                time_display = f"{t}-{end_time}"   # ← ВСЕГДА ПОКАЗЫВАЕМ ДИАПАЗОН
+                time_display = f"{t}-{end_time}"
             except Exception as e:
                 logger.error(f"Ошибка расчета времени: {e}")
-                time_display = t   # fallback
-
-                callback_data = f"slot_any_{t}"
-                kb.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+                time_display = t
             
             # Текст кнопки - ВСЕГДА БЕЗ СКОБОК
             button_text = f"{time_display}"         
@@ -2345,32 +2327,37 @@ async def reserve_slot(
     query = update.callback_query
     await query.answer()
 
-    # === ПРОВЕРКА: ЕСТЬ ЛИ ДАТА? ===
-    date_str = context.user_data.get("date")
-    if not date_str:
-        logger.error(f"❌ ОШИБКА: date_str is None! context.user_data keys: {list(context.user_data.keys())}")
-        await query.edit_message_text(
-            "❌ Ошибка: дата не выбрана. Начните заново.",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
-            ])
-        )
-        return
-
     # === СОХРАНЯЕМ РЕАЛЬНОГО СПЕЦИАЛИСТА (для режима "Любой") ===
     original_specialist = context.user_data.get("selected_specialist", "")
     if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
         logger.info(f"🎯 Режим 'Любой': сохраняем реального специалиста {specialist}")
         context.user_data["actual_specialist"] = specialist
-        
-        # Определяем, было ли автоматическое назначение
-        if query.data and query.data.startswith("slot_any_"):
-            context.user_data["was_auto_assigned"] = False
-        else:
-            context.user_data["was_auto_assigned"] = True
     else:
         context.user_data["actual_specialist"] = specialist
-        context.user_data["was_auto_assigned"] = False
+
+    # ← ДОБАВИТЬ ЭТУ ПРОВЕРКУ В НАЧАЛО
+    date_str = context.user_data.get("date")
+    if date_str:
+        try:
+            # Проверяем, не прошла ли дата/время
+            slot_datetime = TIMEZONE.localize(
+                datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+            )
+            now = datetime.now(TIMEZONE)
+            
+            if slot_datetime < now:
+                await query.edit_message_text(
+                    "❌ Нельзя записаться на прошедшее время!\n\n"
+                    "Выберите другое время или дату.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🕐 Выбрать другое время", callback_data="refresh_time")],
+                        [InlineKeyboardButton("📅 Выбрать другую дату", callback_data="back_to_date_select")]
+                    ])
+                )
+                return
+        except Exception as e:
+            logger.error(f"Ошибка проверки времени: {e}")
+    # ← КОНЕЦ ДОБАВЛЕНИЯ
 
     # Проверка на длинную услугу
     if time_str == "Требуется согласование":
@@ -2391,6 +2378,7 @@ async def reserve_slot(
     logger.info(
         f"DEBUG reserve_slot: получен specialist='{specialist}', time='{time_str}'"
     )
+    date_str = context.user_data.get("date")
     ss = context.user_data.get("subservice")
     logger.info(f"DEBUG reserve_slot: date='{date_str}', subservice='{ss}'")
 
@@ -2451,7 +2439,7 @@ async def reserve_slot(
         for job in current_jobs:
             job.schedule_removal()
 
-    # Добавляем предупреждение через 1 минута
+    # Добавляем предупреждение через 1 минуту
     context.job_queue.run_once(
         warn_reservation,
         when=WARNING_TIMEOUT,
@@ -2470,26 +2458,6 @@ async def reserve_slot(
     logger.info(
         f"⏰ Таймеры установлены: предупреждение через {WARNING_TIMEOUT}с, освобождение через {RESERVATION_TIMEOUT}с"
     )
-    # === /ТАЙМЕРЫ ===
-
-    context.user_data["temp_booking"] = {
-        "specialist": specialist,
-        "time": time_str,
-        "date": date_str,
-        "event_id": event_id,
-        "start_dt": start_dt,
-        "end_dt": end_dt,
-        "subservice": ss,
-        "created_at": datetime.now(TIMEZONE).isoformat(),
-    }
-
-    kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
-    await query.edit_message_text(
-        "⏳ Слот зарезервирован! Введите ваше имя:",
-        reply_markup=InlineKeyboardMarkup(kb),
-    )
-    context.user_data["state"] = ENTER_NAME
-    return ENTER_NAME
     # === /ТАЙМЕРЫ ===
 
     context.user_data["temp_booking"] = {
@@ -2707,17 +2675,6 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
-    # === СОХРАНЕНИЕ ДАННЫХ ИЗ TEMP_BOOKING (чтобы не потерялись) ===
-    temp_booking = context.user_data.get("temp_booking", {})
-    if temp_booking:
-        # Копируем важные данные в основной контекст
-        if not context.user_data.get("date") and temp_booking.get("date"):
-            context.user_data["date"] = temp_booking["date"]
-        if not context.user_data.get("time") and temp_booking.get("time"):
-            context.user_data["time"] = temp_booking["time"]
-        if not context.user_data.get("actual_specialist") and temp_booking.get("specialist"):
-            context.user_data["actual_specialist"] = temp_booking["specialist"]
 
     # === ОТЛАДКА ДАТЫ ===
     print(f"\n{'='*60}")
@@ -2945,27 +2902,18 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Ошибка расчета диапазона для таблицы: {e}")
 
-        # Определяем реального специалиста
-        real_specialist = specialist  # по умолчанию
-        comment = ""  # примечание пустое
-
-        if specialist.lower() in ["любой", "любой специалист"]:
-            # Если был выбран "Любой", берем реального из actual_specialist
-            real_specialist = context.user_data.get("actual_specialist", "не назначен")
-            comment = f"Клиент выбрал 'Любой', назначен: {real_specialist}"
-
         full_record = [
             record_id,  # A: ID записи
             name,  # B: Имя
             phone,  # C: Телефон
             st,  # D: Категория услуги
             ss,  # E: Услуга
-            real_specialist,  # F: Специалист ← РЕАЛЬНЫЙ СПЕЦИАЛИСТ!
+            specialist,  # F: Специалист
             date_str,  # G: Дата
             time_range,  # H: Время с диапазоном
             "подтверждено",  # I: Статус
             created_at,  # J: Дата создания
-            comment,  # K: Комментарий ← ПРИМЕЧАНИЕ О ВЫБОРЕ "Любой"
+            "",  # K: Комментарий
             "❌",  # L: Напоминание 24ч
             "❌",  # M: Напоминание 1ч
             str(chat_id),  # N: Chat ID
@@ -3014,18 +2962,12 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         time_range = time_str
     
-    # Определяем для уведомления
-    display_specialist = specialist
-    if specialist.lower() in ["любой", "любой специалист"]:
-        real_spec = context.user_data.get("actual_specialist", "не назначен")
-        display_specialist = f"{real_spec} (автоматически назначен)"
-
     admin_message = (
         f"📢 <b>Новая запись</b>\n"
         f"👤 Клиент: {name}\n"
         f"📞 Телефон: {phone}\n"
         f"💅 Услуга: {ss} ({st})\n"
-        f"👩‍💼 Специалист: {specialist}\n"  # ← СЕЙЧАС "Любой"
+        f"👩‍💼 Специалист: {specialist}\n"
         f"📅 Дата: {date_str}\n"
         f"⏰ Время: {time_range}\n"  # ← ИЗМЕНЕНО: time_range вместо time_str
         f"⏳ Длительность: {format_duration(total_duration)}\n"
