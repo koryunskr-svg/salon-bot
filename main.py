@@ -3144,10 +3144,10 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         try:
-        await notify_admins(context, admin_message)
-        logger.info(f"✅ Админы уведомлены о записи {record_id}")
-    except Exception as e:
-        logger.error(f"⚠️ Не удалось уведомить админов: {e}")
+            await notify_admins(context, admin_message)
+            logger.info(f"✅ Админы уведомлены о записи {record_id}")
+        except Exception as e:
+            logger.error(f"⚠️ Не удалось уведомить админов: {e}")
 
     # === 6. ОТПРАВЛЯЕМ ПОЛЬЗОВАТЕЛЮ ФИНАЛЬНОЕ СООБЩЕНИЕ ===
     
