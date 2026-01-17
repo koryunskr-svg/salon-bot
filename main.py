@@ -2265,9 +2265,13 @@ date_str, st, ss]):
         t = s.get("time", "N/A")
         
         if is_any_mode:
-            # РЕЖИМ "ЛЮБОЙ": показываем только время
-            available_count = s.get("available_count", 1)
+            # РЕЖИМ "ЛЮБОЙ": показываем только время, если есть свободные специалисты
+            available_count = s.get("available_count", 0)
             
+            # Пропускаем занятые слоты
+            if available_count <= 0:
+                continue  # ← ДОБАВИТЬ ЭТУ СТРОКУ
+
             # Рассчитываем диапазон времени
             try:
                 total_duration = calculate_service_step(ss)
@@ -2312,9 +2316,17 @@ date_str, st, ss]):
         if i < len(kb) - 1:  # Все кроме последней кнопки (Назад)
             for button in button_row:
                 logger.info(f"  Слот {i+1}: {button.text}")
-    await query.edit_message_text(
-        "Выберите время:", reply_markup=InlineKeyboardMarkup(kb)
-    )
+
+    if not kb or len(kb) == 1:  # Только кнопка "Назад"
+        await query.edit_message_text(
+            "❌ Нет доступных слотов на выбранное время.",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+    else:
+        await query.edit_message_text(
+            "Выберите время:", reply_markup=InlineKeyboardMarkup(kb)
+        )
+
     context.user_data["state"] = SELECT_TIME
     return SELECT_TIME
 
@@ -2659,13 +2671,13 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         specialist_display = f"{original_specialist} (автоматически назначен)"
 
     # Определяем отображаемого специалиста
-    display_specialist = context.user_data.get('actual_specialist', 'N/A')
-    was_auto_assigned = context.user_data.get('was_auto_assigned', False)
+    display_specialist = context.user_data.get('selected_specialist', 'N/A')
+    original_specialist = context.user_data.get('selected_specialist', '')
 
-    if was_auto_assigned:
-        # Если специалист был назначен автоматически (из режима "Любой")
-        original_choice = context.user_data.get('selected_specialist', 'Любой')
-        display_specialist = f"{display_specialist} (автоматически назначен из '{original_choice}')"  
+    if original_specialist and original_specialist.lower() in ["любой", "любой специалист"]:
+        # Если выбран "Любой", показываем реального специалиста
+        actual_specialist = context.user_data.get('actual_specialist', 'N/A')
+        display_specialist = f"{actual_specialist} (автоматически назначен)" 
     
     await update.message.reply_text(
         "📋 Пожалуйста, подтвердите запись:\n\n"
@@ -2923,6 +2935,13 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             time_range = f"{time_str}-{end_time}"
         except Exception as e:
             logger.error(f"Ошибка расчета диапазона для таблицы: {e}")
+
+        # Определяем, нужно ли добавить комментарий об автоматическом назначении
+        comment = ""
+        was_auto_assigned = context.user_data.get('was_auto_assigned', False)
+        if was_auto_assigned:
+            original_choice = context.user_data.get('selected_specialist', 'Любой')
+            comment = f"Автоматически назначен из '{original_choice}'"
 
         full_record = [
             record_id,  # A: ID записи
