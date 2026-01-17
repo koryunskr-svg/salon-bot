@@ -2881,6 +2881,14 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = context.user_data.get("phone", "Неизвестно")
     event_id = temp_booking.get("event_id")
 
+    # Удаляем желтый резерв из календаря
+    if event_id:
+        try:
+            safe_delete_calendar_event(CALENDAR_ID, event_id)
+            logger.info(f"✅ Удалён желтый резерв: {event_id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка удаления желтого резерва: {e}")
+
     print(f"=== DEBUG finalize_booking: Начало ===")
     print(f"ID чата: {chat_id}")
     print(f"Данные из context.user_data: {list(context.user_data.keys())}")
@@ -3123,18 +3131,19 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             specialist_display = f"{specialist}"
 
-    admin_message = (
-        f"📢 <b>Новая запись</b>\n"
-        f"👤 Клиент: {name}\n"
-        f"📞 Телефон: {phone}\n"
-        f"💅 Услуга: {ss} ({st})\n"
-        f"👩‍💼 Специалист: {specialist_display}\n"  # ← ИЗМЕНЕНО
-        f"📅 Дата: {date_str}\n"
-        f"⏰ Время: {time_range}\n"  # ← ИЗМЕНЕНО: time_range вместо time_str
-        f"⏳ Длительность: {format_duration(total_duration)}\n"
-        f"🆔 ID записи: {record_id}"
-    )
-    try:
+        admin_message = (
+            f"📢 <b>Новая запись</b>\n"
+            f"👤 Клиент: {name}\n"
+            f"📞 Телефон: {phone}\n"
+            f"💅 Услуга: {ss} ({st})\n"
+            f"👩‍💼 Специалист: {specialist_display}\n"
+            f"📅 Дата: {date_str}\n"
+            f"⏰ Время: {time_range}\n"
+            f"⏳ Длительность: {format_duration(total_duration)}\n"
+            f"🆔 ID записи: {record_id}"
+        )
+
+        try:
         await notify_admins(context, admin_message)
         logger.info(f"✅ Админы уведомлены о записи {record_id}")
     except Exception as e:
