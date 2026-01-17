@@ -1,4 +1,4 @@
-# main.py- D -4339-16.01.26 - для изм.
+# main.py- D -4339-16.01.26 - для изм.-2
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -1401,6 +1401,38 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time_str = data.split("slot_any_", 1)[1]
         logger.info(f"🎯 Выбор специалиста для времени: {time_str}")
 
+        # Получаем услугу для расчета диапазона
+        subservice = context.user_data.get("subservice", "")
+        
+        if subservice:
+            try:
+                # Рассчитываем диапазон времени
+                total_duration = calculate_service_step(subservice)
+                hour = int(time_str.split(':')[0])
+                minute = int(time_str.split(':')[1])
+                end_minutes = hour * 60 + minute + total_duration
+                end_hour = end_minutes // 60
+                end_minute = end_minutes % 60
+                end_time = f"{end_hour:02d}:{end_minute:02d}"
+                
+                # Показываем диапазон в сообщении
+                await query.edit_message_text(
+                    f"⏰ Время: {time_str}-{end_time}\n\n"
+                    f"Выберите специалиста:",
+                    reply_markup=query.message.reply_markup  # Оставляем те же кнопки
+                )
+                return
+            except Exception as e:
+                logger.error(f"Ошибка расчета диапазона: {e}")
+        
+        # Если не удалось рассчитать, оставляем как было
+        await query.edit_message_text(
+            f"⏰ Время: {time_str}\n\n"
+            f"Выберите специалиста:",
+            reply_markup=query.message.reply_markup
+        )
+        return
+
         # Получаем список свободных специалистов для этого времени
         date_str = context.user_data.get("date", "")
         service_type = context.user_data.get("service_type", "")
@@ -2644,6 +2676,22 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subservice = context.user_data.get("subservice", "N/A")
     date = context.user_data.get("date", "N/A")
     time = context.user_data.get("time", "N/A")
+    
+    # Рассчитываем диапазон времени
+    time_display = time_str
+    if subservice and time_str != "N/A":
+        try:
+            total_duration = calculate_service_step(subservice)
+            hour = int(time_str.split(':')[0])
+            minute = int(time_str.split(':')[1])
+            end_minutes = hour * 60 + minute + total_duration
+            end_hour = end_minutes // 60
+            end_minute = end_minutes % 60
+            end_time = f"{end_hour:02d}:{end_minute:02d}"
+            time_display = f"{time_str}-{end_time}"
+        except Exception as e:
+            logger.error(f"Ошибка расчета времени: {e}")
+
     specialist = context.user_data.get("actual_specialist", 
                      context.user_data.get("selected_specialist", "N/A"))
     
@@ -3103,6 +3151,11 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MENU
 
     # === 5. УВЕДОМЛЯЕМ АДМИНИСТРАТОРОВ ===
+    # Объявляем переменные заранее
+    time_range = time_str
+    specialist_display = specialist
+    admin_message = ""
+
     # Рассчитываем время окончания для уведомления
     try:
         time_str = context.user_data.get("time", "Неизвестно")
@@ -3115,26 +3168,26 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         end_time = f"{end_hour:02d}:{end_minute:02d}"
         time_range = f"{time_str}-{end_time}"
     except:
-        time_range = time_str
+        pass  # time_range уже инициализирован
     
-        # Добавляем информацию об автоматическом назначении
-        was_auto_assigned = context.user_data.get('was_auto_assigned', False)
-        if was_auto_assigned:
-            specialist_display = f"{specialist} (автоматически назначен)"
-        else:
-            specialist_display = f"{specialist}"
+    # Добавляем информацию об автоматическом назначении
+    was_auto_assigned = context.user_data.get('was_auto_assigned', False)
+    if was_auto_assigned:
+        specialist_display = f"{specialist} (автоматически назначен)"
+    else:
+        specialist_display = f"{specialist}"
 
-        admin_message = (
-            f"📢 <b>Новая запись</b>\n"
-            f"👤 Клиент: {name}\n"
-            f"📞 Телефон: {phone}\n"
-            f"💅 Услуга: {ss} ({st})\n"
-            f"👩‍💼 Специалист: {specialist_display}\n"
-            f"📅 Дата: {date_str}\n"
-            f"⏰ Время: {time_range}\n"
-            f"⏳ Длительность: {format_duration(total_duration)}\n"
-            f"🆔 ID записи: {record_id}"
-        )
+    admin_message = (
+        f"📢 <b>Новая запись</b>\n"
+        f"👤 Клиент: {name}\n"
+        f"📞 Телефон: {phone}\n"
+        f"💅 Услуга: {ss} ({st})\n"
+        f"👩‍💼 Специалист: {specialist_display}\n"
+        f"📅 Дата: {date_str}\n"
+        f"⏰ Время: {time_range}\n"
+        f"⏳ Длительность: {format_duration(total_duration)}\n"
+        f"🆔 ID записи: {record_id}"
+    )
 
     try:
         await notify_admins(context, admin_message)
