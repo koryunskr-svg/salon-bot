@@ -1,4 +1,4 @@
-# main.py- D -4339-16.01.26 - для изм.-2
+# main.py- D -4339-17.01.26 - для изм.-2
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -1419,14 +1419,44 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if slot.get("time") == time_str and slot.get("is_any_mode", False):
                 available_specialists = slot.get("available_specialists", [])
                 break
-        
+               
         if not available_specialists:
             await query.edit_message_text("❌ Ошибка: специалисты не найдены.")
             return
         
+        # Рассчитываем диапазон времени для сообщения
+        time_display = time_str
+        if subservice:
+            try:
+                total_duration = calculate_service_step(subservice)
+                hour = int(time_str.split(':')[0])
+                minute = int(time_str.split(':')[1])
+                end_minutes = hour * 60 + minute + total_duration
+                end_hour = end_minutes // 60
+                end_minute = end_minutes % 60
+                end_time = f"{end_hour:02d}:{end_minute:02d}"
+                time_display = f"{time_str}-{end_time}"
+            except Exception as e:
+                logger.error(f"Ошибка расчета диапазона: {e}")
+        
+        # Если только один специалист - показываем его как выбранный
         if len(available_specialists) == 1:
-            # Только один свободный - сразу резервируем
-            return await reserve_slot(update, context, available_specialists[0], time_str)
+            # Показываем подтверждение выбора, а не сразу резервируем
+            kb = [
+                [InlineKeyboardButton(f"✅ Выбрать {available_specialists[0]}", 
+                                     callback_data=f"slot_{available_specialists[0]}_{time_str}")],
+                [InlineKeyboardButton("⬅️ Назад", callback_data="refresh_time")]
+            ]
+            
+            await query.edit_message_text(
+                f"⏰ Время: {time_display}\n\n"
+                f"👩‍💼 Доступен только один специалист:\n"
+                f"<b>{available_specialists[0]}</b>\n\n"
+                f"Нажмите кнопку для выбора:",
+                reply_markup=InlineKeyboardMarkup(kb),
+                parse_mode="HTML"
+            )
+            return
         
         # Показываем выбор между несколькими специалистами
         kb = []
@@ -1436,7 +1466,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="refresh_time")])
         
         await query.edit_message_text(
-            f"⏰ Время: {time_str}\n\n"  # ← ПРОСТО time_str, БЕЗ диапазона
+            f"⏰ Время: {time_display}\n\n"
             f"Выберите специалиста:",
             reply_markup=InlineKeyboardMarkup(kb)
         )
@@ -1474,8 +1504,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="refresh_time")])
         
+        # Рассчитываем диапазон времени
+        time_display = time_str
+        subservice = context.user_data.get("subservice", "")
+        if subservice:
+            try:
+                total_duration = calculate_service_step(subservice)
+                hour = int(time_str.split(':')[0])
+                minute = int(time_str.split(':')[1])
+                end_minutes = hour * 60 + minute + total_duration
+                end_hour = end_minutes // 60
+                end_minute = end_minutes % 60
+                end_time = f"{end_hour:02d}:{end_minute:02d}"
+                time_display = f"{time_str}-{end_time}"
+            except Exception as e:
+                logger.error(f"Ошибка расчета диапазона: {e}")
+        
         await query.edit_message_text(
-            f"⏰ Время: {time_str}\n\n"
+            f"⏰ Время: {time_display}\n\n"  # ← С ДИАПАЗОНОМ!
             f"Выберите специалиста:",
             reply_markup=InlineKeyboardMarkup(kb)
         )
