@@ -2711,7 +2711,7 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Категория: {service_type}\n"
         f"• Услуга: {subservice}\n"
         f"• Дата: {date}\n"
-        f"• Время: {time}\n"
+        f"• Время: {time_display}\n"
         f"• Специалист: {specialist}\n"
         f"• Имя: {name}\n\n"
         f"📞 <b>Теперь введите ваш телефон:</b>"
