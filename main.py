@@ -2649,6 +2649,8 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Объявляем time_str ДО всего
+    time_str = context.user_data.get("time", "")
     if update.callback_query:
         # Это нажатие кнопки "Назад" из состояния ENTER_PHONE
         query = update.callback_query
@@ -2687,7 +2689,7 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     time = context.user_data.get("time", "N/A")
     
     # Рассчитываем диапазон времени
-    time_display = time_str
+    time_display = time
     if subservice and time_str != "N/A":
         try:
             total_duration = calculate_service_step(subservice)
@@ -2697,7 +2699,7 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
             end_hour = end_minutes // 60
             end_minute = end_minutes % 60
             end_time = f"{end_hour:02d}:{end_minute:02d}"
-            time_display = f"{time_str}-{end_time}"
+            time_display = f"{time}-{end_time}"
         except Exception as e:
             logger.error(f"Ошибка расчета времени: {e}")
 
@@ -2714,18 +2716,7 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Имя: {name}\n\n"
         f"📞 <b>Теперь введите ваш телефон:</b>"
     )
-    
-    summary = (
-        f"📋 <b>Продолжаем запись:</b>\n\n"
-        f"• Категория: {service_type}\n"
-        f"• Услуга: {subservice}\n"
-        f"• Дата: {date}\n"
-        f"• Время: {time}\n"
-        f"• Специалист: {specialist}\n"
-        f"• Имя: {name}\n\n"
-        f"📞 <b>Теперь введите ваш телефон:</b>"
-    )
-    
+        
     kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
 
     await update.message.reply_text(
