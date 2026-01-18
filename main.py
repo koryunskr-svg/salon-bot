@@ -269,6 +269,8 @@ def setup_production_logging():
 
 
 async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    if context.error and "Message is not modified" in str(context.error):
+        return  # ИГНОРИРОВАТЬ эту ошибку
     logger.error("Exception while handling an update:", exc_info=context.error)
     if update and hasattr(update, "effective_message") and update.effective_message:
         try:
@@ -3151,14 +3153,9 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MENU
 
     # === 5. УВЕДОМЛЯЕМ АДМИНИСТРАТОРОВ ===
-    # Объявляем переменные заранее
-    time_range = time_str
-    specialist_display = specialist
-    admin_message = ""
-
     # Рассчитываем время окончания для уведомления
+    time_range = time_str
     try:
-        time_str = context.user_data.get("time", "Неизвестно")
         total_duration = calculate_service_step(ss)
         hour = int(time_str.split(':')[0])
         minute = int(time_str.split(':')[1])
@@ -3168,7 +3165,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         end_time = f"{end_hour:02d}:{end_minute:02d}"
         time_range = f"{time_str}-{end_time}"
     except:
-        pass  # time_range уже инициализирован
+        pass  # Оставляем time_str если ошибка
     
     # Добавляем информацию об автоматическом назначении
     was_auto_assigned = context.user_data.get('was_auto_assigned', False)
