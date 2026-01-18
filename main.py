@@ -1402,36 +1402,43 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Обработка выбора специалиста для "Любой"
         time_str = data.split("slot_any_", 1)[1]
         logger.info(f"🎯 Выбор специалиста для времени: {time_str}")
-
-        # Получаем услугу для расчета диапазона
+        
+        # Получаем список свободных специалистов для этого времени
+        date_str = context.user_data.get("date", "")
+        service_type = context.user_data.get("service_type", "")
         subservice = context.user_data.get("subservice", "")
         
-        if subservice:
-            try:
-                # Рассчитываем диапазон времени
-                total_duration = calculate_service_step(subservice)
-                hour = int(time_str.split(':')[0])
-                minute = int(time_str.split(':')[1])
-                end_minutes = hour * 60 + minute + total_duration
-                end_hour = end_minutes // 60
-                end_minute = end_minutes % 60
-                end_time = f"{end_hour:02d}:{end_minute:02d}"
-                
-                # Показываем диапазон в сообщении
-                await query.edit_message_text(
-                    f"⏰ Время: {time_str}-{end_time}\n\n"
-                    f"Выберите специалиста:",
-                    reply_markup=query.message.reply_markup  # Оставляем те же кнопки
-                )
-                return
-            except Exception as e:
-                logger.error(f"Ошибка расчета диапазона: {e}")
+        # Ищем снова слоты, чтобы получить список специалистов
+        slots = find_available_slots(
+            service_type, subservice, date_str, "любой", context.user_data.get("priority", "date")
+        )
         
-        # Если не удалось рассчитать, оставляем как было
+        # Находим нужный слот
+        available_specialists = []
+        for slot in slots:
+            if slot.get("time") == time_str and slot.get("is_any_mode", False):
+                available_specialists = slot.get("available_specialists", [])
+                break
+        
+        if not available_specialists:
+            await query.edit_message_text("❌ Ошибка: специалисты не найдены.")
+            return
+        
+        if len(available_specialists) == 1:
+            # Только один свободный - сразу резервируем
+            return await reserve_slot(update, context, available_specialists[0], time_str)
+        
+        # Показываем выбор между несколькими специалистами
+        kb = []
+        for spec in available_specialists:
+            kb.append([InlineKeyboardButton(f"👩‍💼 {spec}", callback_data=f"slot_{spec}_{time_str}")])
+        
+        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="refresh_time")])
+        
         await query.edit_message_text(
-            f"⏰ Время: {time_str}\n\n"
+            f"⏰ Время: {time_str}\n\n"  # ← ПРОСТО time_str, БЕЗ диапазона
             f"Выберите специалиста:",
-            reply_markup=query.message.reply_markup
+            reply_markup=InlineKeyboardMarkup(kb)
         )
         return
 
