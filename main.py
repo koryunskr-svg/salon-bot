@@ -3076,13 +3076,8 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = context.user_data.get("phone", "Неизвестно")
     event_id = temp_booking.get("event_id")
 
-    # Удаляем желтый резерв из календаря
-    if event_id:
-        try:
-            safe_delete_calendar_event(CALENDAR_ID, event_id)
-            logger.info(f"✅ Удалён желтый резерв: {event_id}")
-        except Exception as e:
-            logger.error(f"❌ Ошибка удаления желтого резерва: {e}")
+    # НЕ удаляем желтый резерв из календаря - мы его ОБНОВИМ до зеленого
+    logger.info(f"🟡 Желтый резерв {event_id} будет обновлен до зеленого")
 
     print(f"=== DEBUG finalize_booking: Начало ===")
     print(f"ID чата: {chat_id}")
