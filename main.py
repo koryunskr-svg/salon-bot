@@ -1834,6 +1834,39 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tz = pytz.timezone(get_setting("Часовой пояс", "Europe/Moscow"))
     now = datetime.now(tz)
     days_ahead = int(get_setting("Количество дней генерации слотов", 30))
+    
+    # ← ДОБАВЬ ЭТОТ БЛОК ↓↓↓
+    # Проверяем, стоит ли показывать сегодняшнюю дату
+    today_date = now.date()
+    today_date_str = today_date.strftime("%d.%m.%Y")
+    
+    # Получаем время окончания работы для сегодняшнего дня
+    work_end_time = None
+    try:
+        # Ищем в графике специалистов время окончания работы на сегодня
+        schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
+        for row in schedule_data:
+            if len(row) > 0:
+                # Берем название заведения или любого специалиста для проверки графика
+                spec_name = row[0].strip()
+                # Получаем день недели для сегодня
+                day_name = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][today_date.weekday()]
+                day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(day_name) + 2
+                
+                if day_index < len(row):
+                    work_schedule = row[day_index].strip()
+                    if work_schedule and work_schedule.lower() != "выходной" and "-" in work_schedule:
+                        try:
+                            # Парсим время окончания работы (после "-")
+                            _, end_str = work_schedule.split("-", 1)
+                            end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
+                            work_end_time = end_time
+                            break  # Нашли первый рабочий график
+                        except:
+                            continue
+    except Exception as e:
+        logger.error(f"❌ Ошибка при проверке графика работы на сегодня: {e}")
+    # ← КОНЕЦ БЛОКА ↑↑↑
 
     # --- СЦЕНАРИЙ B: "Сначала специалист", потом дата (selected_specialist есть) ---
     if selected_specialist and selected_specialist != "любой":
@@ -1844,6 +1877,16 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 target_date.weekday()
             ]
             target_date_str = target_date.strftime("%d.%m.%Y")
+
+            # ← ДОБАВЬ ЭТУ ПРОВЕРКУ ДЛЯ СЕГОДНЯШНЕЙ ДАТЫ ↓↓↓
+        if days_offset == 0:  # Сегодняшняя дата
+            if work_end_time:  # Если знаем время окончания работы
+                current_time = now.time()
+                if current_time > work_end_time:
+                    # Рабочий день уже закончился - пропускаем сегодняшнюю дату
+                    logger.info(f"⚠️ Пропускаем сегодняшнюю дату {target_date_str}, рабочий день закончился в {work_end_time}")
+                    continue  # Пропускаем эту дату
+        # ← КОНЕЦ ПРОВЕРКИ ↑↑↑
 
             # Найдём строку расписания для конкретного специалиста
             spec_schedule_row = None
@@ -2168,6 +2211,29 @@ async def select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"service_type из context: {context.user_data.get('service_type')}")
     print(f"subservice из context: {context.user_data.get('subservice')}")
 
+    # ← ДОБАВЬ ЭТУ ПРОВЕРКУ ПРОШЕДШЕЙ ДАТЫ ↓↓↓
+    date_str = context.user_data.get("date")
+    if date_str:
+        try:
+            # Парсим дату
+            selected_date = datetime.strptime(date_str, "%d.%m.%Y").date()
+            today_date = datetime.now(TIMEZONE).date()
+            
+            if selected_date < today_date:
+                # Выбрана прошедшая дата
+                await query.edit_message_text(
+                    "❌ Выбрана прошедшая дата!\n\n"
+                    "Пожалуйста, выберите актуальную дату.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📅 Выбрать другую дату", callback_data="back_to_date_select")],
+                        [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+                    ])
+                )
+                return SELECT_TIME
+        except ValueError:
+            pass  # Неверный формат даты, но это маловероятно
+    # ← КОНЕЦ ПРОВЕРКИ ↑↑↑
+
     # ДОБАВИТЬ ДЛЯ ОТЛАДКИ:
     logger.info(
         f"DEBUG select_time: дата={context.user_data.get('date')}, специалист={context.user_data.get('selected_specialist')}, приоритет={context.user_data.get('priority')}"
@@ -2259,9 +2325,27 @@ date_str, st, ss]):
     if not slots:
         logger.info(f"Нет доступных слотов для {date_str}, специалист {specialist}")
         
-        # УДАЛИТЬ ВЕСЬ БЛОК ТЕСТОВЫХ СЛОТОВ (он не работает!)
-        # ВМЕСТО НЕГО ПРОСТО ПОКАЗЫВАЕМ СООБЩЕНИЕ И КНОПКИ
-        
+        # ← ДОБАВЬ ЭТУ ПРОВЕРКУ ПРОШЕДШЕЙ ДАТЫ ↓↓↓
+        try:
+            selected_date = datetime.strptime(date_str, "%d.%m.%Y").date()
+            today_date = datetime.now(TIMEZONE).date()
+            
+            if selected_date < today_date:
+                # Прошедшая дата - не предлагаем лист ожидания
+                await query.edit_message_text(
+                    f"❌ На {date_str} запись невозможна - это прошедшая дата.\n\n"
+                    f"Пожалуйста, выберите актуальную дату.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📅 Выбрать другую дату", callback_data="back_to_date_select")],
+                        [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+                    ])
+                )
+                context.user_data["state"] = SELECT_TIME
+                return SELECT_TIME
+        except ValueError:
+            pass  # Неверный формат даты
+        # ← КОНЕЦ ПРОВЕРКИ ↑↑↑
+
         kb = [
             [InlineKeyboardButton("📋 В лист ожидания", callback_data="waiting_list")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
