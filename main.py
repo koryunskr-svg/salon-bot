@@ -3210,6 +3210,8 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.info(f"🟢 ОБНОВЛЕНИЕ КАЛЕНДАРЯ: event_id={event_id}")
                 logger.info(f"🟢 Данные: name={name}, услуга={ss}, время={start_dt}-{end_dt}")
                 
+                logger.info(f"🎯 ВЫЗЫВАЮ safe_update_calendar_event для {event_id}")
+                
                 result = safe_update_calendar_event(
                     CALENDAR_ID,
                     event_id,
@@ -3219,8 +3221,12 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     description=new_description,
                     color_id="10",  # Зелёный цвет для подтверждённых
                 )
-                logger.info(f"🟢 Результат safe_update_calendar_event: {result}")
-                logger.info(f"✅ Календарь обновлён: {event_id}")
+                
+                if result:
+                    logger.info(f"✅✅✅ УСПЕХ! Календарь обновлён: {result}")
+                else:
+                    logger.error(f"❌❌❌ ОШИБКА! safe_update_calendar_event вернула None для {event_id}")
+                    logger.error(f"❌ Проверь логи выше для деталей ошибки")
             else:
                 logger.error(
                     f"❌ Не найдены start_dt или end_dt в temp_booking: {temp_booking}"
