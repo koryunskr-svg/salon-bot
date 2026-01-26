@@ -2594,16 +2594,20 @@ async def reserve_slot(
 async def warn_reservation(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     uid = job.data.get("user_id") if job.data else None
-    if not uid:
-        logger.error("❌ warn_reservation: Не удалось получить user_id")
+    chat_id = job.data.get("chat_id") if job.data else None
+    
+    if not uid or not chat_id:
+        logger.error(f"❌ warn_reservation: Не удалось получить данные. user_id={uid}, chat_id={chat_id}")
         return
+    
     try:
         await context.bot.send_message(
-            job.chat_id, "⏳ Не забудьте подтвердить запись — осталось немного времени!"
+            chat_id=chat_id,
+            text="⏳ Не забудьте подтвердить запись — осталось немного времени!"
         )
-        logger.info(f"📤 Предупреждение отправлено (chat_id: {job.chat_id})")
+        logger.info(f"📤 Предупреждение отправлено (chat_id: {chat_id}, user_id: {uid})")
     except Exception as e:
-        logger.error(f"❌ Ошибка предупреждения: {e}")
+        logger.error(f"❌ Ошибка отправки напоминания: {e}")
 
 async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
