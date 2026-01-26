@@ -1,4 +1,4 @@
-# main.py- D -4339-17.01.26 - для изм.-2
+# main.py- D -4339-17.01.26 - для изм.
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -1467,61 +1467,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.edit_message_text(
             f"⏰ Время: {time_display}\n\n"
-            f"Выберите специалиста:",
-            reply_markup=InlineKeyboardMarkup(kb)
-        )
-        return
-
-        # Получаем список свободных специалистов для этого времени
-        date_str = context.user_data.get("date", "")
-        service_type = context.user_data.get("service_type", "")
-        subservice = context.user_data.get("subservice", "")
-        
-        # Ищем снова слоты, чтобы получить список специалистов
-        slots = find_available_slots(
-            service_type, subservice, date_str, "любой", context.user_data.get("priority", "date")
-        )
-        
-        # Находим нужный слот
-        available_specialists = []
-        for slot in slots:
-            if slot.get("time") == time_str and slot.get("is_any_mode", False):
-                available_specialists = slot.get("available_specialists", [])
-                break
-        
-        if not available_specialists:
-            await query.edit_message_text("❌ Ошибка: специалисты не найдены.")
-            return
-        
-        if len(available_specialists) == 1:
-            # Только один свободный - сразу резервируем
-            return await reserve_slot(update, context, available_specialists[0], time_str)
-        
-        # Показываем выбор между несколькими специалистами
-        kb = []
-        for spec in available_specialists:
-            kb.append([InlineKeyboardButton(f"👩‍💼 {spec}", callback_data=f"slot_{spec}_{time_str}")])
-        
-        kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="refresh_time")])
-        
-        # Рассчитываем диапазон времени
-        time_display = time_str
-        subservice = context.user_data.get("subservice", "")
-        if subservice:
-            try:
-                total_duration = calculate_service_step(subservice)
-                hour = int(time_str.split(':')[0])
-                minute = int(time_str.split(':')[1])
-                end_minutes = hour * 60 + minute + total_duration
-                end_hour = end_minutes // 60
-                end_minute = end_minutes % 60
-                end_time = f"{end_hour:02d}:{end_minute:02d}"
-                time_display = f"{time_str}-{end_time}"
-            except Exception as e:
-                logger.error(f"Ошибка расчета диапазона: {e}")
-        
-        await query.edit_message_text(
-            f"⏰ Время: {time_display}\n\n"  # ← С ДИАПАЗОНОМ!
             f"Выберите специалиста:",
             reply_markup=InlineKeyboardMarkup(kb)
         )
