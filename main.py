@@ -3212,6 +3212,13 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 logger.info(f"🎯 ВЫЗЫВАЮ safe_update_calendar_event для {event_id}")
                 
+                logger.info(f"🔍 ДЕТАЛИ ПЕРЕДАВАЕМЫХ ДАННЫХ:")
+                logger.info(f"🔍 start_dt: {start_dt}")
+                logger.info(f"🔍 start_dt.isoformat(): {start_dt.isoformat()}")
+                logger.info(f"🔍 end_dt: {end_dt}")
+                logger.info(f"🔍 end_dt.isoformat(): {end_dt.isoformat()}")
+                logger.info(f"🔍 Разница времени: {(end_dt - start_dt).total_seconds()} секунд")
+
                 result = safe_update_calendar_event(
                     CALENDAR_ID,
                     event_id,
