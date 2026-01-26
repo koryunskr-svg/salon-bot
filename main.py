@@ -2592,22 +2592,44 @@ async def reserve_slot(
 
 
 async def warn_reservation(context: ContextTypes.DEFAULT_TYPE):
-    job = context.job
-    uid = job.data.get("user_id") if job.data else None
-    chat_id = job.data.get("chat_id") if job.data else None
-    
-    if not uid or not chat_id:
-        logger.error(f"❌ warn_reservation: Не удалось получить данные. user_id={uid}, chat_id={chat_id}")
-        return
-    
     try:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="⏳ Не забудьте подтвердить запись — осталось немного времени!"
-        )
-        logger.info(f"📤 Предупреждение отправлено (chat_id: {chat_id}, user_id: {uid})")
+        logger.info("🎯🎯🎯 warn_reservation НАЧАЛА ВЫПОЛНЕНИЕ!")
+        
+        # Получаем chat_id
+        chat_id = None
+        
+        # Способ 1: из данных job
+        if context.job and context.job.data:
+            chat_id = context.job.data.get('chat_id')
+            logger.info(f"🎯 Способ 1: chat_id из job.data = {chat_id}")
+        
+        # Способ 2: из имени job
+        if not chat_id and context.job and hasattr(context.job, 'name'):
+            job_name = context.job.name
+            logger.info(f"🎯 Способ 2: job.name = {job_name}")
+            try:
+                # Из "reservation_warn_123456789" получаем 123456789
+                if job_name and '_' in job_name:
+                    parts = job_name.split('_')
+                    if len(parts) >= 3:
+                        chat_id = int(parts[-1])
+                        logger.info(f"🎯 Извлекли chat_id из имени: {chat_id}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка извлечения chat_id: {e}")
+        
+        logger.info(f"🎯 Итоговый chat_id = {chat_id}")
+        
+        if chat_id:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="⏳ Не забудьте подтвердить запись — осталось немного времени!"
+            )
+            logger.info(f"✅ Напоминание отправлено chat_id={chat_id}")
+        else:
+            logger.error("❌ Не удалось получить chat_id для напоминания")
+            
     except Exception as e:
-        logger.error(f"❌ Ошибка отправки напоминания: {e}")
+        logger.error(f"❌ КРИТИЧЕСКАЯ ошибка в warn_reservation: {e}", exc_info=True)
 
 async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
@@ -2722,7 +2744,11 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
             job.schedule_removal()
     
     # Создаем таймер напоминания через 1 минуту
-    context.job_queue.run_once(
+    from datetime import datetime, timedelta
+    run_time = datetime.now() + timedelta(seconds=60)
+    logger.info(f"⏰ Создаю таймер warn_reservation на {run_time.strftime('%H:%M:%S')}")
+    
+    warn_job = context.job_queue.run_once(
         warn_reservation,
         when=60,  # 1 минута = 60 секунд
         data={"user_id": user_id, "chat_id": chat_id},
@@ -2730,14 +2756,18 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     # Создаем таймер освобождения через 2 минуты
-    context.job_queue.run_once(
+    run_time = datetime.now() + timedelta(seconds=120)
+    logger.info(f"⏰ Создаю таймер release_reservation на {run_time.strftime('%H:%M:%S')}")
+    
+    timeout_job = context.job_queue.run_once(
         release_reservation,
         when=120,  # 2 минуты = 120 секунд
         data={"user_id": user_id, "chat_id": chat_id},
         name=f"reservation_timeout_{chat_id}",
     )
     
-    logger.info(f"⏰ Таймеры перезапущены в enter_name: напоминание через 1 мин, освобождение через 2 мин")
+    logger.info(f"⏰ Таймеры созданы: warn_job={warn_job is not None}, timeout_job={timeout_job is not None}")
+    logger.info(f"⏰ Имена таймеров: reservation_warn_{chat_id}, reservation_timeout_{chat_id}")
     # === /ПЕРЕЗАПУСК ТАЙМЕРОВ ===
 
     # Собираем информацию о выборе
@@ -2782,6 +2812,13 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(kb),
         parse_mode="HTML"
     )
+    
+    # ВРЕМЕННО: проверка активных таймеров
+    active_jobs = list(context.job_queue.jobs())
+    logger.info(f"⏰ Активных таймеров всего: {len(active_jobs)}")
+    for i, job in enumerate(active_jobs[:5]):  # первые 5
+        logger.info(f"⏰ Таймер #{i}: name={job.name if hasattr(job, 'name') else 'N/A'}")
+
     context.user_data["state"] = ENTER_PHONE
     return ENTER_PHONE
 
@@ -2881,7 +2918,11 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             job.schedule_removal()
     
     # Создаем таймер напоминания через 1 минуту
-    context.job_queue.run_once(
+    from datetime import datetime, timedelta
+    run_time = datetime.now() + timedelta(seconds=60)
+    logger.info(f"⏰ Создаю таймер warn_reservation на {run_time.strftime('%H:%M:%S')}")
+    
+    warn_job = context.job_queue.run_once(
         warn_reservation,
         when=60,  # 1 минута = 60 секунд
         data={"user_id": user_id, "chat_id": chat_id},
@@ -2889,14 +2930,18 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     # Создаем таймер освобождения через 2 минуты
-    context.job_queue.run_once(
+    run_time = datetime.now() + timedelta(seconds=120)
+    logger.info(f"⏰ Создаю таймер release_reservation на {run_time.strftime('%H:%M:%S')}")
+    
+    timeout_job = context.job_queue.run_once(
         release_reservation,
         when=120,  # 2 минуты = 120 секунд
         data={"user_id": user_id, "chat_id": chat_id},
         name=f"reservation_timeout_{chat_id}",
     )
     
-    logger.info(f"⏰ Таймеры перезапущены в enter_phone: напоминание через 1 мин, освобождение через 2 мин")
+    logger.info(f"⏰ Таймеры созданы: warn_job={warn_job is not None}, timeout_job={timeout_job is not None}")
+    logger.info(f"⏰ Имена таймеров: reservation_warn_{chat_id}, reservation_timeout_{chat_id}")
     # === /ПЕРЕЗАПУСК ТАЙМЕРОВ ===
 
     await update.message.reply_text(
