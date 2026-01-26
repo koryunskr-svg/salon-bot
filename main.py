@@ -2689,6 +2689,27 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTER_NAME
     context.user_data["name"] = name
 
+    # === ПЕРЕЗАПУСК ТАЙМЕРА - даем время на ввод телефона ===
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    
+    # Удаляем старый таймер (если есть)
+    job_name = f"reservation_timeout_{chat_id}"
+    current_jobs = context.job_queue.get_jobs_by_name(job_name)
+    for job in current_jobs:
+        job.schedule_removal()
+    
+    # Создаем новый таймер на 2 минуты
+    context.job_queue.run_once(
+        release_reservation,
+        when=120,  # 2 минуты = 120 секунд
+        data={"user_id": user_id, "chat_id": chat_id},
+        name=job_name,
+    )
+    
+    logger.info(f"⏰ Таймер перезапущен в enter_name: 2 минуты на ввод телефона")
+    # === /ПЕРЕЗАПУСК ТАЙМЕРА ===
+
     # Собираем информацию о выборе
     service_type = context.user_data.get("service_type", "N/A")
     subservice = context.user_data.get("subservice", "N/A")
