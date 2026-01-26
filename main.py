@@ -2510,7 +2510,8 @@ async def reserve_slot(
         "5",  # Жёлтый цвет
         f"Бронь: {ss} к {specialist}. В процессе оформления...",
     )
-
+    logger.info(f"🎯 СОЗДАН ЖЕЛТЫЙ РЕЗЕРВ: event_id={event_id}")
+    logger.info(f"🎯 Для услуги: {ss}, время: {time_str}, специалист: {specialist}")
     # ↓↓↓ ВСТАВЬТЕ ЗДЕСЬ ↓↓↓
     print(f"=== ДЕТАЛЬНАЯ ОТЛАДКА КАЛЕНДАРЯ ===")
     print(f"Функция safe_create_calendar_event вызвана с:")
@@ -2578,6 +2579,8 @@ async def reserve_slot(
         "subservice": ss,
         "created_at": datetime.now(TIMEZONE).isoformat(),
     }
+    logger.info(f"🎯 temp_booking сохранен с event_id={event_id}")
+    logger.info(f"🎯 Все ключи user_data: {list(context.user_data.keys())}")
 
     kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
     await query.edit_message_text(
@@ -2975,6 +2978,15 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    # === ДЕТАЛЬНАЯ ОТЛАДКА ===
+    logger.info("🔍🔍🔍 finalize_booking НАЧАЛО 🔍🔍🔍")
+    logger.info(f"🔍 Ключи user_data: {list(context.user_data.keys())}")
+    
+    temp_booking = context.user_data.get("temp_booking", {})
+    logger.info(f"🔍 temp_booking: {temp_booking}")
+    logger.info(f"🔍 event_id из temp_booking: {temp_booking.get('event_id')}")
+    # === /ОТЛАДКА ===
 
     # === ОТЛАДКА ДАТЫ ===
     print(f"\n{'='*60}")
