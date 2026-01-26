@@ -2818,6 +2818,27 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Клиент выбирал из нескольких
         display_specialist = f"{display_specialist}" 
     
+    # === ПЕРЕЗАПУСК ТАЙМЕРА - даем 2 минуты на подтверждение ===
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    
+    # Удаляем старый таймер (если есть)
+    job_name = f"reservation_timeout_{chat_id}"
+    current_jobs = context.job_queue.get_jobs_by_name(job_name)
+    for job in current_jobs:
+        job.schedule_removal()
+    
+    # Создаем новый таймер на 2 минуты
+    context.job_queue.run_once(
+        release_reservation,
+        when=120,  # 2 минуты = 120 секунд
+        data={"user_id": user_id, "chat_id": chat_id},
+        name=job_name,
+    )
+    
+    logger.info(f"⏰ Таймер перезапущен: 2 минуты на подтверждение")
+    # === /ПЕРЕЗАПУСК ТАЙМЕРА ===
+
     await update.message.reply_text(
         "📋 Пожалуйста, подтвердите запись:\n\n"
         f"Услуга: {context.user_data.get('subservice', 'N/A')} ({context.user_data.get('service_type', 'N/A')})\n"
