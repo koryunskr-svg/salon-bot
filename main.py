@@ -2628,14 +2628,31 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"❌ Ошибка освобождения резерва: {e}")
     
-    # 2. Очищаем ТОЛЬКО данные бронирования, но оставляем состояние
+    # 2. Проверяем состояние пользователя
     if uid in context.application.user_data:
-        # Сохраняем некоторые данные, но удаляем temp_booking
-        context.application.user_data[uid].pop("temp_booking", None)
-        context.application.user_data[uid].pop("time", None)
-        context.application.user_data[uid].pop("selected_specialist", None)
-        context.application.user_data[uid].pop("actual_specialist", None)
-        # Оставляем state и другие данные
+        user_state = context.application.user_data[uid].get("state")
+        
+        # Если пользователь активно вводит данные - СБРАСЫВАЕМ состояние!
+        if user_state in [ENTER_NAME, ENTER_PHONE, AWAITING_CONFIRMATION]:
+            logger.info(f"⚠️ release_reservation: пользователь {uid} активно вводит данные (state={user_state}), СБРАСЫВАЕМ состояние")
+            # Сбрасываем состояние чтобы бот не принимал дальнейший ввод
+            context.application.user_data[uid]["state"] = MENU
+            # Очищаем ВСЕ данные бронирования
+            context.application.user_data[uid].pop("temp_booking", None)
+            context.application.user_data[uid].pop("time", None)
+            context.application.user_data[uid].pop("selected_specialist", None)
+            context.application.user_data[uid].pop("actual_specialist", None)
+            context.application.user_data[uid].pop("date", None)
+            context.application.user_data[uid].pop("service_type", None)
+            context.application.user_data[uid].pop("subservice", None)
+            context.application.user_data[uid].pop("name", None)
+            context.application.user_data[uid].pop("phone", None)
+        else:
+            # Очищаем только если пользователь неактивен
+            context.application.user_data[uid].pop("temp_booking", None)
+            context.application.user_data[uid].pop("time", None)
+            context.application.user_data[uid].pop("selected_specialist", None)
+            context.application.user_data[uid].pop("actual_specialist", None)
     
     # 3. Отправляем сообщение с кнопкой в меню
     try:
