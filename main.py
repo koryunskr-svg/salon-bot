@@ -1918,15 +1918,15 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             target_date_str = target_date.strftime("%d.%m.%Y")
 
-        # ← ПРОВЕРКА СЕГОДНЯШНЕЙ ДАТЫ ↓↓↓
-        if days_offset == 0:  # Сегодняшняя дата
-            if work_end_time:  # Если знаем время окончания работы
-                current_time = now.time()
-                if current_time > work_end_time:
-                    # Рабочий день уже закончился - пропускаем сегодняшнюю дату
-                    logger.info(f"⚠️ Пропускаем сегодняшнюю дату {target_date_str}, рабочий день закончился в {work_end_time}")
-                    continue  # Пропускаем эту дату
-        # ← КОНЕЦ ПРОВЕРКИ ↑↑↑
+            # ← ПРОВЕРКА СЕГОДНЯШНЕЙ ДАТЫ ↓↓↓
+            if days_offset == 0:  # Сегодняшняя дата
+                if work_end_time:  # Если знаем время окончания работы
+                    current_time = now.time()
+                    if current_time > work_end_time:
+                        # Рабочий день уже закончился - пропускаем сегодняшнюю дату
+                        logger.info(f"⚠️ Пропускаем сегодняшнюю дату {target_date_str}, рабочий день закончился в {work_end_time}")
+                        continue  # ← ТЕПЕРЬ ВНУТРИ ЦИКЛА!
+            # ← КОНЕЦ ПРОВЕРКИ ↑↑↑
 
             # Найдём строку расписания для конкретного специалиста
             spec_schedule_row = None
