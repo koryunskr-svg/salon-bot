@@ -1909,31 +1909,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if day_index < len(spec_schedule_row):
                 work_schedule = spec_schedule_row[day_index].strip()
                 if work_schedule.lower() != "выходной" and work_schedule:
-                    available_dates_for_specialist.append(target_date_str)
-
-        for days_offset in range(days_ahead + 1):
-            target_date = (now + timedelta(days=days_offset)).date()
-            target_day_name = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][
-                target_date.weekday()
-            ]
-            target_date_str = target_date.strftime("%d.%m.%Y")
-
-            # ← ПРОВЕРКА СЕГОДНЯШНЕЙ ДАТЫ ↓↓↓
-            if days_offset == 0:  # Сегодняшняя дата
-                if work_end_time:  # Если знаем время окончания работы
-                    current_time = now.time()
-                    if current_time > work_end_time:
-                        # Рабочий день уже закончился - пропускаем сегодняшнюю дату
-                        logger.info(f"⚠️ Пропускаем сегодняшнюю дату {target_date_str}, рабочий день закончился в {work_end_time}")
-                        continue  # ← ТЕПЕРЬ ВНУТРИ ЦИКЛА!
-            # ← КОНЕЦ ПРОВЕРКИ ↑↑↑
-
-            # Найдём строку расписания для конкретного специалиста
-            spec_schedule_row = None
-            for row in schedule_data:
-                if len(row) > 0 and row[0].strip() == selected_specialist:
-                    spec_schedule_row = row
-                    break
+                    available_dates_for_specialist.append(target_date_str)     
 
             if not spec_schedule_row:
                 logger.warning(
@@ -5221,4 +5197,5 @@ def _handle_exit(signum, frame):
 
 if __name__ == "__main__":
     main()
+
 
