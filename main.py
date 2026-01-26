@@ -2646,7 +2646,16 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
     # 1. Освобождаем слот в календаре
     if temp and temp.get("event_id"):
         try:
-            safe_delete_calendar_event(CALENDAR_ID, temp["event_id"])
+            event_id = temp["event_id"]
+            date_str = temp.get("date", "неизвестно")
+            time_str = temp.get("time", "неизвестно")
+            
+            logger.info(f"🗑️ УДАЛЕНИЕ КАЛЕНДАРЯ: event_id={event_id}, дата={date_str} {time_str}")
+            logger.info(f"🗑️ CALENDAR_ID={CALENDAR_ID}")
+            
+            result = safe_delete_calendar_event(CALENDAR_ID, event_id)
+            logger.info(f"🗑️ Результат safe_delete_calendar_event: {result}")
+            
             logger.info(f"Резерв слота {temp['date']} {temp['time']} освобождён по таймауту.")
             await check_waiting_list(
                 temp["date"], temp["time"], temp["specialist"], context
@@ -3165,10 +3174,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === 3. ОБНОВЛЯЕМ СОБЫТИЕ В КАЛЕНДАРЕ ===
 
-    
-
-    # === 3. ОБНОВЛЯЕМ СОБЫТИЕ В КАЛЕНДАРЕ ===
-
     if event_id:
         try:
             # Получаем цену услуги для описания
@@ -3190,8 +3195,10 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             start_dt = temp_booking.get("start_dt")
             end_dt = temp_booking.get("end_dt")
             if start_dt and end_dt:
-                # Полный вызов с ВСЕМИ необходимыми параметрами:
-                safe_update_calendar_event(
+                logger.info(f"🟢 ОБНОВЛЕНИЕ КАЛЕНДАРЯ: event_id={event_id}")
+                logger.info(f"🟢 Данные: name={name}, услуга={ss}, время={start_dt}-{end_dt}")
+                
+                result = safe_update_calendar_event(
                     CALENDAR_ID,
                     event_id,
                     summary=new_summary,
@@ -3200,6 +3207,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     description=new_description,
                     color_id="10",  # Зелёный цвет для подтверждённых
                 )
+                logger.info(f"🟢 Результат safe_update_calendar_event: {result}")
                 logger.info(f"✅ Календарь обновлён: {event_id}")
             else:
                 logger.error(
