@@ -3222,6 +3222,9 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     color_id="10",  # Зелёный цвет для подтверждённых
                 )
                 
+                logger.info(f"🟢 Результат safe_update_calendar_event: {result}")
+                logger.info(f"✅ Календарь обновлён: {event_id}")
+
                 if result:
                     logger.info(f"✅✅✅ УСПЕХ! Календарь обновлён: {result}")
                 else:
