@@ -1844,7 +1844,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     work_end_time = None
     try:
         # Ищем в графике специалистов время окончания работы на сегодня
-        schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
+        # НЕ переопределяем schedule_data - используем уже загруженные данные
         for row in schedule_data:
             if len(row) > 0:
                 # Берем название заведения или любого специалиста для проверки графика
@@ -1871,6 +1871,46 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- СЦЕНАРИЙ B: "Сначала специалист", потом дата (selected_specialist есть) ---
     if selected_specialist and selected_specialist != "любой":
         available_dates_for_specialist = []
+
+        for days_offset in range(days_ahead + 1):
+            target_date = (now + timedelta(days=days_offset)).date()
+            target_day_name = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][
+                target_date.weekday()
+            ]
+            target_date_str = target_date.strftime("%d.%m.%Y")
+            
+            # ← ПРОВЕРКА СЕГОДНЯШНЕЙ ДАТЫ ↓↓↓
+            if days_offset == 0:  # Сегодняшняя дата
+                if work_end_time:  # Если знаем время окончания работы
+                    current_time = now.time()
+                    if current_time > work_end_time:
+                        # Рабочий день уже закончился - пропускаем сегодняшнюю дату
+                        logger.info(f"⚠️ Пропускаем сегодняшнюю дату {target_date_str}, рабочий день закончился в {work_end_time}")
+                        continue  # ← ЭТО ВНУТРИ ЦИКЛА!
+            # ← КОНЕЦ ПРОВЕРКИ ↑↑↑
+
+            # Найдём строку расписания для конкретного специалиста
+            spec_schedule_row = None
+            for row in schedule_data:
+                if len(row) > 0 and row[0].strip() == selected_specialist:
+                    spec_schedule_row = row
+                    break
+
+            if not spec_schedule_row:
+                logger.warning(
+                    f"⚠️ График для специалиста '{selected_specialist}' не найден."
+                )
+                continue  # Переходим к следующей дате
+
+            # Проверяем, работает ли специалист в этот день
+            day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(
+                target_day_name
+            ) + 2  # Индекс столбца (C=2, D=3, ...)
+            if day_index < len(spec_schedule_row):
+                work_schedule = spec_schedule_row[day_index].strip()
+                if work_schedule.lower() != "выходной" and work_schedule:
+                    available_dates_for_specialist.append(target_date_str)
+
         for days_offset in range(days_ahead + 1):
             target_date = (now + timedelta(days=days_offset)).date()
             target_day_name = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][
@@ -1878,7 +1918,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             target_date_str = target_date.strftime("%d.%m.%Y")
 
-            # ← ДОБАВЬ ЭТУ ПРОВЕРКУ ДЛЯ СЕГОДНЯШНЕЙ ДАТЫ ↓↓↓
+        # ← ПРОВЕРКА СЕГОДНЯШНЕЙ ДАТЫ ↓↓↓
         if days_offset == 0:  # Сегодняшняя дата
             if work_end_time:  # Если знаем время окончания работы
                 current_time = now.time()
