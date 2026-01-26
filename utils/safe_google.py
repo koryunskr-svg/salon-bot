@@ -184,11 +184,13 @@ def safe_update_calendar_event(calendar_id, event_id, summary=None, start_time=N
 
     creds = get_google_credentials()
     if not creds:
+        logger.error("❌ Нет credentials для Google API")
         return None
     try:
         service = build('calendar', 'v3', credentials=creds)
         
         # Сначала получаем текущее событие
+        logger.info(f"🔄 Получаю событие {event_id} из календаря...")
         event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
         
         # Обновляем поля если они переданы
@@ -205,6 +207,23 @@ def safe_update_calendar_event(calendar_id, event_id, summary=None, start_time=N
             event['end']['dateTime'] = end_time
             event['end']['timeZone'] = str(TIMEZONE)
         
+        logger.info(f"🔄 Обновляю событие в календаре...")
+        updated_event = service.events().update(
+            calendarId=calendar_id,
+            eventId=event_id,
+            body=event
+        ).execute()
+        
+        logger.info(f"✅ Событие обновлено: {updated_event.get('id')}")
+        return updated_event.get('id')
+        
+    except Exception as e:
+        # ← ДОБАВЬ ТАКЖЕ ЗДЕСЬ ↓↓↓
+        logger.error(f"❌❌❌ ОШИБКА в safe_update_calendar_event: {e}", exc_info=True)
+        logger.error(f"❌ Параметры вызова: calendar_id={calendar_id}, event_id={event_id}")
+        # ← КОНЕЦ ДОБАВЛЕНИЯ ↑↑↑
+        return None
+
         # Отправляем обновление
         service.events().update(calendarId=calendar_id, eventId=event_id, body=event).execute()
         return True
