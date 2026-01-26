@@ -218,15 +218,22 @@ def safe_update_calendar_event(calendar_id, event_id, summary=None, start_time=N
         return updated_event.get('id')
         
     except Exception as e:
-        # ← ДОБАВЬ ТАКЖЕ ЗДЕСЬ ↓↓↓
-        logger.error(f"❌❌❌ ОШИБКА в safe_update_calendar_event: {e}", exc_info=True)
-        logger.error(f"❌ Параметры вызова: calendar_id={calendar_id}, event_id={event_id}")
-        # ← КОНЕЦ ДОБАВЛЕНИЯ ↑↑↑
+        logger.error("❌❌❌ КРИТИЧЕСКАЯ ОШИБКА в safe_update_calendar_event!")
+        logger.error(f"❌ Тип ошибки: {type(e).__name__}")
+        logger.error(f"❌ Сообщение: {str(e)}")
+        logger.error(f"❌ calendar_id: {calendar_id}")
+        logger.error(f"❌ event_id: {event_id}")
+        logger.error(f"❌ summary: {summary}")
+        logger.error(f"❌ start_time: {start_time}")
+        logger.error(f"❌ end_time: {end_time}")
+        
+        # Добавить полный traceback
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"❌ Traceback:\n{error_details}")
+        
         return None
 
-        # Отправляем обновление
-        service.events().update(calendarId=calendar_id, eventId=event_id, body=event).execute()
-        return True
     except Exception as e:
         logger.error(f'❌ Ошибка обновления события: {e}')
         return None
