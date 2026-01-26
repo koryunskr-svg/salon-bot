@@ -2605,35 +2605,51 @@ async def warn_reservation(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"❌ Ошибка предупреждения: {e}")
 
-
 async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     uid = job.data.get("user_id") if job.data else None
-    if not uid:
-        logger.error("❌ release_reservation: Не удалось получить user_id")
+    chat_id = job.data.get("chat_id") if job.data else None
+    
+    if not uid or not chat_id:
+        logger.error("❌ release_reservation: Не удалось получить данные")
         return
+    
     user_data = context.application.user_data.get(uid, {})
     temp = user_data.get("temp_booking") if isinstance(user_data, dict) else None
+    
+    # 1. Освобождаем слот в календаре
     if temp and temp.get("event_id"):
         try:
             safe_delete_calendar_event(CALENDAR_ID, temp["event_id"])
-            logger.info(
-                f"Резерв слота {temp['date']} {temp['time']} освобождён по таймауту для пользователя {uid}."
-            )
+            logger.info(f"Резерв слота {temp['date']} {temp['time']} освобождён по таймауту.")
             await check_waiting_list(
                 temp["date"], temp["time"], temp["specialist"], context
             )
         except Exception as e:
             logger.error(f"❌ Ошибка освобождения резерва: {e}")
-        try:
-            await context.bot.send_message(
-                job.chat_id,
-                "❌ Слот был освобождён из-за неактивности. Вы можете начать запись заново.",
-            )
-        except Exception:
-            pass
+    
+    # 2. Очищаем ТОЛЬКО данные бронирования, но оставляем состояние
     if uid in context.application.user_data:
-        context.application.user_data[uid].clear()
+        # Сохраняем некоторые данные, но удаляем temp_booking
+        context.application.user_data[uid].pop("temp_booking", None)
+        context.application.user_data[uid].pop("time", None)
+        context.application.user_data[uid].pop("selected_specialist", None)
+        context.application.user_data[uid].pop("actual_specialist", None)
+        # Оставляем state и другие данные
+    
+    # 3. Отправляем сообщение с кнопкой в меню
+    try:
+        keyboard = [[InlineKeyboardButton("🏠 В меню", callback_data="start")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ Время на оформление записи истекло. Слот освобождён.\n\nНажмите кнопку чтобы начать заново:",
+            reply_markup=reply_markup
+        )
+        logger.info(f"✅ Пользователю {chat_id} отправлено уведомление об истечении времени")
+    except Exception as e:
+        logger.error(f"❌ Не удалось отправить сообщение об истечении времени: {e}")
 
 
 # --- ENTER NAME / PHONE ---
