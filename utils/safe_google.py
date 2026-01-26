@@ -234,10 +234,6 @@ def safe_update_calendar_event(calendar_id, event_id, summary=None, start_time=N
         
         return None
 
-    except Exception as e:
-        logger.error(f'❌ Ошибка обновления события: {e}')
-        return None
-
 def safe_delete_calendar_event(calendar_id, event_id):
     credentials = get_google_credentials()
     if not credentials:
