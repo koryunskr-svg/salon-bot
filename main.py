@@ -2706,26 +2706,35 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTER_NAME
     context.user_data["name"] = name
 
-    # === ПЕРЕЗАПУСК ТАЙМЕРА - даем время на ввод телефона ===
+    # === ПЕРЕЗАПУСК ТАЙМЕРОВ - даем время на ввод телефона ===
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
     
-    # Удаляем старый таймер (если есть)
-    job_name = f"reservation_timeout_{chat_id}"
-    current_jobs = context.job_queue.get_jobs_by_name(job_name)
-    for job in current_jobs:
-        job.schedule_removal()
+    # Удаляем старые таймеры
+    job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
+    for job_name in job_names:
+        current_jobs = context.job_queue.get_jobs_by_name(job_name)
+        for job in current_jobs:
+            job.schedule_removal()
     
-    # Создаем новый таймер на 2 минуты
+    # Создаем таймер напоминания через 1 минуту
+    context.job_queue.run_once(
+        warn_reservation,
+        when=60,  # 1 минута = 60 секунд
+        data={"user_id": user_id, "chat_id": chat_id},
+        name=f"reservation_warn_{chat_id}",
+    )
+    
+    # Создаем таймер освобождения через 2 минуты
     context.job_queue.run_once(
         release_reservation,
         when=120,  # 2 минуты = 120 секунд
         data={"user_id": user_id, "chat_id": chat_id},
-        name=job_name,
+        name=f"reservation_timeout_{chat_id}",
     )
     
-    logger.info(f"⏰ Таймер перезапущен в enter_name: 2 минуты на ввод телефона")
-    # === /ПЕРЕЗАПУСК ТАЙМЕРА ===
+    logger.info(f"⏰ Таймеры перезапущены в enter_name: напоминание через 1 мин, освобождение через 2 мин")
+    # === /ПЕРЕЗАПУСК ТАЙМЕРОВ ===
 
     # Собираем информацию о выборе
     service_type = context.user_data.get("service_type", "N/A")
@@ -2856,26 +2865,35 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Клиент выбирал из нескольких
         display_specialist = f"{display_specialist}" 
     
-    # === ПЕРЕЗАПУСК ТАЙМЕРА - даем 2 минуты на подтверждение ===
+    # === ПЕРЕЗАПУСК ТАЙМЕРОВ - даем 2 минуты на подтверждение ===
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
     
-    # Удаляем старый таймер (если есть)
-    job_name = f"reservation_timeout_{chat_id}"
-    current_jobs = context.job_queue.get_jobs_by_name(job_name)
-    for job in current_jobs:
-        job.schedule_removal()
+    # Удаляем старые таймеры
+    job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
+    for job_name in job_names:
+        current_jobs = context.job_queue.get_jobs_by_name(job_name)
+        for job in current_jobs:
+            job.schedule_removal()
     
-    # Создаем новый таймер на 2 минуты
+    # Создаем таймер напоминания через 1 минуту
+    context.job_queue.run_once(
+        warn_reservation,
+        when=60,  # 1 минута = 60 секунд
+        data={"user_id": user_id, "chat_id": chat_id},
+        name=f"reservation_warn_{chat_id}",
+    )
+    
+    # Создаем таймер освобождения через 2 минуты
     context.job_queue.run_once(
         release_reservation,
         when=120,  # 2 минуты = 120 секунд
         data={"user_id": user_id, "chat_id": chat_id},
-        name=job_name,
+        name=f"reservation_timeout_{chat_id}",
     )
     
-    logger.info(f"⏰ Таймер перезапущен: 2 минуты на подтверждение")
-    # === /ПЕРЕЗАПУСК ТАЙМЕРА ===
+    logger.info(f"⏰ Таймеры перезапущены в enter_phone: напоминание через 1 мин, освобождение через 2 мин")
+    # === /ПЕРЕЗАПУСК ТАЙМЕРОВ ===
 
     await update.message.reply_text(
         "📋 Пожалуйста, подтвердите запись:\n\n"
