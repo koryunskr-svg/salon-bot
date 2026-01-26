@@ -173,6 +173,15 @@ def safe_create_calendar_event(calendar_id, summary, start_time, end_time, color
 @retry_google_api()
 def safe_update_calendar_event(calendar_id, event_id, summary=None, start_time=None, end_time=None, color_id=None, description=None):
     """Обновляет событие в Google Календаре."""
+    
+    logger.info(f"🔄🔄🔄 safe_update_calendar_event ВЫЗВАНА!")
+    logger.info(f"🔄 calendar_id: {calendar_id}")
+    logger.info(f"🔄 event_id: {event_id}")
+    logger.info(f"🔄 summary: {summary}")
+    logger.info(f"🔄 start_time: {start_time}")
+    logger.info(f"🔄 end_time: {end_time}")
+    logger.info(f"🔄 color_id: {color_id}")
+
     creds = get_google_credentials()
     if not creds:
         return None
