@@ -5133,7 +5133,10 @@ def register_handlers(application: Application):
     # 1. Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("record", handle_record_command))
-    application.add_handler(CommandHandler("my_records", show_my_records))
+    # ЗАКОММЕНТИРОВАТЬ: application.add_handler(CommandHandler("my_records", show_my_records))
+    # Теперь есть две отдельные кнопки в меню:
+    # - "📋 Мои записи (просмотр)" → my_records_view
+    # - "❌ Отменить/изменить запись" → my_records_edit
     
     # 2. Обработчик callback-кнопок
     application.add_handler(CallbackQueryHandler(button_handler))
