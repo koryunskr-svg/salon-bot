@@ -1972,22 +1972,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if day_index < len(spec_schedule_row):
                 work_schedule = spec_schedule_row[day_index].strip()
                 if work_schedule.lower() != "выходной" and work_schedule:
-                    available_dates_for_specialist.append(target_date_str)     
-
-            if not spec_schedule_row:
-                logger.warning(
-                    f"⚠️ График для специалиста '{selected_specialist}' не найден."
-                )
-                continue  # Переходим к следующей дате
-
-            # Проверяем, работает ли специалист в этот день
-            day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(
-                target_day_name
-            ) + 2  # Индекс столбца (C=2, D=3, ...)
-            if day_index < len(spec_schedule_row):
-                work_schedule = spec_schedule_row[day_index].strip()
-                if work_schedule.lower() != "выходной" and work_schedule:
-                    available_dates_for_specialist.append(target_date_str)
+                    available_dates_for_specialist.append(target_date_str)    
 
         # Правильная сортировка дат
         date_pairs = []
