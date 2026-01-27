@@ -1987,10 +1987,15 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     work_end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
                                     break
         
-                    if work_end_time and now.time() > work_end_time:
-                        # Рабочий день закончился - пропускаем сегодня
-                        logger.info(f"⚠️ Пропускаем сегодня {target_date_str}, рабочий день закончился в {work_end_time}")
-                        continue
+                    if work_end_time:
+                         logger.info(f"🔍 Проверка времени: сейчас {now.time()}, конец работы {work_end_time}")
+                         if now.time() > work_end_time:   
+                            # Рабочий день закончился - пропускаем сегодня
+                            logger.info(f"⚠️ Пропускаем сегодня {target_date_str}, рабочий день закончился в {work_end_time}")
+                            continue
+                    else:
+                        logger.info(f"⚠️ Не удалось получить work_end_time для {target_date_str}")
+
                 except Exception as e:
                     logger.error(f"Ошибка проверки графика работы: {e}")
 
@@ -3754,21 +3759,37 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
             ):
                 found.append(r)
     
-    # ФИЛЬТРУЕМ ТОЛЬКО БУДУЩИЕ ЗАПИСИ (сегодня и позже)
+    # ← ИСПРАВЛЕННЫЙ БЛОК ФИЛЬТРАЦИИ
+    # ФИЛЬТРУЕМ ТОЛЬКО БУДУЩИЕ ЗАПИСИ (с учетом ВРЕМЕНИ)
     future_records = []
+    now = datetime.now(TIMEZONE)
+    
     for r in found:
-        if len(r) > 6:
+        if len(r) > 7:  # Должны быть дата (индекс 6) и время (индекс 7)
             date_str = str(r[6]).strip()
+            time_str = str(r[7]).strip()
+            
+            # Извлекаем время начала (если формат "10:00-11:00")
+            if "-" in time_str:
+                time_start_str = time_str.split("-")[0].strip()
+            else:
+                time_start_str = time_str
+            
             try:
-                record_date = datetime.strptime(date_str, "%d.%m.%Y").date()
-                today = datetime.now(TIMEZONE).date()
-                if record_date >= today:  # Только сегодня и будущее
+                # Создаем datetime объекта записи
+                record_datetime_str = f"{date_str} {time_start_str}"
+                record_datetime = datetime.strptime(record_datetime_str, "%d.%m.%Y %H:%M")
+                record_datetime = TIMEZONE.localize(record_datetime)
+                
+                # Сравниваем с текущим временем
+                if record_datetime >= now:
                     future_records.append(r)
             except ValueError:
-                # Если ошибка формата даты, все равно показываем
-                future_records.append(r)
+                # Если ошибка парсинга, не показываем запись
+                continue
     
-    found = future_records  # Заменяем найденные записи на отфильтрованные
+    found = future_records  # Заменяем на отфильтрованные
+    # ← КОНЕЦ ИСПРАВЛЕННОГО БЛОКА
 
     # Если записей нет
     if not found:
