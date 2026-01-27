@@ -1526,6 +1526,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             update, context, data.split("cancel_record_", 1)[1]
         )
 
+    # ← ДОБАВИТЬ ЭТОТ БЛОК (подтверждение отмены)
+    if data.startswith("cancel_confirm_"):
+        record_id = data.split("cancel_confirm_", 1)[1]
+        # Устанавливаем флаг подтверждения и вызываем функцию отмены
+        context.user_data[f"confirm_cancel_{record_id}"] = True
+        return await cancel_record_from_list(update, context, record_id)    
+
     if data == "confirm_booking":
         print(
             f"=== DEBUG button_handler: confirm_booking вызван (первый обработчик) ==="
@@ -3599,6 +3606,23 @@ async def show_my_records_edit(update: Update, context: ContextTypes.DEFAULT_TYP
                 and str(r[8]).strip() in ACTIVE_STATUSES
             ):
                 found.append(r)
+
+    # ФИЛЬТРУЕМ ТОЛЬКО БУДУЩИЕ ЗАПИСИ (сегодня и позже)
+    future_records = []
+    for r in found:
+        if len(r) > 6:
+            date_str = str(r[6]).strip()
+            try:
+                record_date = datetime.strptime(date_str, "%d.%m.%Y").date()
+                today = datetime.now(TIMEZONE).date()
+                if record_date >= today:  # Только сегодня и будущее
+                    future_records.append(r)
+            except ValueError:
+                # Если ошибка формата даты, все равно показываем
+                future_records.append(r)
+    
+    found = future_records  # Заменяем найденные записи на отфильтрованные
+
     if not found:
         if not name or not phone:
             await update.message.reply_text(
@@ -3611,6 +3635,7 @@ async def show_my_records_edit(update: Update, context: ContextTypes.DEFAULT_TYP
                 "📋 У вас нет активных записей."
             )
             return MENU
+
     await _display_records(update, context, found, "Ваши активные записи:")
     return MENU
 
@@ -3649,6 +3674,22 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
             ):
                 found.append(r)
     
+    # ФИЛЬТРУЕМ ТОЛЬКО БУДУЩИЕ ЗАПИСИ (сегодня и позже)
+    future_records = []
+    for r in found:
+        if len(r) > 6:
+            date_str = str(r[6]).strip()
+            try:
+                record_date = datetime.strptime(date_str, "%d.%m.%Y").date()
+                today = datetime.now(TIMEZONE).date()
+                if record_date >= today:  # Только сегодня и будущее
+                    future_records.append(r)
+            except ValueError:
+                # Если ошибка формата даты, все равно показываем
+                future_records.append(r)
+    
+    found = future_records  # Заменяем найденные записи на отфильтрованные
+
     # Если записей нет
     if not found:
         msg = "📋 У вас нет активных записей."
@@ -3686,7 +3727,6 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # ТОЛЬКО КНОПКИ НАВИГАЦИИ (без отмены)
     kb = [
-        [InlineKeyboardButton("❌ Хочу отменить/перенести", callback_data="my_records_edit")],
         [InlineKeyboardButton("🏠 В меню", callback_data="start")]
     ]
     
@@ -3704,28 +3744,85 @@ async def cancel_record_from_list(
     update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
 ):
     query = update.callback_query
+    await query.answer()
+    
+    # Если это первый шаг (подтверждение)
+    if not context.user_data.get(f"confirm_cancel_{record_id}"):
+        # Показываем подтверждение
+        context.user_data[f"confirm_cancel_{record_id}"] = True
+        
+        # Ищем запись для отображения деталей
+        records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+        for r in records:
+            if len(r) > 0 and r[0] == record_id:
+                dt = r[6] if len(r) > 6 else "N/A"
+                tm = r[7] if len(r) > 7 else "N/A"
+                svc = r[4] if len(r) > 4 else "N/A"
+                mst = r[5] if len(r) > 5 else "N/A"
+                
+                await query.edit_message_text(
+                    f"⚠️ <b>Вы уверены, что хотите отменить запись?</b>\n\n"
+                    f"<b>Детали записи:</b>\n"
+                    f"• Дата: {dt}\n"
+                    f"• Время: {tm}\n"
+                    f"• Услуга: {svc}\n"
+                    f"• Специалист: {mst}\n\n"
+                    f"После отмены это время станет доступно другим клиентам.",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("✅ Да, отменить", callback_data=f"cancel_confirm_{record_id}")],
+                        [InlineKeyboardButton("❌ Нет, вернуться", callback_data="my_records_edit")]
+                    ])
+                )
+                return
+        
+        await query.edit_message_text("❌ Запись не найдена.")
+        return
+    
+    # Если это второй шаг (подтвержденная отмена)
     chat_id = str(update.effective_chat.id)
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+    
     for idx, r in enumerate(records, start=2):
         if len(r) > 0 and r[0] == record_id:
             if len(r) > 13 and str(r[13]).strip() != chat_id:
                 await query.edit_message_text("❌ Вы не можете отменить эту запись.")
                 return
+            
+            # Получаем детали для сообщения
+            dt = r[6] if len(r) > 6 else "N/A"
+            tm = r[7] if len(r) > 7 else "N/A"
+            svc = r[4] if len(r) > 4 else "N/A"
+            
             event_id = r[14] if len(r) > 14 else None
             if event_id:
                 safe_delete_calendar_event(CALENDAR_ID, event_id)
+            
             updated = list(r)
             updated[8] = "отменено клиентом"
             safe_update_sheet_row(SHEET_ID, "Записи", idx, updated)
-            await query.edit_message_text(f"✅ Запись {record_id} отменена.")
+            
+            await query.edit_message_text(
+                f"✅ <b>Запись отменена</b>\n\n"
+                f"• Дата: {dt}\n"
+                f"• Время: {tm}\n"
+                f"• Услуга: {svc}\n\n"
+                f"Это время теперь доступно для записи другим клиентам.",
+                parse_mode="HTML"
+            )
+            
             if len(r) > 6 and len(r) > 7 and len(r) > 5:
                 await check_waiting_list(
                     str(r[6]).strip(), str(r[7]).strip(), str(r[5]).strip(), context
                 )
+            
             logger.info(f"✅ Клиент {chat_id} отменил запись {record_id}")
+            
+            # Очищаем флаг подтверждения
+            context.user_data.pop(f"confirm_cancel_{record_id}", None)
             return
+    
     await query.edit_message_text("❌ Запись не найдена.")
-
 
 # --- HANDLE MY RECORDS INPUT ---
 
