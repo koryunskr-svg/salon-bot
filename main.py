@@ -659,20 +659,34 @@ async def _display_records(
             st = str(r[8]).strip() if len(r) > 8 else "N/A"
             
             if st in CANCELLABLE_STATUSES:
-                # Берем краткое название услуги (первые 15 символов)
-                service_short = svc[:15] + "..." if len(svc) > 15 else svc
+                # Берем данные из текущей записи
+                service_name = str(r[4]).strip() if len(r) > 4 else "Услуга"
+                specialist_name = str(r[5]).strip() if len(r) > 5 else "Специалист"
     
+                # Сокращаем длинные названия
+                if len(service_name) > 20:
+                    service_display = service_name[:17] + "..."
+                else:
+                    service_display = service_name
+    
+                if len(specialist_name) > 15:
+                    specialist_display = specialist_name[:12] + "..."
+                else:
+                    specialist_display = specialist_name
+    
+                # Формируем кнопку
                 kb.append(
                     [
                         InlineKeyboardButton(
-                            f"❌ Отменить {dt} {tm.split('-')[0] if '-' in tm else tm} ({service_short})",
+                            f"❌ {i}. {dt} {tm} - {service_display} у {specialist_display}",
                             callback_data=f"cancel_record_{rid}"
                         )
                     ]
                 )
-    
+            else:
+                msg += "<b>Действие:</b> Отмена невозможна\n"
+            msg += "\n"
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="start")])
-    
     rm = InlineKeyboardMarkup(kb)
     if query:
         await query.edit_message_text(msg, reply_markup=rm, parse_mode="HTML")
@@ -1259,9 +1273,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
         return MENU
 
-    if data == "start":
-        await start(update, context)
-        return MENU
+    if data == "back_to_records":
+        # Очищаем ВСЕ флаги подтверждения отмены
+        keys_to_remove = []
+        for key in context.user_data.keys():
+            if isinstance(key, str) and key.startswith("confirm_cancel_"):
+                keys_to_remove.append(key)
+    
+        for key in keys_to_remove:
+            context.user_data.pop(key, None)
+    
+        # Возвращаемся к списку записей
+        return await show_my_records_edit(update, context)
 
     if data == "book":
         return await select_service_type(update, context)
@@ -3811,6 +3834,10 @@ async def cancel_record_from_list(
                 f"• Услуга: {svc}\n\n"
                 f"Это время теперь доступно для записи другим клиентам.",
                 parse_mode="HTML"
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📋 Вернуться к записям", callback_data="my_records_edit")],
+                    [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+                ])
             )
             
             if len(r) > 6 and len(r) > 7 and len(r) > 5:
