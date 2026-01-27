@@ -623,70 +623,53 @@ async def _display_records(
     # ОГРАНИЧИВАЕМ количество записей для показа (макс 10)
     records_to_show = records[:10]
     
-    # КРАТКИЙ ФОРМАТ (экономит символы)
-    msg = f"📋 <b>{title}</b>\n\n"
-    
     if not records_to_show:
-        msg += "❌ Записей не найдено\n"
-    else:
-        for i, r in enumerate(records_to_show, 1):
-            # Берем только основные данные
+        msg = "📋 У вас нет активных записей."
+        kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="start")]]
+        
+        if query:
+            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
+        return
+    
+    # ТОЛЬКО КНОПКИ, без текстового списка
+    msg = f"📋 <b>{title}</b>\n\nВыберите запись для отмены:"
+    
+    kb = []
+    for i, r in enumerate(records_to_show, 1):
+        if len(r) > 8:
+            rid = str(r[0]).strip() if len(r) > 0 else "N/A"
             svc = str(r[4]).strip() if len(r) > 4 else "N/A"
             mst = str(r[5]).strip() if len(r) > 5 else "N/A"
             dt = str(r[6]).strip() if len(r) > 6 else "N/A"
             tm = str(r[7]).strip() if len(r) > 7 else "N/A"
             st = str(r[8]).strip() if len(r) > 8 else "N/A"
             
-            # КРАТКИЙ ФОРМАТ: "1. 27.01.2026 10:00-11:45 - Услуга у Специалист (статус)"
-            # Если время уже содержит диапазон (10:00-11:45), используем как есть
-            if "-" in tm and ":" in tm.replace("-", ""):
-                time_display = tm  # уже в формате 10:00-11:45
-            else:
-                time_display = tm  # оставляем как есть
-            
-            msg += f"{i}. <b>{dt} {time_display}</b> - {svc} у {mst} (<i>{st}</i>)\n"
-        
-        if len(records) > 10:
-            msg += f"\n... и еще {len(records) - 10} записей\n"
-    
-    # Кнопки отмены (только для активных записей)
-    kb = []
-    for r in records_to_show:
-        if len(r) > 8:
-            rid = str(r[0]).strip() if len(r) > 0 else "N/A"
-            dt = str(r[6]).strip() if len(r) > 6 else "N/A"
-            tm = str(r[7]).strip() if len(r) > 7 else "N/A"
-            st = str(r[8]).strip() if len(r) > 8 else "N/A"
-            
             if st in CANCELLABLE_STATUSES:
-                # Берем данные из текущей записи
-                service_name = str(r[4]).strip() if len(r) > 4 else "Услуга"
-                specialist_name = str(r[5]).strip() if len(r) > 5 else "Специалист"
-    
-                # Сокращаем длинные названия
-                if len(service_name) > 20:
-                    service_display = service_name[:17] + "..."
+                # Форматируем кнопку
+                time_display = tm  # используем полный диапазон 10:00-11:15
+                
+                # Сокращаем если слишком длинно
+                if len(svc) > 25:
+                    service_display = svc[:22] + "..."
                 else:
-                    service_display = service_name
-    
-                if len(specialist_name) > 15:
-                    specialist_display = specialist_name[:12] + "..."
-                else:
-                    specialist_display = specialist_name
-    
-                # Формируем кнопку
+                    service_display = svc
+                
                 kb.append(
                     [
                         InlineKeyboardButton(
-                            f"❌ {i}. {dt} {tm} - {service_display} у {specialist_display}",
+                            f"❌ {i}. {dt} {time_display} - {service_display} у {mst}",
                             callback_data=f"cancel_record_{rid}"
                         )
                     ]
                 )
-            else:
-                msg += "<b>Действие:</b> Отмена невозможна\n"
-            msg += "\n"
+    
+    if len(records) > 10:
+        msg += f"\n\n... и еще {len(records) - 10} записей"
+    
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="start")])
+    
     rm = InlineKeyboardMarkup(kb)
     if query:
         await query.edit_message_text(msg, reply_markup=rm, parse_mode="HTML")
