@@ -3833,7 +3833,7 @@ async def cancel_record_from_list(
                 f"• Время: {tm}\n"
                 f"• Услуга: {svc}\n\n"
                 f"Это время теперь доступно для записи другим клиентам.",
-                parse_mode="HTML"
+                parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("📋 Вернуться к записям", callback_data="my_records_edit")],
                     [InlineKeyboardButton("🏠 В меню", callback_data="start")]
