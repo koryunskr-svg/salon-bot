@@ -1976,7 +1976,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     work_end_time = None
                     org_name = get_setting("Название заведения", "").strip()
                     schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
-        
+                    
                     for row in schedule_data:
                         if len(row) > 0 and row[0].strip() == org_name:
                             day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(target_day_name) + 2
@@ -1986,16 +1986,19 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     _, end_str = work_schedule.split("-", 1)
                                     work_end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
                                     break
-        
-                    if work_end_time:
-                         logger.info(f"🔍 Проверка времени: сейчас {now.time()}, конец работы {work_end_time}")
-                         if now.time() > work_end_time:   
-                            # Рабочий день закончился - пропускаем сегодня
-                            logger.info(f"⚠️ Пропускаем сегодня {target_date_str}, рабочий день закончился в {work_end_time}")
-                            continue
-                    else:
-                        logger.info(f"⚠️ Не удалось получить work_end_time для {target_date_str}")
-
+                    
+                    # ← ДОБАВЛЕННАЯ ОТЛАДКА
+                    logger.info(f"🔍 Проверка сегодняшней даты {target_date_str}:")
+                    logger.info(f"🔍   org_name = '{org_name}'")
+                    logger.info(f"🔍   target_day_name = '{target_day_name}'")
+                    logger.info(f"🔍   work_end_time = {work_end_time}")
+                    logger.info(f"🔍   now.time() = {now.time()}")
+                    logger.info(f"🔍   now.time() > work_end_time? = {work_end_time and now.time() > work_end_time}")
+                    
+                    if work_end_time and now.time() > work_end_time:
+                        # Рабочий день закончился - пропускаем сегодня
+                        logger.info(f"⚠️ Пропускаем сегодня {target_date_str}, рабочий день закончился в {work_end_time}")
+                        continue
                 except Exception as e:
                     logger.error(f"Ошибка проверки графика работы: {e}")
 
