@@ -624,19 +624,33 @@ async def _display_records(
     # ФИЛЬТРУЕМ ТОЛЬКО БУДУЩИЕ И СЕГОДНЯШНИЕ ЗАПИСИ
     future_records = []
     for r in records:
-        if len(r) > 6:
+        if len(r) > 7:  # Нужны дата (индекс 6) и время (индекс 7)
             date_str = str(r[6]).strip()
+            time_str = str(r[7]).strip()
+
+            # Извлекаем время начала (если формат "10:00-11:00")
+            if "-" in time_str:
+                time_start_str = time_str.split("-")[0].strip()
+            else:
+                time_start_str = time_str
+            
             try:
-                record_date = datetime.strptime(date_str, "%d.%m.%Y").date()
-                today = datetime.now(TIMEZONE).date()
-                if record_date >= today:  # Только сегодня и будущее
+                # Создаем datetime объекта записи
+                record_datetime_str = f"{date_str} {time_start_str}"
+                record_datetime = datetime.strptime(record_datetime_str, "%d.%m.%Y %H:%M")
+                record_datetime = TIMEZONE.localize(record_datetime)
+                
+                now = datetime.now(TIMEZONE)
+                
+                # Сравниваем с текущим временем
+                if record_datetime >= now:
                     future_records.append(r)
             except ValueError:
-                # Если ошибка формата даты, все равно показываем
-                future_records.append(r)
+                # Если ошибка парсинга, не показываем запись
+                continue
     
     records = future_records  # Заменяем на отфильтрованные
-    # ← КОНЕЦ БЛОКА ФИЛЬТРАЦИИ
+    # ← КОНЕЦ ИСПРАВЛЕННОГО БЛОКА
 
     # ОГРАНИЧИВАЕМ количество записей для показа (макс 10)
     records_to_show = records[:10]
@@ -1933,7 +1947,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- СЦЕНАРИЙ B: "Сначала специалист", потом дата (selected_specialist есть) ---
     if selected_specialist and selected_specialist != "любой":
-        available_dates_for_specialist = []
+        available_dates_for_specialist = set()  # Используем set для уникальности
 
         for days_offset in range(days_ahead + 1):
             target_date = (now + timedelta(days=days_offset)).date()
@@ -1941,6 +1955,32 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 target_date.weekday()
             ]
             target_date_str = target_date.strftime("%d.%m.%Y")
+    
+            # Если сегодня и рабочий день закончился - пропускаем
+            if days_offset == 0:  # Сегодня
+                try:
+                    # Получаем время окончания работы на сегодня
+                    work_end_time = None
+                    org_name = get_setting("Название заведения", "").strip()
+                    schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
+            
+                    for row in schedule_data:
+                        if len(row) > 0 and row[0].strip() == org_name:
+                            day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(target_day_name) + 2
+                            if day_index < len(row):
+                                work_schedule = row[day_index].strip()
+                                if work_schedule and work_schedule.lower() != "выходной" and "-" in work_schedule:
+                                    _, end_str = work_schedule.split("-", 1)
+                                    work_end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
+                                    break
+            
+                    if work_end_time and now.time() > work_end_time:
+                        # Рабочий день закончился - пропускаем сегодня
+                        logger.info(f"⚠️ Пропускаем сегодня {target_date_str}, рабочий день закончился в {work_end_time}")
+                        continue
+                except Exception as e:
+                    logger.error(f"Ошибка проверки графика работы: {e}")
+
             
             # ← ПРОВЕРКА СЕГОДНЯШНЕЙ ДАТЫ ↓↓↓
             if days_offset == 0:  # Сегодняшняя дата
@@ -1972,7 +2012,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if day_index < len(spec_schedule_row):
                 work_schedule = spec_schedule_row[day_index].strip()
                 if work_schedule.lower() != "выходной" and work_schedule:
-                    available_dates_for_specialist.append(target_date_str)    
+                    available_dates_for_specialist.add(target_date_str)  # add для set    
 
         # Правильная сортировка дат
         date_pairs = []
@@ -2011,6 +2051,31 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 target_date.weekday()
             ]
             target_date_str = target_date.strftime("%d.%m.%Y")
+    
+            # Если сегодня и рабочий день закончился - пропускаем
+            if days_offset == 0:  # Сегодня
+                try:
+                    # Получаем время окончания работы на сегодня
+                    work_end_time = None
+                    org_name = get_setting("Название заведения", "").strip()
+                    schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
+            
+                    for row in schedule_data:
+                        if len(row) > 0 and row[0].strip() == org_name:
+                            day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(target_day_name) + 2
+                            if day_index < len(row):
+                                work_schedule = row[day_index].strip()
+                                if work_schedule and work_schedule.lower() != "выходной" and "-" in work_schedule:
+                                    _, end_str = work_schedule.split("-", 1)
+                                    work_end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
+                                    break
+            
+                    if work_end_time and now.time() > work_end_time:
+                        # Рабочий день закончился - пропускаем сегодня
+                        logger.info(f"⚠️ Пропускаем сегодня {target_date_str}, рабочий день закончился в {work_end_time}")
+                        continue
+                except Exception as e:
+                    logger.error(f"Ошибка проверки графика работы: {e}")
 
             # Проверяем, есть ли хотя бы один специалист нужной категории, который работает
             for row in schedule_data:
