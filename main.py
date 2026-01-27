@@ -51,6 +51,7 @@ try:
         safe_get_sheet_data,
         safe_append_to_sheet,
         safe_update_sheet_row,
+        safe_update_sheet_row_by_id,
         safe_get_calendar_events,
         safe_create_calendar_event,
         safe_update_calendar_event,
@@ -3808,7 +3809,10 @@ async def cancel_record_from_list(
             
             updated = list(r)
             updated[8] = "отменено клиентом"
-            safe_update_sheet_row(SHEET_ID, "Записи", idx, updated)
+            # Используем поиск по ID вместо индекса строки
+            success = safe_update_sheet_row_by_id(SHEET_ID, "Записи", record_id, updated)
+            if not success:
+                logger.error(f"❌ Не удалось обновить запись {record_id}")
             
             await query.edit_message_text(
                 f"✅ <b>Запись отменена</b>\n\n"
