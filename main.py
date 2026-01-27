@@ -2021,6 +2021,11 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ) + 2  # Индекс столбца (C=2, D=3, ...)
             if day_index < len(spec_schedule_row):
                 work_schedule = spec_schedule_row[day_index].strip()
+
+                logger.info(f"🔍 Проверка специалиста {selected_specialist} на {target_date_str}:")
+                logger.info(f"🔍   work_schedule = '{work_schedule}'")
+                logger.info(f"🔍   days_offset = {days_offset} (сегодня? {days_offset == 0})") 
+
                 if work_schedule.lower() != "выходной" and work_schedule:
                     available_dates_for_specialist.add(target_date_str)  # add для set    
                     logger.info(f"🔍 Добавили дату: {target_date_str}")
