@@ -1,4 +1,4 @@
-# main.py- D -4339-17.01.26 - для изм.
+# main.py- D -26.01.26 - для изм.
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -619,35 +619,63 @@ async def _display_records(
     title="Ваши активные записи:",
 ):
     query = update.callback_query
+    
+    # ОГРАНИЧИВАЕМ количество записей для показа (макс 10)
+    records_to_show = records[:10]
+    
+    # КРАТКИЙ ФОРМАТ (экономит символы)
     msg = f"📋 <b>{title}</b>\n\n"
+    
+    if not records_to_show:
+        msg += "❌ Записей не найдено\n"
+    else:
+        for i, r in enumerate(records_to_show, 1):
+            # Берем только основные данные
+            svc = str(r[4]).strip() if len(r) > 4 else "N/A"
+            mst = str(r[5]).strip() if len(r) > 5 else "N/A"
+            dt = str(r[6]).strip() if len(r) > 6 else "N/A"
+            tm = str(r[7]).strip() if len(r) > 7 else "N/A"
+            st = str(r[8]).strip() if len(r) > 8 else "N/A"
+            
+            # КРАТКИЙ ФОРМАТ: "1. 27.01.2026 10:00-11:45 - Услуга у Специалист (статус)"
+            # Если время уже содержит диапазон (10:00-11:45), используем как есть
+            if "-" in tm and ":" in tm.replace("-", ""):
+                time_display = tm  # уже в формате 10:00-11:45
+            else:
+                time_display = tm  # оставляем как есть
+            
+            msg += f"{i}. <b>{dt} {time_display}</b> - {svc} у {mst} (<i>{st}</i>)\n"
+        
+        if len(records) > 10:
+            msg += f"\n... и еще {len(records) - 10} записей\n"
+    
+    # Кнопки отмены (только для активных записей)
     kb = []
-    for r in records:
-        rid = str(r[0]).strip() if len(r) > 0 else "N/A"
-        svc = str(r[4]).strip() if len(r) > 4 else "N/A"
-        cat = str(r[3]).strip() if len(r) > 3 else "N/A"
-        mst = str(r[5]).strip() if len(r) > 5 else "N/A"
-        dt = str(r[6]).strip() if len(r) > 6 else "N/A"
-        tm = str(r[7]).strip() if len(r) > 7 else "N/A"
-        st = str(r[8]).strip() if len(r) > 8 else "N/A"
-        msg += f"<b>ID:</b> {rid}\n<b>Услуга:</b> {svc} ({cat})\n<b>Специалист:</b> {mst}\n<b>Дата:</b> {dt}\n<b>Время:</b> {tm}\n<b>Статус:</b> {st}\n"
-        if st in CANCELLABLE_STATUSES:
-            kb.append(
-                [
-                    InlineKeyboardButton(
-                        f"❌ Отменить {dt} {tm}", callback_data=f"cancel_record_{rid}"
-                    )
-                ]
-            )
-        else:
-            msg += "<b>Действие:</b> Отмена невозможна\n"
-        msg += "\n"
+    for r in records_to_show:
+        if len(r) > 8:
+            rid = str(r[0]).strip() if len(r) > 0 else "N/A"
+            dt = str(r[6]).strip() if len(r) > 6 else "N/A"
+            tm = str(r[7]).strip() if len(r) > 7 else "N/A"
+            st = str(r[8]).strip() if len(r) > 8 else "N/A"
+            
+            if st in CANCELLABLE_STATUSES:
+                # Краткий текст кнопки
+                kb.append(
+                    [
+                        InlineKeyboardButton(
+                            f"❌ Отменить {dt} {tm.split('-')[0] if '-' in tm else tm}",
+                            callback_data=f"cancel_record_{rid}"
+                        )
+                    ]
+                )
+    
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="start")])
+    
     rm = InlineKeyboardMarkup(kb)
     if query:
         await query.edit_message_text(msg, reply_markup=rm, parse_mode="HTML")
     else:
         await update.message.reply_text(msg, reply_markup=rm, parse_mode="HTML")
-
 
 async def _validate_booking_checks(
     context: ContextTypes.DEFAULT_TYPE,
@@ -956,12 +984,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Формируем клавиатуру
     kb = [
         [InlineKeyboardButton("📅 Записаться на приём", callback_data="book")],
-        [
-            InlineKeyboardButton(
-                "❌ Отменить или изменить запись", callback_data="modify"
-            )
-        ],
-        [InlineKeyboardButton("📋 Мои записи", callback_data="my_records")],
+        [InlineKeyboardButton("📋 Мои записи (просмотр)", callback_data="my_records_view")],
+        [InlineKeyboardButton("❌ Отменить/изменить запись", callback_data="my_records_edit")],
         [InlineKeyboardButton("💅 Услуги и цены", callback_data="prices")],
     ]
     
@@ -1236,17 +1260,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "start":
         await start(update, context)
         return MENU
+
     if data == "book":
         return await select_service_type(update, context)
+
     if data == "modify":
-        await query.edit_message_text(
-            "❌ Возможность отменить/изменить запись пока недоступна через бота. Обратитесь к администратору."
-        )
-        return MENU
-    if data == "my_records":
-        return await show_my_records(update, context)
+        # На случай, если у кого-то сохранена старая кнопка
+        return await show_my_records_edit(update, context)
+
+    if data == "my_records_view":
+        return await show_my_records_view(update, context)
+
+    if data == "my_records_edit":
+        return await show_my_records_edit(update, context)
+
     if data == "prices":
         return await show_prices(update, context)
+
     if data == "contact_admin":
         kb = [
             [InlineKeyboardButton("💬 Написать сообщение", callback_data="write_message")],
@@ -3543,8 +3573,8 @@ async def cancel_reservation(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # --- SHOW MY RECORDS ---
 
-
-async def show_my_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_my_records_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает записи с возможностью отмены/переноса"""
     query = update.callback_query
     if query:
         await query.answer()
@@ -3584,9 +3614,91 @@ async def show_my_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _display_records(update, context, found, "Ваши активные записи:")
     return MENU
 
+# --- SHOW MY RECORDS VIEW (только просмотр) ---
+
+async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает записи только для просмотра, без возможности отмены"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    user_id = update.effective_user.id
+    name = context.user_data.get("name")
+    phone = context.user_data.get("phone")
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+    
+    # Ищем записи пользователя
+    found = []
+    for r in records:
+        # Ищем по chat_id
+        if (
+            len(r) > 13
+            and str(r[13]).strip() == str(user_id)
+            and str(r[8]).strip() in ACTIVE_STATUSES
+        ):
+            found.append(r)
+    
+    # Если не нашли по chat_id, ищем по имени и телефону
+    if not found and name and phone:
+        for r in records:
+            if (
+                len(r) > 2
+                and str(r[1]).strip() == name
+                and str(r[2]).strip() == phone
+                and str(r[8]).strip() in ACTIVE_STATUSES
+            ):
+                found.append(r)
+    
+    # Если записей нет
+    if not found:
+        msg = "📋 У вас нет активных записей."
+        kb = [[InlineKeyboardButton("🏠 В меню", callback_data="start")]]
+        
+        if query:
+            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
+        return MENU
+    
+    # ФОРМИРУЕМ КРАТКИЙ СПИСОК (без кнопок отмены)
+    msg = f"📋 <b>Ваши записи:</b> ({len(found)} шт.)\n\n"
+    
+    # Ограничиваем показ 10 записями
+    records_to_show = found[:10]
+    
+    for i, r in enumerate(records_to_show, 1):
+        svc = str(r[4]).strip() if len(r) > 4 else "N/A"
+        mst = str(r[5]).strip() if len(r) > 5 else "N/A"
+        dt = str(r[6]).strip() if len(r) > 6 else "N/A"
+        tm = str(r[7]).strip() if len(r) > 7 else "N/A"
+        st = str(r[8]).strip() if len(r) > 8 else "N/A"
+        
+        # Форматируем время
+        if "-" in tm and ":" in tm.replace("-", ""):
+            time_display = tm  # уже в формате 10:00-11:45
+        else:
+            time_display = tm
+        
+        msg += f"{i}. <b>{dt} {time_display}</b>\n   {svc} у {mst} (<i>{st}</i>)\n\n"
+    
+    if len(found) > 10:
+        msg += f"... и еще {len(found) - 10} записей\n\n"
+    
+    # ТОЛЬКО КНОПКИ НАВИГАЦИИ (без отмены)
+    kb = [
+        [InlineKeyboardButton("❌ Хочу отменить/перенести", callback_data="my_records_edit")],
+        [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+    ]
+    
+    if query:
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
+    else:
+        await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
+    
+    return MENU
+
 
 # --- CANCEL RECORD FROM LIST ---
-
 
 async def cancel_record_from_list(
     update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
@@ -5197,5 +5309,4 @@ def _handle_exit(signum, frame):
 
 if __name__ == "__main__":
     main()
-
 
