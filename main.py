@@ -659,11 +659,13 @@ async def _display_records(
             st = str(r[8]).strip() if len(r) > 8 else "N/A"
             
             if st in CANCELLABLE_STATUSES:
-                # Краткий текст кнопки
+                # Берем краткое название услуги (первые 15 символов)
+                service_short = svc[:15] + "..." if len(svc) > 15 else svc
+    
                 kb.append(
                     [
                         InlineKeyboardButton(
-                            f"❌ Отменить {dt} {tm.split('-')[0] if '-' in tm else tm}",
+                            f"❌ Отменить {dt} {tm.split('-')[0] if '-' in tm else tm} ({service_short})",
                             callback_data=f"cancel_record_{rid}"
                         )
                     ]
