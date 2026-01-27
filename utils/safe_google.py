@@ -95,10 +95,10 @@ def safe_append_to_sheet(spreadsheet_id, sheet_name, values):
         import traceback
         traceback.print_exc()
         return False
-        
-@retry_google_api()
 
+@retry_google_api()
 def safe_update_sheet_row(spreadsheet_id, sheet_name, row_index, values):
+    """Обновляет строку в таблице по индексу строки"""
     credentials = get_google_credentials()
     if not credentials:
         return False
@@ -116,6 +116,53 @@ def safe_update_sheet_row(spreadsheet_id, sheet_name, row_index, values):
         return True
     except Exception as e:
         logger.error(f"❌ Ошибка при обновлении строки в таблице: {e}")
+        return False
+
+@retry_google_api()
+def safe_update_sheet_row_by_id(spreadsheet_id, sheet_name, record_id, updated_values):
+    """Находит и обновляет строку по ID записи (более надежно)"""
+    credentials = get_google_credentials()
+    if not credentials:
+        return False
+    
+    try:
+        service = build('sheets', 'v4', credentials=credentials)
+        
+        # 1. Сначала находим строку с нужным ID
+        # Читаем колонку A (ID записей) начиная с 3 строки
+        range_name = f"{sheet_name}!A3:A"
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=range_name
+        ).execute()
+        
+        values = result.get('values', [])
+        
+        # 2. Ищем нужный ID
+        for i, row in enumerate(values):
+            if row and str(row[0]).strip() == str(record_id):
+                # Нашли! Строка = индекс + 3 (т.к. данные с 3 строки)
+                row_number = i + 3
+                
+                # 3. Обновляем строку
+                update_range = f"{sheet_name}!A{row_number}"
+                body = {'values': [updated_values]}
+                
+                update_result = service.spreadsheets().values().update(
+                    spreadsheetId=spreadsheet_id,
+                    range=update_range,
+                    valueInputOption='RAW',
+                    body=body
+                ).execute()
+                
+                logger.info(f"✅ Обновлена запись {record_id} в строке {row_number}")
+                return True
+        
+        logger.error(f"❌ Запись с ID {record_id} не найдена в таблице")
+        return False
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка при обновлении записи {record_id}: {e}")
         return False
 
 def safe_get_calendar_events(calendar_id, time_min, time_max):
