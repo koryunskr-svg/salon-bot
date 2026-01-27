@@ -2001,6 +2001,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         continue
                 except Exception as e:
                     logger.error(f"Ошибка проверки графика работы: {e}")
+                    logger.error(f"🔍 ОШИБКА ДЕТАЛИ: org_name='{org_name}', target_day_name='{target_day_name}', schedule_data_len={len(schedule_data)}")
 
             # Найдём строку расписания для конкретного специалиста
             spec_schedule_row = None
