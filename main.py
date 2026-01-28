@@ -1,4 +1,4 @@
-# main.py- D -26.01.26 - для изм.
+# main.py- D -27.01.26 - для изм.
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -2489,6 +2489,45 @@ date_str, st, ss]):
                 )
                 context.user_data["state"] = SELECT_TIME
                 return SELECT_TIME
+            
+            # ← ДОБАВЬ ЭТУ ПРОВЕРКУ "СЕГОДНЯ ПОСЛЕ РАБОТЫ" ↓↓↓
+            elif selected_date == today_date:
+                # Сегодня - проверяем, не закончился ли рабочий день
+                now_time = datetime.now(TIMEZONE).time()
+                work_end_time = None
+                
+                try:
+                    # Получаем график работы заведения
+                    org_name = get_setting("Название заведения", "").strip()
+                    schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
+                    day_name = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][today_date.weekday()]
+                    
+                    for row in schedule_data:
+                        if len(row) > 0 and row[0].strip() == org_name:
+                            day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(day_name) + 2
+                            if day_index < len(row):
+                                work_schedule = row[day_index].strip()
+                                if work_schedule and work_schedule.lower() != "выходной" and "-" in work_schedule:
+                                    _, end_str = work_schedule.split("-", 1)
+                                    work_end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
+                                    break
+                except Exception as e:
+                    logger.error(f"Ошибка проверки графика работы: {e}")
+                
+                if work_end_time and now_time > work_end_time:
+                    # Рабочий день закончился - не предлагаем лист ожидания
+                    await query.edit_message_text(
+                        f"❌ На {date_str} запись невозможна - рабочий день закончился.\n\n"
+                        f"Пожалуйста, выберите другую дату.",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("📅 Выбрать другую дату", callback_data="back_to_date_select")],
+                            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+                        ])
+                    )
+                    context.user_data["state"] = SELECT_TIME
+                    return SELECT_TIME
+            # ← КОНЕЦ ПРОВЕРКИ "СЕГОДНЯ ПОСЛЕ РАБОТЫ" ↑↑↑
+                    
         except ValueError:
             pass  # Неверный формат даты
         # ← КОНЕЦ ПРОВЕРКИ ↑↑↑
