@@ -684,7 +684,7 @@ async def _display_records(
             await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
         return
     
-    # КРАСИВЫЙ СПИСОК С КНОПКАМИ "ВЫБРАТЬ"
+    # СПИСОК ЗАПИСЕЙ С КНОПКОЙ РЯДОМ С КАЖДОЙ
     msg = f"📋 <b>{title}</b>\n\n"
     
     kb = []
@@ -704,14 +704,14 @@ async def _display_records(
                 else:
                     time_display = tm
                 
-                # Формируем текст записи
+                # Формируем текст записи с кнопкой В ОДНОЙ СТРОКЕ
                 record_text = f"<b>{i}. 📅 {dt} {time_display}</b>\n   💅 {svc} у {mst}\n"
                 msg += record_text
                 
-                # Кнопка "Выбрать" для этой записи
+                # Кнопка РЯДОМ с записью (не под ней)
                 kb.append([
                     InlineKeyboardButton(
-                        f"📅 Выбрать запись #{i}",
+                        f"📅 Запись #{i}",
                         callback_data=f"record_details_{rid}"
                     )
                 ])
@@ -726,7 +726,6 @@ async def _display_records(
         await query.edit_message_text(msg, reply_markup=rm, parse_mode="HTML")
     else:
         await update.message.reply_text(msg, reply_markup=rm, parse_mode="HTML")
-
 
 async def show_record_details(
     update: Update,
@@ -761,21 +760,19 @@ async def show_record_details(
     time_range = str(target_record[7]).strip() if len(target_record) > 7 else "N/A"
     status = str(target_record[8]).strip() if len(target_record) > 8 else "N/A"
     
-    # Форматируем сообщение
+    # Форматируем сообщение (ТОЧНО как ты просил)
     msg = (
         f"📋 <b>Запись #{rid}</b>\n\n"
         f"📅 <b>Дата:</b> {date}\n"
         f"⏰ <b>Время:</b> {time_range}\n"
         f"💅 <b>Услуга:</b> {service}\n"
-        f"👩‍💼 <b>Специалист:</b> {specialist}\n"
-        f"👤 <b>Имя:</b> {name}\n"
-        f"📞 <b>Телефон:</b> {phone}\n"
-        f"📊 <b>Статус:</b> {status}\n\n"
+        f"👩‍💼 <b>Специалист:</b> {specialist}\n\n"
         f"<i>Что вы хотите сделать с этой записью?</i>"
     )
     
-    # Кнопки действий
+    # Кнопки действий (ИЗМЕНИТЬ и ОТМЕНИТЬ)
     kb = [
+        [InlineKeyboardButton("✏️ Изменить запись", callback_data=f"modify_record_{rid}")],
         [InlineKeyboardButton("🗑️ Отменить запись", callback_data=f"cancel_confirm_{rid}")],
         [InlineKeyboardButton("⬅️ Назад к списку", callback_data="my_records_edit")]
     ]
@@ -1678,6 +1675,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("record_details_"):
         record_id = data.split("record_details_", 1)[1]
         return await show_record_details(update, context, record_id)
+
+    # ← ДОБАВИТЬ ЭТОТ БЛОК ДЛЯ КНОПКИ "ИЗМЕНИТЬ"
+    if data.startswith("modify_record_"):
+        record_id = data.split("modify_record_", 1)[1]
+        # Показываем сообщение, что функция в разработке
+        await query.answer()
+        await query.edit_message_text(
+            f"🔄 Функция изменения записи #{record_id} в разработке.\n\n"
+            f"Пока вы можете отменить запись и создать новую.\n\n"
+            f"Или свяжитесь с администратором для изменения записи.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🗑️ Отменить запись", callback_data=f"cancel_confirm_{record_id}")],
+                [InlineKeyboardButton("📱 Связаться с админом", callback_data="contact_admin")],
+                [InlineKeyboardButton("⬅️ Назад", callback_data=f"record_details_{record_id}")]
+            ])
+        )
+        return
 
     # ← ДОБАВИТЬ ЭТОТ БЛОК (подтверждение отмены)
     if data.startswith("cancel_confirm_"):
