@@ -1,4 +1,4 @@
-# main.py- D -27.01.26 - для изм.
+# main.py- D -28.01.26 - для изм.
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -3389,15 +3389,25 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MENU
 
     # === 2.5. ПРОВЕРКА ВАЛИДНОСТИ БРОНИРОВАНИЯ ===
-    check_result, error_msg = await _validate_booking_checks(
-        context=context,
-        name=name,
-        phone=phone,
-        date_str=date_str,
-        time_str=time_str,
-        service_type=st,
-        specialist=specialist
-    )
+
+    # Если это подтверждение повторной записи (нажали "Да, всё верно")
+    # Пропускаем проверку на повтор, т.к. пользователь уже согласился
+    if query.data == "confirm_repeat" or context.user_data.get("confirmed_repeat") == True:
+        # Помечаем, что пользователь подтвердил повторную запись
+        context.user_data["confirmed_repeat"] = True
+        check_result = True  # Пропускаем проверку
+        error_msg = None
+    else:
+        # Обычная проверка
+        check_result, error_msg = await _validate_booking_checks(
+            context=context,
+            name=name,
+            phone=phone,
+            date_str=date_str,
+            time_str=time_str,
+            service_type=st,
+            specialist=specialist
+        )
     
     if check_result is False:
         # Освобождаем временный слот
