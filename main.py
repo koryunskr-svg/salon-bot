@@ -684,8 +684,8 @@ async def _display_records(
             await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
         return
     
-    # СПИСОК ГДЕ КАЖДАЯ ЗАПИСЬ - КЛИКАБЕЛЬНАЯ КНОПКА
-    msg = f"📋 <b>{title}</b>\n\n"
+    # ПРОСТО ЗАГОЛОВОК БЕЗ ПЕРЕЧНЯ ЗАПИСЕЙ
+    msg = f"📋 <b>{title}</b>\n\n<b>Выберите запись:</b>\n\n"
     
     kb = []
     for i, r in enumerate(records_to_show, 1):
@@ -704,18 +704,16 @@ async def _display_records(
                 else:
                     time_display = tm
                 
-                # Текст записи - САМ ЯВЛЯЕТСЯ КНОПКОЙ
-                button_text = f"{i}. 📅 {dt} {time_display}"
+                # ВСЯ ИНФОРМАЦИЯ В КНОПКЕ
+                button_text = f"{i}. 📅 {dt} {time_display} - {svc} у {mst}"
                 
-                # Кнопка с полным текстом записи
+                # Кнопка с полной информацией
                 kb.append([
                     InlineKeyboardButton(
                         button_text,
                         callback_data=f"record_details_{rid}"
                     )
                 ])
-                # Подпись под кнопкой (в тексте сообщения)
-                msg += f"   💅 {svc} у {mst}\n\n"
     
     if len(records) > 10:
         msg += f"... и еще {len(records) - 10} записей\n\n"
