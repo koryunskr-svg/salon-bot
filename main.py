@@ -3927,7 +3927,7 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             time_display = tm
         
-        msg += f"{i}. <b>{dt} {time_display}</b>\n   {svc} у {mst} (<i>{st}</i>)\n\n"
+        msg += f"{i}. <b>{dt} {time_display}</b>\n   {svc} у {mst}\n\n"
     
     if len(found) > 10:
         msg += f"... и еще {len(found) - 10} записей\n\n"
