@@ -612,7 +612,6 @@ async def check_waiting_list(
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ЗАПИСЕЙ ---
 
-
 async def _display_records(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -621,12 +620,6 @@ async def _display_records(
 ):
     query = update.callback_query
     
-    # ← ДОБАВЬ ЭТОТ БЛОК ОТЛАДКИ
-    logger.info(f"🔍 _display_records: получил {len(records)} записей")
-    for i, r in enumerate(records[:3]):
-        if len(r) > 7:
-            logger.info(f"🔍 Запись #{i}: дата='{r[6]}', время='{r[7]}'")
-
     # ФИЛЬТРУЕМ ТОЛЬКО БУДУЩИЕ И СЕГОДНЯШНИЕ ЗАПИСИ
     future_records = []
     for r in records:
@@ -634,7 +627,7 @@ async def _display_records(
             date_str = str(r[6]).strip()
             time_str = str(r[7]).strip()
 
-            # Извлекаем время начала (если формат "10:00-11:00")
+            # Извлекаем время начала
             if "-" in time_str:
                 time_start_str = time_str.split("-")[0].strip()
             else:
@@ -656,7 +649,6 @@ async def _display_records(
                 continue
     
     records = future_records  # Заменяем на отфильтрованные
-    # ← КОНЕЦ ИСПРАВЛЕННОГО БЛОКА
 
     # СОРТИРУЕМ записи по дате и времени
     def sort_key(r):
@@ -679,13 +671,6 @@ async def _display_records(
     
     records.sort(key=sort_key)
 
-    # ← ИСПРАВЛЕННЫЙ ОТЛАДОЧНЫЙ КОД
-    original_count = len([r for r in future_records if isinstance(r, list)])
-    logger.info(f"🔍 ФИЛЬТРАЦИЯ: было записей, осталось {len(records)}")
-    for r in records[:3]:  # Первые 3 записи
-        if len(r) > 7:
-            logger.info(f"🔍 Осталась запись: {r[6]} {r[7]}")
-
     # ОГРАНИЧИВАЕМ количество записей для показа (макс 10)
     records_to_show = records[:10]
     
@@ -699,8 +684,8 @@ async def _display_records(
             await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
         return
     
-    # ТОЛЬКО КНОПКИ, без текстового списка
-    msg = f"📋 <b>{title}</b>\n\nВыберите запись для отмены:"
+    # КРАСИВЫЙ СПИСОК С КНОПКАМИ "ВЫБРАТЬ"
+    msg = f"📋 <b>{title}</b>\n\n"
     
     kb = []
     for i, r in enumerate(records_to_show, 1):
@@ -713,26 +698,26 @@ async def _display_records(
             st = str(r[8]).strip() if len(r) > 8 else "N/A"
             
             if st in CANCELLABLE_STATUSES:
-                # Форматируем кнопку
-                time_display = tm  # используем полный диапазон 10:00-11:15
-                
-                # Сокращаем если слишком длинно
-                if len(svc) > 25:
-                    service_display = svc[:22] + "..."
+                # Форматируем время для отображения
+                if "-" in tm:
+                    time_display = tm  # уже в формате 11:45-13:30
                 else:
-                    service_display = svc
+                    time_display = tm
                 
-                kb.append(
-                    [
-                        InlineKeyboardButton(
-                            f"❌ {i}. {dt} {time_display} - {service_display} у {mst}",
-                            callback_data=f"cancel_record_{rid}"
-                        )
-                    ]
-                )
+                # Формируем текст записи
+                record_text = f"<b>{i}. 📅 {dt} {time_display}</b>\n   💅 {svc} у {mst}\n"
+                msg += record_text
+                
+                # Кнопка "Выбрать" для этой записи
+                kb.append([
+                    InlineKeyboardButton(
+                        f"📅 Выбрать запись #{i}",
+                        callback_data=f"record_details_{rid}"
+                    )
+                ])
     
     if len(records) > 10:
-        msg += f"\n\n... и еще {len(records) - 10} записей"
+        msg += f"\n... и еще {len(records) - 10} записей"
     
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="start")])
     
@@ -741,6 +726,65 @@ async def _display_records(
         await query.edit_message_text(msg, reply_markup=rm, parse_mode="HTML")
     else:
         await update.message.reply_text(msg, reply_markup=rm, parse_mode="HTML")
+
+
+async def show_record_details(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    record_id: str
+):
+    """Показывает детали одной записи с кнопками действий"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Ищем запись
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+    target_record = None
+    
+    for r in records:
+        if len(r) > 0 and str(r[0]).strip() == record_id:
+            target_record = r
+            break
+    
+    if not target_record:
+        await query.edit_message_text("❌ Запись не найдена.")
+        return
+    
+    # Формируем детали записи
+    rid = str(target_record[0]).strip() if len(target_record) > 0 else "N/A"
+    name = str(target_record[1]).strip() if len(target_record) > 1 else "N/A"
+    phone = str(target_record[2]).strip() if len(target_record) > 2 else "N/A"
+    category = str(target_record[3]).strip() if len(target_record) > 3 else "N/A"
+    service = str(target_record[4]).strip() if len(target_record) > 4 else "N/A"
+    specialist = str(target_record[5]).strip() if len(target_record) > 5 else "N/A"
+    date = str(target_record[6]).strip() if len(target_record) > 6 else "N/A"
+    time_range = str(target_record[7]).strip() if len(target_record) > 7 else "N/A"
+    status = str(target_record[8]).strip() if len(target_record) > 8 else "N/A"
+    
+    # Форматируем сообщение
+    msg = (
+        f"📋 <b>Запись #{rid}</b>\n\n"
+        f"📅 <b>Дата:</b> {date}\n"
+        f"⏰ <b>Время:</b> {time_range}\n"
+        f"💅 <b>Услуга:</b> {service}\n"
+        f"👩‍💼 <b>Специалист:</b> {specialist}\n"
+        f"👤 <b>Имя:</b> {name}\n"
+        f"📞 <b>Телефон:</b> {phone}\n"
+        f"📊 <b>Статус:</b> {status}\n\n"
+        f"<i>Что вы хотите сделать с этой записью?</i>"
+    )
+    
+    # Кнопки действий
+    kb = [
+        [InlineKeyboardButton("🗑️ Отменить запись", callback_data=f"cancel_confirm_{rid}")],
+        [InlineKeyboardButton("⬅️ Назад к списку", callback_data="my_records_edit")]
+    ]
+    
+    await query.edit_message_text(
+        msg,
+        reply_markup=InlineKeyboardMarkup(kb),
+        parse_mode="HTML"
+    )
 
 async def _validate_booking_checks(
     context: ContextTypes.DEFAULT_TYPE,
@@ -1629,6 +1673,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cancel_record_from_list(
             update, context, data.split("cancel_record_", 1)[1]
         )
+
+    # ← ДОБАВИТЬ ЭТОТ БЛОК ДЛЯ ДВУХУРОВНЕВОГО МЕНЮ
+    if data.startswith("record_details_"):
+        record_id = data.split("record_details_", 1)[1]
+        return await show_record_details(update, context, record_id)
 
     # ← ДОБАВИТЬ ЭТОТ БЛОК (подтверждение отмены)
     if data.startswith("cancel_confirm_"):
@@ -5628,42 +5677,7 @@ def _handle_exit(signum, frame):
         pass
     sys.exit(0)
 
-    try:
-        signal.signal(signal.SIGTERM, _handle_exit)
-        signal.signal(signal.SIGINT, _handle_exit)
-        logger.info("✅ Обработчики сигналов зарегистрированы.")
-    except Exception as _err:
-        logger.debug(f"Не удалось установить signal handlers: {_err}")
-    try:
-        logger.info("🚀 Бот запущен в режиме long polling.")
-        application.run_polling()
-    except KeyboardInterrupt:
-        logger.info("⚠️ Получен сигнал остановки (Ctrl+C).")
-    except Exception as e:
-        logger.critical(f"❌ Критическая ошибка при работе бота: {e}", exc_info=True)
-    finally:
-        remove_lock_file()
-        logger.info("🔒 Бот остановлен и lock-файл удалён.")
-
-    try:
-        signal.signal(signal.SIGTERM, _handle_exit)
-        signal.signal(signal.SIGINT, _handle_exit)
-        logger.info("✅ Обработчики сигналов зарегистрированы.")
-    except Exception as _err:
-        logger.debug(f"Не удалось установить signal handlers: {_err}")
-
-    try:
-        logger.info("🚀 Бот запущен в режиме long polling.")
-        application.run_polling()
-    except KeyboardInterrupt:
-        logger.info("⚠️ Получен сигнал остановки (Ctrl+C).")
-    except Exception as e:
-        logger.critical(f"❌ Критическая ошибка при работе бота: {e}", exc_info=True)
-    finally:
-        remove_lock_file()
-        logger.info("🔒 Бот остановлен и lock-файл удалён.")
-
-
+    
 if __name__ == "__main__":
     main()
 
