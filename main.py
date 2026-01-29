@@ -851,19 +851,7 @@ async def _validate_booking_checks(
             record_phone = str(r[2]).strip()
             record_status = str(r[8]).strip()
             record_date = str(r[6]).strip()
-            
-            # Проверяем что дата записи не прошедшая
-            record_date_str = str(r[6]).strip() if len(r) > 6 else ""
-            try:
-                record_date = datetime.strptime(record_date_str, "%d.%m.%Y").date()
-                today_date = datetime.now(TIMEZONE).date()
-    
-                # Пропускаем прошедшие записи
-                if record_date < today_date:
-                    continue  # ← ПЕРЕХОДИМ К СЛЕДУЮЩЕЙ ЗАПИСИ
-            except:
-                pass  # Если ошибка формата даты - всё равно проверяем
-
+                     
             # Проверяем тот же телефон (разные люди могут использовать один телефон)
             if (record_phone == phone and 
                 record_status == "подтверждено" and 
@@ -909,8 +897,20 @@ async def _validate_booking_checks(
             record_name = str(r[1]).strip()
             record_phone = str(r[2]).strip()
             record_category = str(r[3]).strip()
-            record_status = str(r[8]).strip()
-            
+            record_status = str(r[8]).strip()                           
+
+            # Проверяем что дата записи не прошедшая (только будущие записи)
+            record_date_str = str(r[6]).strip() if len(r) > 6 else ""
+            try:
+                record_date_obj = datetime.strptime(record_date_str, "%d.%m.%Y").date()
+                today_date = datetime.now(TIMEZONE).date()
+                
+                # Пропускаем прошедшие записи
+                if record_date_obj < today_date:
+                    continue  # ← пропускаем эту запись
+            except:
+                pass  # Если ошибка формата даты - проверяем дальше       
+
             # Тот же телефон в той же категории
             if (record_phone == phone and 
                 record_category == service_type and 
