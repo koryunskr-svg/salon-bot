@@ -727,27 +727,32 @@ async def _display_records(
                 time_display = tm.split("-")[0] if "-" in tm else tm
                 service_short = (svc[:15] + "...") if len(svc) > 15 else svc
                 
-                kb.append(
-                    [
-                        InlineKeyboardButton(
-                            f"📅 {date_display} {time_display}",
-                            callback_data=f"change_record_{rid}"
-                        ),
-                        InlineKeyboardButton(
-                            f"❌", 
-                            callback_data=f"cancel_record_{rid}"
-                        )
-                    ]
-                )
-                # Добавляем вторую строку с деталями
-                kb.append(
-                    [
-                        InlineKeyboardButton(
-                            f"💅 {service_short} у {mst}",
-                            callback_data=f"show_details_{rid}"
-                        )
-                    ]
-                )
+                # Форматируем дату в короткий вид (30.01.26)
+                try:
+                    date_obj = datetime.strptime(dt, "%d.%m.%Y")
+                    short_date = date_obj.strftime("%d.%m.%y")  # 30.01.26
+                except:
+                    short_date = dt
+                
+                # Берем только время начала (если формат "11:45-13:30" → "11:45")
+                start_time = tm.split("-")[0].strip() if "-" in tm else tm
+                
+                # Сокращаем название услуги если длинное
+                service_short = svc[:20] + "..." if len(svc) > 20 else svc
+                
+                # Первая строка: дата, время, услуга
+                kb.append([
+                    InlineKeyboardButton(
+                        f"📅 {short_date} {start_time} - {service_short}",
+                        callback_data=f"show_details_{rid}"
+                    )
+                ])
+                
+                # Вторая строка: кнопки действий
+                kb.append([
+                    InlineKeyboardButton("✏️ Изменить", callback_data=f"change_record_{rid}"),
+                    InlineKeyboardButton("🗑️ Удалить", callback_data=f"cancel_record_{rid}")
+                ])
     
     if len(records) > 10:
         msg += f"\n\n... и еще {len(records) - 10} записей"
