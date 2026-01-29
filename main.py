@@ -722,17 +722,32 @@ async def _display_records(
                 else:
                     service_display = svc
                 
+                # Форматируем текст для кнопки
+                date_display = dt
+                time_display = tm.split("-")[0] if "-" in tm else tm
+                service_short = (svc[:15] + "...") if len(svc) > 15 else svc
+                
                 kb.append(
                     [
                         InlineKeyboardButton(
-                            f"✏️ Изменить",
+                            f"📅 {date_display} {time_display}",
                             callback_data=f"change_record_{rid}"
                         ),
                         InlineKeyboardButton(
-                            f"❌ Отменить", 
+                            f"❌", 
                             callback_data=f"cancel_record_{rid}"
                         )
                     ]
+                )
+                # Добавляем вторую строку с деталями
+                kb.append(
+                    [
+                        InlineKeyboardButton(
+                            f"💅 {service_short} у {mst}",
+                            callback_data=f"show_details_{rid}"
+                        )
+                    ]
+                )
                 )
     
     if len(records) > 10:
