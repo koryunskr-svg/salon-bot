@@ -3408,10 +3408,12 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === 2.5. ПРОВЕРКА ВАЛИДНОСТИ БРОНИРОВАНИЯ ===
 
-    # Если это подтверждение повторной записи (нажали "Да, всё верно")
-    # Пропускаем проверку на повтор, т.к. пользователь уже согласился
-    if query.data == "confirm_repeat" or context.user_data.get("confirmed_repeat") == True:
-        # Помечаем, что пользователь подтвердил повторную запись
+    # Если это подтверждение повторной записи или телефона (нажали "Да, всё верно" или "Да, это мой номер")
+    # Пропускаем проверку, т.к. пользователь уже согласился
+    if (query.data == "confirm_repeat" or 
+        query.data == "confirm_phone_yes" or 
+        context.user_data.get("confirmed_repeat") == True):
+        # Помечаем, что пользователь подтвердил
         context.user_data["confirmed_repeat"] = True
         check_result = True  # Пропускаем проверку
         error_msg = None
@@ -3425,7 +3427,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             time_str=time_str,
             service_type=st,
             specialist=specialist
-        )
+        )        
     
     if check_result is False:
         # Освобождаем временный слот
