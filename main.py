@@ -2002,7 +2002,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     intervals = [i.strip() for i in work_schedule.split(",") if i.strip()]
               
 
-                      last_end_time = None
+                                    last_end_time = None
                                     
                                     for interval in intervals:
                                         if "-" in interval:
