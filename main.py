@@ -1,4 +1,4 @@
-# main.py- D -27.01.26 - тест
+# main.py- D -27.01.26 - для изм.
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -2028,7 +2028,6 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.info(f"🔍   now.time() = {now.time()}")
                     logger.info(f"🔍   now.time() > work_end_time? = {work_end_time and now.time() > work_end_time}")
                     
-                    logger.info(f"🔧 ТЕСТ: work_end_time={work_end_time}, now.time()={now.time()}, сравнение={work_end_time and now.time() > work_end_time}")
                     if work_end_time and now.time() > work_end_time:
                         # Рабочий день закончился - пропускаем сегодня
                         logger.info(f"⚠️ Пропускаем сегодня {target_date_str}, рабочий день закончился в {work_end_time}")
@@ -2138,8 +2137,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                         _, end_str = work_schedule.split("-", 1)
                                         work_end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
                                     break
-
-                    logger.info(f"🔧 ТЕСТ: work_end_time={work_end_time}, now.time()={now.time()}, сравнение={work_end_time and now.time() > work_end_time}")
+            
                     if work_end_time and now.time() > work_end_time:
                         # Рабочий день закончился - пропускаем сегодня
                         logger.info(f"⚠️ Пропускаем сегодня {target_date_str}, рабочий день закончился в {work_end_time}")
