@@ -931,21 +931,8 @@ async def _validate_booking_checks(
     
     if phone_conflict:
         context.user_data["phone_conflict"] = phone_conflict
-        return "CONFIRM_PHONE", None
-                
-                repeat_records.append({
-                    "category": record_category,
-                    "service": str(r[4]).strip() if len(r) > 4 else "",
-                    "specialist": str(r[5]).strip() if len(r) > 5 else "",
-                    "date": str(r[6]).strip() if len(r) > 6 else "",
-                    "time": str(r[7]).strip() if len(r) > 7 else "",
-                })
+        return "CONFIRM_PHONE", None               
     
-    if repeat_records:
-        context.user_data["repeat_booking_conflict"] = repeat_records[0]
-        return "CONFIRM_REPEAT", None
-    
-    return True, None
 
 # --- HANDLERS -
 
@@ -3493,8 +3480,12 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("❌ Нет, ввести другой", callback_data="confirm_phone_no")]
         ]
         
-        await query.edit_message_text(           
-            f"Этот номер уже используется клиентом:\n"
+        await query.edit_message_text(
+            f"⚠️ Этот номер уже используется клиентом <b>{conflict.get('name', 'N/A')}</b>:\n"
+            f"• Категория: {conflict.get('category', 'N/A')}\n"
+            f"• Услуга: {conflict.get('service', 'N/A')}\n"
+            f"• Дата: {conflict.get('date', 'N/A')}\n"
+            f"• Время: {conflict.get('time', 'N/A')}\n\n"
             f"Это ваш номер телефона?",
             reply_markup=InlineKeyboardMarkup(kb),
             parse_mode="HTML"
