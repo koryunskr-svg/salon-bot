@@ -748,7 +748,6 @@ async def _display_records(
                         )
                     ]
                 )
-                )
     
     if len(records) > 10:
         msg += f"\n\n... и еще {len(records) - 10} записей"
