@@ -1,4 +1,4 @@
-# main.py- D -28.01.26 - для изм.
+# main.py- D -28.01.26 - тест
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -684,7 +684,7 @@ async def _display_records(
             await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
         return
     
-    # СПИСОК ЗАПИСЕЙ С КНОПКОЙ РЯДОМ С КАЖДОЙ
+    # СПИСОК ГДЕ КАЖДАЯ ЗАПИСЬ - КЛИКАБЕЛЬНАЯ КНОПКА
     msg = f"📋 <b>{title}</b>\n\n"
     
     kb = []
@@ -704,20 +704,21 @@ async def _display_records(
                 else:
                     time_display = tm
                 
-                # Формируем текст записи с кнопкой В ОДНОЙ СТРОКЕ
-                record_text = f"<b>{i}. 📅 {dt} {time_display}</b>\n   💅 {svc} у {mst}\n"
-                msg += record_text
+                # Текст записи - САМ ЯВЛЯЕТСЯ КНОПКОЙ
+                button_text = f"{i}. 📅 {dt} {time_display}"
                 
-                # Кнопка РЯДОМ с записью (не под ней)
+                # Кнопка с полным текстом записи
                 kb.append([
                     InlineKeyboardButton(
-                        f"📅 Запись #{i}",
+                        button_text,
                         callback_data=f"record_details_{rid}"
                     )
                 ])
+                # Подпись под кнопкой (в тексте сообщения)
+                msg += f"   💅 {svc} у {mst}\n\n"
     
     if len(records) > 10:
-        msg += f"\n... и еще {len(records) - 10} записей"
+        msg += f"... и еще {len(records) - 10} записей\n\n"
     
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="start")])
     
