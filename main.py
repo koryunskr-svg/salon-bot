@@ -1,4 +1,4 @@
-# main.py- D -28.01.26 - для изм.
+# main.py- D -28.01.26 - тест
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -887,8 +887,11 @@ async def _validate_booking_checks(
                     continue
     
     # === ПРОВЕРКА 3: ПОВТОРНАЯ ЗАПИСЬ В КАТЕГОРИИ ===
-    # Проверяем только для ОДНОГО человека (имя + телефон)
+    # Проверяем по телефону (разные люди могут использовать один телефон)
     repeat_records = []
+    phone_conflict = False
+    different_name_same_phone = False
+    
     for r in records:
         if len(r) > 4:
             record_name = str(r[1]).strip()
@@ -896,11 +899,39 @@ async def _validate_booking_checks(
             record_category = str(r[3]).strip()
             record_status = str(r[8]).strip()
             
-            # Тот же человек (имя И телефон) в той же категории
-            if (record_name.lower() == name.lower() and 
-                record_phone == phone and 
+            # Тот же телефон в той же категории
+            if (record_phone == phone and 
                 record_category == service_type and 
                 record_status == "подтверждено"):
+                
+                # Проверяем совпадает ли имя
+                if record_name.lower() == name.lower():
+                    # Тот же человек (имя + телефон) в той же категории
+                    repeat_records.append({
+                        "category": record_category,
+                        "service": str(r[4]).strip() if len(r) > 4 else "",
+                        "specialist": str(r[5]).strip() if len(r) > 5 else "",
+                        "date": str(r[6]).strip() if len(r) > 6 else "",
+                        "time": str(r[7]).strip() if len(r) > 7 else "",
+                    })
+                else:
+                    # Разные имена, но один телефон
+                    different_name_same_phone = True
+                    phone_conflict = {
+                        "name": record_name,
+                        "category": record_category,
+                        "service": str(r[4]).strip() if len(r) > 4 else "",
+                        "date": str(r[6]).strip() if len(r) > 6 else "",
+                        "time": str(r[7]).strip() if len(r) > 7 else "",
+                    }
+    
+    if repeat_records:
+        context.user_data["repeat_booking_conflict"] = repeat_records[0]
+        return "CONFIRM_REPEAT", None
+    
+    if phone_conflict:
+        context.user_data["phone_conflict"] = phone_conflict
+        return "CONFIRM_PHONE", None
                 
                 repeat_records.append({
                     "category": record_category,
