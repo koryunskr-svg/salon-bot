@@ -1775,7 +1775,7 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fmt_dur = format_duration(dur + buf)
         price_str = safe_parse_price(price)
         text += f"• <b>{name}</b> — {price_str} (длит.: {fmt_dur})\n"
-        if desc:
+        if desc and desc.strip():  # Если есть описание и оно не пустое
             text += f" <i>{desc}</i>\n"
     await query.edit_message_text(text or "❌ Услуги не найдены.", parse_mode="HTML")
     try:
