@@ -1945,15 +1945,30 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 if day_index < len(row):
                     work_schedule = row[day_index].strip()
-                    if work_schedule and work_schedule.lower() != "выходной" and "-" in work_schedule:
-                        try:
-                            # Парсим время окончания работы (после "-")
+                    if work_schedule and work_schedule.lower() != "выходной":
+                        # ← ИСПРАВЛЕНИЕ: берем ПОСЛЕДНЕЕ время окончания из всех интервалов
+                        # Пример: "10:00-14:00,15:00-20:00" → берем 20:00
+                        intervals = [i.strip() for i in work_schedule.split(",") if i.strip()]
+                        last_end_time = None
+                        
+                        for interval in intervals:
+                            if "-" in interval:
+                                start_str, end_str = interval.split("-", 1)
+                                try:
+                                    end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
+                                    # Берем самое позднее время окончания
+                                    if not last_end_time or end_time > last_end_time:
+                                        last_end_time = end_time
+                                except Exception:
+                                    pass
+                        
+                        if last_end_time:
+                            work_end_time = last_end_time  # Будет 20:00 для примера
+                        elif "-" in work_schedule:
+                            # Старая логика на случай одного интервала
                             _, end_str = work_schedule.split("-", 1)
-                            end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
-                            work_end_time = end_time
-                            break  # Нашли первый рабочий график
-                        except:
-                            continue
+                            work_end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
+                        break  # Нашли первый рабочий график
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке графика работы на сегодня: {e}")
     # ← КОНЕЦ БЛОКА ↑↑↑
@@ -1982,9 +1997,28 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(target_day_name) + 2
                             if day_index < len(row):
                                 work_schedule = row[day_index].strip()
-                                if work_schedule and work_schedule.lower() != "выходной" and "-" in work_schedule:
-                                    _, end_str = work_schedule.split("-", 1)
-                                    work_end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
+                                if work_schedule and work_schedule.lower() != "выходной":
+                                    # ← ИСПРАВЛЕНИЕ: берем ПОСЛЕДНЕЕ время окончания из всех интервалов
+                                    intervals = [i.strip() for i in work_schedule.split(",") if i.strip()]
+              
+
+                      last_end_time = None
+                                    
+                                    for interval in intervals:
+                                        if "-" in interval:
+                                            start_str, end_str = interval.split("-", 1)
+                                            try:
+                                                end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
+                                                if not last_end_time or end_time > last_end_time:
+                                                    last_end_time = end_time
+                                            except Exception:
+                                                pass
+                                    
+                                    if last_end_time:
+                                        work_end_time = last_end_time
+                                    elif "-" in work_schedule:
+                                        _, end_str = work_schedule.split("-", 1)
+                                        work_end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
                                     break
                     
                     # ← ДОБАВЛЕННАЯ ОТЛАДКА
@@ -2083,9 +2117,26 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(target_day_name) + 2
                             if day_index < len(row):
                                 work_schedule = row[day_index].strip()
-                                if work_schedule and work_schedule.lower() != "выходной" and "-" in work_schedule:
-                                    _, end_str = work_schedule.split("-", 1)
-                                    work_end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
+                                if work_schedule and work_schedule.lower() != "выходной":
+                                    # ← ИСПРАВЛЕНИЕ: берем ПОСЛЕДНЕЕ время окончания из всех интервалов
+                                    intervals = [i.strip() for i in work_schedule.split(",") if i.strip()]
+                                    last_end_time = None
+                                    
+                                    for interval in intervals:
+                                        if "-" in interval:
+                                            start_str, end_str = interval.split("-", 1)
+                                            try:
+                                                end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
+                                                if not last_end_time or end_time > last_end_time:
+                                                    last_end_time = end_time
+                                            except Exception:
+                                                pass
+                                    
+                                    if last_end_time:
+                                        work_end_time = last_end_time
+                                    elif "-" in work_schedule:
+                                        _, end_str = work_schedule.split("-", 1)
+                                        work_end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
                                     break
             
                     if work_end_time and now.time() > work_end_time:
@@ -2489,45 +2540,7 @@ date_str, st, ss]):
                 )
                 context.user_data["state"] = SELECT_TIME
                 return SELECT_TIME
-            
-            # ← ДОБАВЬ ЭТУ ПРОВЕРКУ "СЕГОДНЯ ПОСЛЕ РАБОТЫ" ↓↓↓
-            elif selected_date == today_date:
-                # Сегодня - проверяем, не закончился ли рабочий день
-                now_time = datetime.now(TIMEZONE).time()
-                work_end_time = None
-                
-                try:
-                    # Получаем график работы заведения
-                    org_name = get_setting("Название заведения", "").strip()
-                    schedule_data = safe_get_sheet_data(SHEET_ID, "График специалистов!A3:I") or []
-                    day_name = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][today_date.weekday()]
-                    
-                    for row in schedule_data:
-                        if len(row) > 0 and row[0].strip() == org_name:
-                            day_index = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].index(day_name) + 2
-                            if day_index < len(row):
-                                work_schedule = row[day_index].strip()
-                                if work_schedule and work_schedule.lower() != "выходной" and "-" in work_schedule:
-                                    _, end_str = work_schedule.split("-", 1)
-                                    work_end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
-                                    break
-                except Exception as e:
-                    logger.error(f"Ошибка проверки графика работы: {e}")
-                
-                if work_end_time and now_time > work_end_time:
-                    # Рабочий день закончился - не предлагаем лист ожидания
-                    await query.edit_message_text(
-                        f"❌ На {date_str} запись невозможна - рабочий день закончился.\n\n"
-                        f"Пожалуйста, выберите другую дату.",
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("📅 Выбрать другую дату", callback_data="back_to_date_select")],
-                            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
-                        ])
-                    )
-                    context.user_data["state"] = SELECT_TIME
-                    return SELECT_TIME
-            # ← КОНЕЦ ПРОВЕРКИ "СЕГОДНЯ ПОСЛЕ РАБОТЫ" ↑↑↑
-                    
+                                
         except ValueError:
             pass  # Неверный формат даты
         # ← КОНЕЦ ПРОВЕРКИ ↑↑↑
