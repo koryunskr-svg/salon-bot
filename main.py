@@ -658,6 +658,27 @@ async def _display_records(
     records = future_records  # Заменяем на отфильтрованные
     # ← КОНЕЦ ИСПРАВЛЕННОГО БЛОКА
 
+    # СОРТИРУЕМ записи по дате и времени
+    def sort_key(r):
+        try:
+            date_str = str(r[6]).strip() if len(r) > 6 else ""
+            time_str = str(r[7]).strip() if len(r) > 7 else ""
+            
+            # Извлекаем время начала
+            if "-" in time_str:
+                time_start = time_str.split("-")[0].strip()
+            else:
+                time_start = time_str
+            
+            # Создаем datetime для сортировки
+            dt_str = f"{date_str} {time_start}"
+            return datetime.strptime(dt_str, "%d.%m.%Y %H:%M")
+        except:
+            # Если ошибка - в конец списка
+            return datetime.max
+    
+    records.sort(key=sort_key)
+
     # ← ИСПРАВЛЕННЫЙ ОТЛАДОЧНЫЙ КОД
     original_count = len([r for r in future_records if isinstance(r, list)])
     logger.info(f"🔍 ФИЛЬТРАЦИЯ: было записей, осталось {len(records)}")
@@ -3897,6 +3918,27 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
     
     found = future_records  # Заменяем на отфильтрованные
     # ← КОНЕЦ ИСПРАВЛЕННОГО БЛОКА
+   
+    # СОРТИРУЕМ записи по дате и времени
+    def sort_key(r):
+        try:
+            date_str = str(r[6]).strip() if len(r) > 6 else ""
+            time_str = str(r[7]).strip() if len(r) > 7 else ""
+            
+            # Извлекаем время начала
+            if "-" in time_str:
+                time_start = time_str.split("-")[0].strip()
+            else:
+                time_start = time_str
+            
+            # Создаем datetime для сортировки
+            dt_str = f"{date_str} {time_start}"
+            return datetime.strptime(dt_str, "%d.%m.%Y %H:%M")
+        except:
+            # Если ошибка - в конец списка
+            return datetime.max
+    
+    found.sort(key=sort_key)
 
     # Если записей нет
     if not found:
