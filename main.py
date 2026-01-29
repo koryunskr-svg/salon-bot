@@ -725,7 +725,11 @@ async def _display_records(
                 kb.append(
                     [
                         InlineKeyboardButton(
-                            f"❌ {i}. {dt} {time_display} - {service_display} у {mst}",
+                            f"✏️ Изменить",
+                            callback_data=f"change_record_{rid}"
+                        ),
+                        InlineKeyboardButton(
+                            f"❌ Отменить", 
                             callback_data=f"cancel_record_{rid}"
                         )
                     ]
@@ -1625,10 +1629,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data.split("cancel_reminder_", 1)[1], query, context
         )
         return
+    
     if data.startswith("cancel_record_"):
         return await cancel_record_from_list(
             update, context, data.split("cancel_record_", 1)[1]
         )
+
+    # ← ОБРАБОТКА КНОПКИ "ИЗМЕНИТЬ"
+    if data.startswith("change_record_"):
+        record_id = data.split("change_record_", 1)[1]
+        return await change_record(update, context, record_id)
 
     # ← ДОБАВИТЬ ЭТОТ БЛОК (подтверждение отмены)
     if data.startswith("cancel_confirm_"):
@@ -3457,10 +3467,10 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context=context,
             name=name,
             phone=phone,
-            date_str=date_str,
+            date_str=new_date,  # ← ИСПРАВЛЕНО: было date_str, теперь new_date
             time_str=time_str,
-            service_type=st,
-            specialist=specialist
+            service_type=st,    # ← ПРАВИЛЬНО (оставляем как есть)
+            specialist=specialist  # ← ПРАВИЛЬНО (оставляем как есть)
         )        
     
     if check_result is False:
@@ -4060,6 +4070,7 @@ async def cancel_record_from_list(
                 f"• Дата: {dt}\n"
                 f"• Время: {tm}\n"
                 f"• Услуга: {svc}\n\n"
+                f"• Специалист: {mst}\n\n"
                 f"Это время теперь доступно для записи другим клиентам.",
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup([
@@ -4080,6 +4091,48 @@ async def cancel_record_from_list(
             return
     
     await query.edit_message_text("❌ Запись не найдена.")
+
+# --- CHANGE RECORD ---
+
+async def change_record(update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str):
+    query = update.callback_query
+    await query.answer()
+    
+    # 1. Найти запись
+    records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+    for r in records:
+        if len(r) > 0 and r[0] == record_id:
+            # 2. Заполнить context.user_data данными
+            context.user_data.update({
+                "change_record_id": record_id,
+                "service_type": r[3] if len(r) > 3 else "",
+                "subservice": r[4] if len(r) > 4 else "",
+                "selected_specialist": r[5] if len(r) > 5 else "",
+                "date": r[6] if len(r) > 6 else "",
+                "time": r[7] if len(r) > 7 else "",
+                "name": r[1] if len(r) > 1 else "",
+                "phone": r[2] if len(r) > 2 else "",
+                "is_changing_record": True
+            })
+            
+            await query.edit_message_text(
+                f"✏️ <b>Изменение записи {record_id}</b>\n\n"
+                f"Текущие данные:\n"
+                f"• Услуга: {r[4] if len(r) > 4 else ''}\n"
+                f"• Специалист: {r[5] if len(r) > 5 else ''}\n"
+                f"• Дата: {r[6] if len(r) > 6 else ''}\n"
+                f"• Время: {r[7] if len(r) > 7 else ''}\n\n"
+                f"Начнем изменение с выбора даты:",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📅 Выбрать дату", callback_data="start_change")],
+                    [InlineKeyboardButton("❌ Отменить изменение", callback_data="my_records_edit")]
+                ])
+            )
+            return
+    
+    await query.edit_message_text("❌ Запись не найдена.")
+    return
 
 # --- HANDLE MY RECORDS INPUT ---
 
@@ -5619,8 +5672,8 @@ def main():
         remove_lock_file()
         logger.info("🔒 Бот остановлен и lock-файл удалён.")
 
-
 def _handle_exit(signum, frame):
+    """Обработчик сигналов завершения работы"""
     logger.info(f"Получен системный сигнал {signum}, завершаем работу...")
     try:
         remove_lock_file()
@@ -5628,40 +5681,9 @@ def _handle_exit(signum, frame):
         pass
     sys.exit(0)
 
-    try:
-        signal.signal(signal.SIGTERM, _handle_exit)
-        signal.signal(signal.SIGINT, _handle_exit)
-        logger.info("✅ Обработчики сигналов зарегистрированы.")
-    except Exception as _err:
-        logger.debug(f"Не удалось установить signal handlers: {_err}")
-    try:
-        logger.info("🚀 Бот запущен в режиме long polling.")
-        application.run_polling()
-    except KeyboardInterrupt:
-        logger.info("⚠️ Получен сигнал остановки (Ctrl+C).")
-    except Exception as e:
-        logger.critical(f"❌ Критическая ошибка при работе бота: {e}", exc_info=True)
-    finally:
-        remove_lock_file()
-        logger.info("🔒 Бот остановлен и lock-файл удалён.")
 
-    try:
-        signal.signal(signal.SIGTERM, _handle_exit)
-        signal.signal(signal.SIGINT, _handle_exit)
-        logger.info("✅ Обработчики сигналов зарегистрированы.")
-    except Exception as _err:
-        logger.debug(f"Не удалось установить signal handlers: {_err}")
-
-    try:
-        logger.info("🚀 Бот запущен в режиме long polling.")
-        application.run_polling()
-    except KeyboardInterrupt:
-        logger.info("⚠️ Получен сигнал остановки (Ctrl+C).")
-    except Exception as e:
-        logger.critical(f"❌ Критическая ошибка при работе бота: {e}", exc_info=True)
-    finally:
-        remove_lock_file()
-        logger.info("🔒 Бот остановлен и lock-файл удалён.")
+if __name__ == "__main__":
+    main()
 
 
 if __name__ == "__main__":
