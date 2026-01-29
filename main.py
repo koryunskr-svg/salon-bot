@@ -1957,6 +1957,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 try:
                                     end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
                                     # Берем самое позднее время окончания
+
                                     if not last_end_time or end_time > last_end_time:
                                         last_end_time = end_time
                                 except Exception:
@@ -2000,8 +2001,6 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 if work_schedule and work_schedule.lower() != "выходной":
                                     # ← ИСПРАВЛЕНИЕ: берем ПОСЛЕДНЕЕ время окончания из всех интервалов
                                     intervals = [i.strip() for i in work_schedule.split(",") if i.strip()]
-              
-
                                     last_end_time = None
                                     
                                     for interval in intervals:
