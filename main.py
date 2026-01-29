@@ -1748,7 +1748,7 @@ async def show_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "💅 УСЛУГИ И ЦЕНЫ\n\n"
     current_cat = None
     for row in services:
-        if len(row) < 7:
+        if len(row) < 6:  # Минимум 6 колонок: категория, название, длительность, буфер, шаг, цена
             continue
         cat, name, dur_str, buf_str, _, price, desc = (
             row[0],
