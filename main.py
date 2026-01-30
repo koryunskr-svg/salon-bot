@@ -1676,7 +1676,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await show_record_details(update, context, record_id)
 
     # ← ДОБАВИТЬ ЭТОТ БЛОК ДЛЯ КНОПКИ "ИЗМЕНИТЬ"
-        if data.startswith("modify_record_"):
+    if data.startswith("modify_record_"):
         record_id = data.split("modify_record_", 1)[1]
         await query.answer()
         await query.edit_message_text(
