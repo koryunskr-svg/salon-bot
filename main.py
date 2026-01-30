@@ -4394,24 +4394,21 @@ async def cancel_record_from_list(
         svc = target_record[4] if len(target_record) > 4 else "N/A"
         mst = target_record[5] if len(target_record) > 5 else "N/A"
                 
-                await query.edit_message_text(
-                    f"⚠️ <b>Вы уверены, что хотите отменить запись?</b>\n\n"
-                    f"<b>Детали записи:</b>\n"
-                    f"• Дата: {dt}\n"
-                    f"• Время: {tm}\n"
-                    f"• Услуга: {svc}\n"
-                    f"• Специалист: {mst}\n\n"
-                    f"После отмены это время станет доступно другим клиентам.",
-                    parse_mode="HTML",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("✅ Да, отменить", callback_data=f"cancel_confirm_{record_id}")],
-                        [InlineKeyboardButton("❌ Нет, вернуться", callback_data="my_records_edit")]
-                    ])
-                )
-                return
-        
-        await query.edit_message_text("❌ Запись не найдена.")
-        return
+        await query.edit_message_text(
+            f"⚠️ <b>Вы уверены, что хотите отменить запись?</b>\n\n"
+            f"<b>Детали записи:</b>\n"
+            f"• Дата: {dt}\n"
+            f"• Время: {tm}\n"
+            f"• Услуга: {svc}\n"
+            f"• Специалист: {mst}\n\n"
+            f"После отмены это время станет доступно другим клиентам.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ Да, отменить", callback_data=f"cancel_confirm_{record_id}")],
+                [InlineKeyboardButton("❌ Нет, вернуться", callback_data="my_records_edit")]
+            ])
+        )
+        return                    
     
     # Если это второй шаг (подтвержденная отмена)
     chat_id = str(update.effective_chat.id)
