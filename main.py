@@ -1004,8 +1004,10 @@ async def _validate_booking_checks(
     
     if phone_conflict:
         context.user_data["phone_conflict"] = phone_conflict
-        return "CONFIRM_PHONE", None               
-    
+        return "CONFIRM_PHONE", None  
+             
+    # Если все проверки пройдены
+    return True, None
 
 # --- HANDLERS -
 
