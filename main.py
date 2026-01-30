@@ -791,8 +791,61 @@ async def _validate_booking_checks(
     service_type: str,
     specialist: str
 ):
-
-# ПРОВЕРКА ВХОДНЫХ ДАННЫХ
+    # ЕСЛИ ЭТО ИЗМЕНЕНИЕ ЗАПИСИ - ПРОПУСКАЕМ ПРОВЕРКУ ПОВТОРНОЙ ЗАПИСИ
+    if context.user_data.get("modify_mode"):
+        logger.info(f"🔄 Изменение записи: пропускаем проверку повторной записи")
+        
+        # ПРОПУСКАЕМ проверки 2 и 3 (повторные записи и телефон)
+        # Выполняем ТОЛЬКО проверку 1 (занятость специалиста)
+        
+        records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+        ss = context.user_data.get("subservice", "")
+        service_duration = calculate_service_step(ss)
+        
+        # Преобразуем новое время
+        try:
+            new_start = TIMEZONE.localize(
+                datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+            )
+            new_end = new_start + timedelta(minutes=service_duration)
+        except ValueError:
+            return False, "❌ Неверный формат даты/времени"
+        
+        # === ТОЛЬКО ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
+        for r in records:
+            if len(r) > 8:
+                record_specialist = str(r[5]).strip()
+                record_status = str(r[8]).strip()
+                record_date = str(r[6]).strip()
+                
+                # Проверяем только подтвержденные записи того же специалиста в тот же день
+                if (record_specialist == specialist and 
+                    record_status == "подтверждено" and 
+                    record_date == date_str):
+                    
+                    record_time = str(r[7]).strip()
+                    record_service = str(r[4]).strip() if len(r) > 4 else ""
+                    
+                    try:
+                        record_start = TIMEZONE.localize(
+                            datetime.strptime(f"{record_date} {record_time}", "%d.%m.%Y %H:%M")
+                        )
+                        record_duration = calculate_service_step(record_service)
+                        record_end = record_start + timedelta(minutes=record_duration)
+                        
+                        # Проверяем пересечение времени
+                        if max(new_start, record_start) < min(new_end, record_end):
+                            return (
+                                False,
+                                f"❌ Специалист {specialist} уже занят в это время.\n"
+                                f"Выберите другое время или специалиста."
+                            )
+                    except (ValueError, TypeError):
+                        continue
+        
+        # Все проверки пройдены
+        return True, None
+    
     if not date_str or date_str in ["Неизвестно", "None", "none", ""]:
         return False, "❌ Ошибка: дата не указана."
     
@@ -1714,6 +1767,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("❌ Ошибка: не найдена запись для изменения")
             return
         
+        # === ОТМЕНЯЕМ ВСЕ ТАЙМЕРЫ ===
+        chat_id = update.effective_chat.id
+        job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
+        for job_name in job_names:
+            current_jobs = context.job_queue.get_jobs_by_name(job_name)
+            for job in current_jobs:
+                job.schedule_removal()
+        logger.info(f"⏰ Отменены таймеры для изменения записи {record_id}")
+
         # Находим запись (только со статусом "подтверждено")
         records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
         target_record = None
@@ -3174,6 +3236,14 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ЕСЛИ ЭТО ИЗМЕНЕНИЕ ЗАПИСИ - ПРОПУСКАЕМ ВВОД ИМЕНИ
+    if context.user_data.get("modify_mode") and context.user_data.get("name"):
+        logger.info(f"🔄 Изменение записи: пропускаем ввод имени, используем {context.user_data.get('name')}")
+
+        # Просто переходим к телефону
+        context.user_data["state"] = ENTER_PHONE
+        return await enter_phone(update, context)
+
     # Объявляем time_str ДО всего
     time_str = context.user_data.get("time", "")
     if update.callback_query:
@@ -3299,6 +3369,56 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ЕСЛИ ЭТО ИЗМЕНЕНИЕ ЗАПИСИ - ПРОПУСКАЕМ ВВОД ТЕЛЕФОНА
+    if context.user_data.get("modify_mode") and context.user_data.get("phone"):
+        logger.info(f"🔄 Изменение записи: пропускаем ввод телефона, используем {context.user_data.get('phone')}")
+        
+        # Сразу переходим к подтверждению
+        context.user_data["state"] = AWAITING_CONFIRMATION
+        
+        # Показываем подтверждение сразу
+        kb = [
+            [
+                InlineKeyboardButton(
+                    "✅ Подтвердить запись", callback_data="confirm_booking"
+                )
+            ],
+            [InlineKeyboardButton("❌ Отменить", callback_data="cancel_booking")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+        ]
+        
+        # Рассчитываем диапазон времени
+        ss = context.user_data.get("subservice", "")
+        time_str = context.user_data.get("time", "N/A")
+        time_display = time_str
+        
+        if ss and time_str != "N/A":
+            try:
+                total_duration = calculate_service_step(ss)
+                hour = int(time_str.split(':')[0])
+                minute = int(time_str.split(':')[1])
+                end_minutes = hour * 60 + minute + total_duration
+                end_hour = end_minutes // 60
+                end_minute = end_minutes % 60
+                end_time = f"{end_hour:02d}:{end_minute:02d}"
+                time_display = f"{time_str}-{end_time}"
+            except Exception as e:
+                logger.error(f"Ошибка расчета времени: {e}")
+        
+        await update.message.reply_text(
+            "📋 Пожалуйста, подтвердите ИЗМЕНЕННУЮ запись:\n\n"
+            f"Услуга: {context.user_data.get('subservice', 'N/A')} ({context.user_data.get('service_type', 'N/A')})\n"
+            f"Специалист: {context.user_data.get('actual_specialist', context.user_data.get('selected_specialist', 'N/A'))}\n"
+            f"Дата: {context.user_data.get('date', 'N/A')}\n"
+            f"Время: {time_display}\n"
+            f"Имя: {context.user_data.get('name', 'N/A')}\n"
+            f"Телефон: {context.user_data.get('phone', 'N/A')}\n\n"
+            "Всё верно? Выберите действие:",
+            reply_markup=InlineKeyboardMarkup(kb),
+        )
+        
+        return AWAITING_CONFIRMATION
+
     if update.callback_query:
         # Это нажатие кнопки "Назад" из состояния AWAITING_CONFIRMATION
         query = update.callback_query
@@ -3442,47 +3562,54 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    # === 0. ЕСЛИ ЭТО ИЗМЕНЕНИЕ ЗАПИСИ - ОТМЕНЯЕМ СТАРУЮ ===
+    # === 0. ЕСЛИ ЭТО ИЗМЕНЕНИЕ ЗАПИСИ - НАХОДИМ И ОТМЕНЯЕМ ОРИГИНАЛ ===
     old_record_id = context.user_data.get("old_record_id")
     if old_record_id and context.user_data.get("modify_mode"):
-        logger.info(f"🔄 Изменение записи: ищем оригинальную запись {old_record_id} со статусом 'подтверждено'")
+        logger.info(f"🔄 Изменение записи: ищем оригинальную запись {old_record_id}")
         
-        # Ищем оригинальную запись (со статусом "подтверждено")
+        # Ищем ВСЕ записи с этим ID
         records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
-        found_idx = -1
-        found_record = None
+        original_records = []
         
         for idx, r in enumerate(records, start=2):
-            if (len(r) > 8 and 
-                str(r[0]).strip() == old_record_id and 
-                str(r[8]).strip() == "подтверждено"):
-                found_idx = idx
-                found_record = r
-                break
+            if len(r) > 8 and str(r[0]).strip() == old_record_id:
+                original_records.append((idx, r))
         
-        if found_idx > 0 and found_record:
-            logger.info(f"✅ Нашли оригинальную запись {old_record_id} в строке {found_idx}")
+        logger.info(f"🔍 Найдено {len(original_records)} записей с ID {old_record_id}")
+        
+        if original_records:
+            # Находим ОРИГИНАЛ - самую старую запись с ID (по дате создания)
+            # Предполагаем, что первая найденная - оригинал
+            oldest_idx, oldest_record = original_records[0]
+            
+            logger.info(f"✅ Выбрана запись в строке {oldest_idx} для отмены")
             
             # Обновляем статус оригинала
-            updated = list(found_record)
+            updated = list(oldest_record)
             updated[8] = "изменена клиентом"
             updated[9] = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
-            safe_update_sheet_row(SHEET_ID, "Записи", found_idx, updated)
+            safe_update_sheet_row(SHEET_ID, "Записи", oldest_idx, updated)
             
             # Удаляем из календаря
-            event_id = found_record[14] if len(found_record) > 14 else None
+            event_id = oldest_record[14] if len(oldest_record) > 14 else None
             if event_id:
                 safe_delete_calendar_event(CALENDAR_ID, event_id)
                 logger.info(f"🗑️ Удалили событие календаря {event_id}")
             
             logger.info(f"✅ Оригинальная запись {old_record_id} отменена")
+            
+            # Уведомляем о новой записи
+            new_record_id = context.user_data.get("new_record_id")
+            if new_record_id:
+                logger.info(f"📝 Создана новая запись {new_record_id} вместо {old_record_id}")
         else:
-            logger.error(f"❌ Не нашли оригинальную запись {old_record_id} со статусом 'подтверждено'")
+            logger.error(f"❌ Не нашли ни одной записи с ID {old_record_id}")
         
         # Очищаем флаги изменения
         context.user_data.pop("old_record_id", None)
         context.user_data.pop("modify_record_id", None)
         context.user_data.pop("modify_mode", None)
+        context.user_data.pop("new_record_id", None)
 
     # === ДЕТАЛЬНАЯ ОТЛАДКА ===
     logger.info("🔍🔍🔍 finalize_booking НАЧАЛО 🔍🔍🔍")
