@@ -1714,12 +1714,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("❌ Ошибка: не найдена запись для изменения")
             return
         
-        # Находим запись
+        # Находим запись (только со статусом "подтверждено")
         records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
         target_record = None
         
         for r in records:
-            if len(r) > 0 and str(r[0]).strip() == record_id:
+            if (len(r) > 8 and 
+                str(r[0]).strip() == record_id and 
+                str(r[8]).strip() == "подтверждено"):
                 target_record = r
                 break
         
@@ -3443,25 +3445,39 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # === 0. ЕСЛИ ЭТО ИЗМЕНЕНИЕ ЗАПИСИ - ОТМЕНЯЕМ СТАРУЮ ===
     old_record_id = context.user_data.get("old_record_id")
     if old_record_id and context.user_data.get("modify_mode"):
-        logger.info(f"🔄 Изменение записи: отменяем старую запись {old_record_id}")
+        logger.info(f"🔄 Изменение записи: ищем оригинальную запись {old_record_id} со статусом 'подтверждено'")
         
-        # Отменяем старую запись
+        # Ищем оригинальную запись (со статусом "подтверждено")
         records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+        found_idx = -1
+        found_record = None
+        
         for idx, r in enumerate(records, start=2):
-            if len(r) > 0 and str(r[0]).strip() == old_record_id:
-                # Обновляем статус
-                updated = list(r)
-                updated[8] = "изменена клиентом"
-                updated[9] = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
-                safe_update_sheet_row(SHEET_ID, "Записи", idx, updated)
-                
-                # Удаляем из календаря
-                event_id = r[14] if len(r) > 14 else None
-                if event_id:
-                    safe_delete_calendar_event(CALENDAR_ID, event_id)
-                
-                logger.info(f"✅ Старая запись {old_record_id} отменена")
+            if (len(r) > 8 and 
+                str(r[0]).strip() == old_record_id and 
+                str(r[8]).strip() == "подтверждено"):
+                found_idx = idx
+                found_record = r
                 break
+        
+        if found_idx > 0 and found_record:
+            logger.info(f"✅ Нашли оригинальную запись {old_record_id} в строке {found_idx}")
+            
+            # Обновляем статус оригинала
+            updated = list(found_record)
+            updated[8] = "изменена клиентом"
+            updated[9] = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
+            safe_update_sheet_row(SHEET_ID, "Записи", found_idx, updated)
+            
+            # Удаляем из календаря
+            event_id = found_record[14] if len(found_record) > 14 else None
+            if event_id:
+                safe_delete_calendar_event(CALENDAR_ID, event_id)
+                logger.info(f"🗑️ Удалили событие календаря {event_id}")
+            
+            logger.info(f"✅ Оригинальная запись {old_record_id} отменена")
+        else:
+            logger.error(f"❌ Не нашли оригинальную запись {old_record_id} со статусом 'подтверждено'")
         
         # Очищаем флаги изменения
         context.user_data.pop("old_record_id", None)
