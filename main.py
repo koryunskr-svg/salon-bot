@@ -1,4 +1,4 @@
-# main.py- D -28.01.26 - тест
+# main.py- D -29.01.26 - тест
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -773,7 +773,7 @@ async def show_record_details(
     kb = [
         [InlineKeyboardButton("✏️ Изменить запись", callback_data=f"modify_record_{rid}")],
         [InlineKeyboardButton("🗑️ Отменить запись", callback_data=f"cancel_confirm_{rid}")],
-        [InlineKeyboardButton("⬅️ Назад к списку", callback_data="my_records_edit")]
+        [InlineKeyboardButton("⬅️ Назад", callback_data="my_records_edit")]
     ]
     
     await query.edit_message_text(
@@ -1676,28 +1676,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await show_record_details(update, context, record_id)
 
     # ← ДОБАВИТЬ ЭТОТ БЛОК ДЛЯ КНОПКИ "ИЗМЕНИТЬ"
-    if data.startswith("modify_record_"):
+        if data.startswith("modify_record_"):
         record_id = data.split("modify_record_", 1)[1]
-        # Показываем сообщение, что функция в разработке
         await query.answer()
         await query.edit_message_text(
-            f"🔄 Функция изменения записи #{record_id} в разработке.\n\n"
-            f"Пока вы можете отменить запись и создать новую.\n\n"
-            f"Или свяжитесь с администратором для изменения записи.",
+            f"✏️ <b>Изменение записи #{record_id}</b>\n\n"
+            f"Для изменения записи свяжитесь с администратором.\n\n"
+            f"Администратор поможет изменить дату, время или специалиста.",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🗑️ Отменить запись", callback_data=f"cancel_confirm_{record_id}")],
                 [InlineKeyboardButton("📱 Связаться с админом", callback_data="contact_admin")],
+                [InlineKeyboardButton("✏️ Создать новую запись", callback_data="book")],
                 [InlineKeyboardButton("⬅️ Назад", callback_data=f"record_details_{record_id}")]
-            ])
+            ]),
+            parse_mode="HTML"
         )
         return
 
     # ← ДОБАВИТЬ ЭТОТ БЛОК (подтверждение отмены)
     if data.startswith("cancel_confirm_"):
         record_id = data.split("cancel_confirm_", 1)[1]
-        # Устанавливаем флаг подтверждения и вызываем функцию отмены
-        context.user_data[f"confirm_cancel_{record_id}"] = True
-        return await cancel_record_from_list(update, context, record_id)    
+        # Просто вызываем функцию отмены - флаг уже установлен в cancel_record_from_list
+        return await cancel_record_from_list(update, context, record_id)  
 
     if data == "confirm_booking":
         print(
