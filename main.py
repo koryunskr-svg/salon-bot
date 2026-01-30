@@ -735,19 +735,59 @@ async def show_record_details(
     query = update.callback_query
     await query.answer()
     
-    # Ищем запись
+    # Ищем ЗАПИСЬ КОТОРАЯ:
+    # 1. Имеет нужный ID
+    # 2. Имеет статус "подтверждено"
+    # 3. Не прошедшая по дате/времени
+    
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     target_record = None
+    now = datetime.now(TIMEZONE)
     
     for r in records:
-        if len(r) > 0 and str(r[0]).strip() == record_id:
-            target_record = r
-            break
+        if len(r) > 8 and str(r[0]).strip() == record_id:
+            # Проверяем статус
+            status = str(r[8]).strip()
+            if status != "подтверждено":
+                continue  # Пропускаем отмененные/измененные записи
+            
+            # Проверяем дату
+            date_str = str(r[6]).strip() if len(r) > 6 else ""
+            time_str = str(r[7]).strip() if len(r) > 7 else ""
+            
+            if not date_str or not time_str:
+                continue
+                
+            # Извлекаем время начала
+            if "-" in time_str:
+                time_start_str = time_str.split("-")[0].strip()
+            else:
+                time_start_str = time_str
+            
+            try:
+                # Создаем datetime объекта записи
+                record_datetime_str = f"{date_str} {time_start_str}"
+                record_datetime = datetime.strptime(record_datetime_str, "%d.%m.%Y %H:%M")
+                record_datetime = TIMEZONE.localize(record_datetime)
+                
+                # Проверяем что запись не прошедшая
+                if record_datetime >= now:
+                    target_record = r
+                    break
+            except ValueError:
+                continue
+    
+    if not target_record:
+        # Если не нашли активную будущую запись, ищем любую с таким ID
+        for r in records:
+            if len(r) > 0 and str(r[0]).strip() == record_id:
+                target_record = r
+                break
     
     if not target_record:
         await query.edit_message_text("❌ Запись не найдена.")
         return
-    
+     
     # Формируем детали записи
     rid = str(target_record[0]).strip() if len(target_record) > 0 else "N/A"
     name = str(target_record[1]).strip() if len(target_record) > 1 else "N/A"
@@ -4299,14 +4339,60 @@ async def cancel_record_from_list(
         # Показываем подтверждение
         context.user_data[f"confirm_cancel_{record_id}"] = True
         
-        # Ищем запись для отображения деталей
+        # Ищем запись ДЛЯ ОТМЕНЫ (только активную, будущую)
         records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+        target_record = None
+        now = datetime.now(TIMEZONE)
+        
         for r in records:
-            if len(r) > 0 and r[0] == record_id:
-                dt = r[6] if len(r) > 6 else "N/A"
-                tm = r[7] if len(r) > 7 else "N/A"
-                svc = r[4] if len(r) > 4 else "N/A"
-                mst = r[5] if len(r) > 5 else "N/A"
+            if len(r) > 8 and str(r[0]).strip() == record_id:
+                # Проверяем статус
+                status = str(r[8]).strip()
+                if status != "подтверждено":
+                    continue  # Не отменяем уже отмененные
+                
+                # Проверяем дату
+                date_str = str(r[6]).strip() if len(r) > 6 else ""
+                time_str = str(r[7]).strip() if len(r) > 7 else ""
+                
+                if not date_str or not time_str:
+                    continue
+                    
+                # Извлекаем время начала
+                if "-" in time_str:
+                    time_start_str = time_str.split("-")[0].strip()
+                else:
+                    time_start_str = time_str
+                
+                try:
+                    # Создаем datetime объекта записи
+                    record_datetime_str = f"{date_str} {time_start_str}"
+                    record_datetime = datetime.strptime(record_datetime_str, "%d.%m.%Y %H:%M")
+                    record_datetime = TIMEZONE.localize(record_datetime)
+                    
+                    # Проверяем что запись не прошедшая
+                    if record_datetime >= now:
+                        target_record = r
+                        break
+                except ValueError:
+                    continue
+        
+        if not target_record:
+            # Если не нашли активную будущую запись, ищем любую с таким ID
+            for r in records:
+                if len(r) > 0 and str(r[0]).strip() == record_id:
+                    target_record = r
+                    break
+        
+        if not target_record:
+            await query.edit_message_text("❌ Запись не найдена.")
+            return
+        
+        # Используем target_record вместо r
+        dt = target_record[6] if len(target_record) > 6 else "N/A"
+        tm = target_record[7] if len(target_record) > 7 else "N/A"
+        svc = target_record[4] if len(target_record) > 4 else "N/A"
+        mst = target_record[5] if len(target_record) > 5 else "N/A"
                 
                 await query.edit_message_text(
                     f"⚠️ <b>Вы уверены, что хотите отменить запись?</b>\n\n"
