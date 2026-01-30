@@ -1418,8 +1418,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await show_my_records_view(update, context)
 
     if data == "my_records_edit":
+        # Очищаем ВСЕ флаги подтверждения отмены
+        keys_to_remove = []
+        for key in context.user_data.keys():
+            if isinstance(key, str) and key.startswith("confirm_cancel_"):
+                keys_to_remove.append(key)
+        
+        for key in keys_to_remove:
+            context.user_data.pop(key, None)
+        
         return await show_my_records_edit(update, context)
-
     if data == "prices":
         return await show_prices(update, context)
 
