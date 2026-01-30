@@ -1689,18 +1689,74 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("modify_record_"):
         record_id = data.split("modify_record_", 1)[1]
         await query.answer()
+        
+        # Сохраняем ID записи для изменения
+        context.user_data["modify_record_id"] = record_id
+        context.user_data["modify_mode"] = True
+        
+        # Показываем что изменение работает как новая запись
         await query.edit_message_text(
             f"✏️ <b>Изменение записи #{record_id}</b>\n\n"
-            f"Для изменения записи свяжитесь с администратором.\n\n"
-            f"Администратор поможет изменить дату, время или специалиста.",
+            f"Вы можете изменить дату, время или специалиста.\n\n"
+            f"<i>Внимание: старая запись будет отменена автоматически.</i>",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📱 Связаться с админом", callback_data="contact_admin")],
-                [InlineKeyboardButton("✏️ Создать новую запись", callback_data="book")],
+                [InlineKeyboardButton("✅ Начать изменение", callback_data="start_modification")],
                 [InlineKeyboardButton("⬅️ Назад", callback_data=f"record_details_{record_id}")]
             ]),
             parse_mode="HTML"
         )
         return
+
+    if data == "start_modification":
+        # Получаем ID записи для изменения
+        record_id = context.user_data.get("modify_record_id")
+        if not record_id:
+            await query.answer("❌ Ошибка: не найдена запись для изменения")
+            return
+        
+        # Находим запись
+        records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+        target_record = None
+        
+        for r in records:
+            if len(r) > 0 and str(r[0]).strip() == record_id:
+                target_record = r
+                break
+        
+        if not target_record:
+            await query.answer("❌ Запись не найдена")
+            return
+        
+        # Сохраняем данные для авто-заполнения
+        context.user_data["name"] = str(target_record[1]).strip() if len(target_record) > 1 else ""
+        context.user_data["phone"] = str(target_record[2]).strip() if len(target_record) > 2 else ""
+        context.user_data["service_type"] = str(target_record[3]).strip() if len(target_record) > 3 else ""
+        context.user_data["subservice"] = str(target_record[4]).strip() if len(target_record) > 4 else ""
+        
+        # Помечаем старую запись как "изменяется"
+        context.user_data["old_record_id"] = record_id
+        context.user_data["modify_mode"] = True
+        
+        # Очищаем выбранные дату/время/специалиста для нового выбора
+        context.user_data.pop("date", None)
+        context.user_data.pop("time", None)
+        context.user_data.pop("selected_specialist", None)
+        context.user_data.pop("actual_specialist", None)
+        
+        # Начинаем новую запись
+        await query.edit_message_text(
+            f"✏️ <b>Изменение записи #{record_id}</b>\n\n"
+            f"Ваши данные сохранены:\n"
+            f"👤 Имя: {context.user_data.get('name', '')}\n"
+            f"📞 Телефон: {context.user_data.get('phone', '')}\n\n"
+            f"Теперь выберите новую дату и время:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📅 Продолжить", callback_data="book")],
+                [InlineKeyboardButton("⬅️ Назад", callback_data=f"record_details_{record_id}")]
+            ])
+        )
+        return  
 
     # ← ДОБАВИТЬ ЭТОТ БЛОК (подтверждение отмены)
     if data.startswith("cancel_confirm_"):
@@ -3383,6 +3439,34 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    # === 0. ЕСЛИ ЭТО ИЗМЕНЕНИЕ ЗАПИСИ - ОТМЕНЯЕМ СТАРУЮ ===
+    old_record_id = context.user_data.get("old_record_id")
+    if old_record_id and context.user_data.get("modify_mode"):
+        logger.info(f"🔄 Изменение записи: отменяем старую запись {old_record_id}")
+        
+        # Отменяем старую запись
+        records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+        for idx, r in enumerate(records, start=2):
+            if len(r) > 0 and str(r[0]).strip() == old_record_id:
+                # Обновляем статус
+                updated = list(r)
+                updated[8] = "изменена клиентом"
+                updated[9] = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
+                safe_update_sheet_row(SHEET_ID, "Записи", idx, updated)
+                
+                # Удаляем из календаря
+                event_id = r[14] if len(r) > 14 else None
+                if event_id:
+                    safe_delete_calendar_event(CALENDAR_ID, event_id)
+                
+                logger.info(f"✅ Старая запись {old_record_id} отменена")
+                break
+        
+        # Очищаем флаги изменения
+        context.user_data.pop("old_record_id", None)
+        context.user_data.pop("modify_record_id", None)
+        context.user_data.pop("modify_mode", None)
 
     # === ДЕТАЛЬНАЯ ОТЛАДКА ===
     logger.info("🔍🔍🔍 finalize_booking НАЧАЛО 🔍🔍🔍")
