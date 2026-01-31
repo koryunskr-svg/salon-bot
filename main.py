@@ -3167,29 +3167,27 @@ async def reserve_slot(
 
 async def warn_reservation(context: ContextTypes.DEFAULT_TYPE):
     try:
-        logger.info("🎯🎯🎯 warn_reservation НАЧАЛА ВЫПОЛНЕНИЕ!")
+        # Берем chat_id из данных job
+        job = context.job
+        if not job or not job.data:
+            logger.error("❌ warn_reservation: нет данных job")
+            return
+            
+        chat_id = job.data.get('chat_id')
+        if not chat_id:
+            logger.error("❌ warn_reservation: не найден chat_id в данных job")
+            return
+            
+        logger.info(f"⏰ Отправляем предупреждение chat_id={chat_id}")
         
-        # Получаем chat_id
-        chat_id = None
-        
-        # Способ 1: из данных job
-        if context.job and context.job.data:
-            chat_id = context.job.data.get('chat_id')
-            logger.info(f"🎯 Способ 1: chat_id из job.data = {chat_id}")
-        
-        # Способ 2: из имени job
-        if not chat_id and context.job and hasattr(context.job, 'name'):
-            job_name = context.job.name
-            logger.info(f"🎯 Способ 2: job.name = {job_name}")
-            try:
-                # Из "reservation_warn_123456789" получаем 123456789
-                if job_name and '_' in job_name:
-                    parts = job_name.split('_')
-                    if len(parts) >= 3:
-                        chat_id = int(parts[-1])
-                        logger.info(f"🎯 Извлекли chat_id из имени: {chat_id}")
-            except Exception as e:
-                logger.error(f"❌ Ошибка извлечения chat_id: {e}")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="⏳ Не забудьте подтвердить запись — осталось немного времени!"
+        )
+        logger.info(f"✅ Напоминание отправлено chat_id={chat_id}")
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка в warn_reservation: {e}", exc_info=True)
         
         logger.info(f"🎯 Итоговый chat_id = {chat_id}")
         
@@ -3202,7 +3200,6 @@ async def warn_reservation(context: ContextTypes.DEFAULT_TYPE):
         else:
             logger.error("❌ Не удалось получить chat_id для напоминания")
             
-    except Exception as e:
         logger.error(f"❌ КРИТИЧЕСКАЯ ошибка в warn_reservation: {e}", exc_info=True)
 
 async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
@@ -5090,10 +5087,10 @@ async def admin_process_new_slot(
         context=context,
         name=name,
         phone=phone,
-        date_str=date_str,  # было new_date
+        date_str=new_date,  # ← ИСПРАВЛЕНО: new_date вместо date_str
         time_str=time_str,
-        service_type=st,  # было st
-        specialist=specialist,  # ← ДОБАВИТЬ ЭТОТ ПАРАМЕТР!
+        service_type=st,  # или это должно быть service_type?
+        specialist=new_specialist,  # ← ИСПРАВЛЕНО: new_specialist вместо specialist
     )
     if check_result is False:
         await query.edit_message_text(
@@ -5203,7 +5200,7 @@ async def _admin_save_reschedule(
                 name = r[1] if len(r) > 1 else ""
                 phone = r[2] if len(r) > 2 else ""
                 step = calculate_service_step(ss)
-                dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+                dt = datetime.strptime(f"{new_date} {new_time}", "%d.%m.%Y %H:%M")
                 start_dt = TIMEZONE.localize(dt)
                 end_dt = start_dt + timedelta(minutes=step)
 
