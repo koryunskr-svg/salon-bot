@@ -1862,11 +1862,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Теперь выберите новую дату и время:",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📅 Продолжить", callback_data="book")],
+                [InlineKeyboardButton("📅 Продолжить", callback_data="modify_select_date")],
                 [InlineKeyboardButton("⬅️ Назад", callback_data=f"record_details_{record_id}")]
             ])
         )
         return  
+
+    if data == "modify_select_date":
+        # Это изменение записи - начинаем с выбора даты
+        # Данные уже сохранены в context.user_data
+        
+        # Устанавливаем флаг изменения
+        context.user_data["modify_mode"] = True
+        context.user_data["state"] = SELECT_DATE
+        
+        # Сразу переходим к выбору даты
+        return await select_date(update, context)
 
     # ← ДОБАВИТЬ ЭТОТ БЛОК (подтверждение отмены)
     if data.startswith("cancel_confirm_"):
@@ -2163,6 +2174,19 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await update_last_activity(update, context)
+
+    # ← ДОБАВИТЬ ЭТОТ БЛОК ДЛЯ РЕЖИМА ИЗМЕНЕНИЯ
+    if context.user_data.get("modify_mode"):
+        # В режиме изменения показываем особое сообщение
+        await query.edit_message_text(
+            f"✏️ <b>Изменение записи</b>\n\n"
+            f"👤 Клиент: {context.user_data.get('name', 'Неизвестно')}\n"
+            f"💅 Услуга: {context.user_data.get('subservice', 'Неизвестно')}\n"
+            f"👩‍💼 Текущий специалист: {context.user_data.get('selected_specialist', 'Неизвестно')}\n\n"
+            f"Выберите новую дату:",
+            parse_mode="HTML"
+        )
+    # ← КОНЕЦ ДОБАВЛЕНИЯ
 
     # ← ДОБАВЬТЕ ОТЛАДКУ
     print(f"=== DEBUG select_date ===")
@@ -2492,6 +2516,19 @@ async def select_specialist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await update_last_activity(update, context)
+
+    # ← ДОБАВИТЬ ЭТОТ БЛОК
+    if context.user_data.get("modify_mode"):
+        # В режиме изменения показываем текущего специалиста
+        current_specialist = context.user_data.get("selected_specialist", "Неизвестно")
+        await query.edit_message_text(
+            f"✏️ <b>Изменение записи</b>\n\n"
+            f"Текущий специалист: <b>{current_specialist}</b>\n\n"
+            f"Если хотите оставить того же специалиста, нажмите кнопку с его именем.\n"
+            f"Если хотите сменить - выберите другого специалиста:",
+            parse_mode="HTML"
+        )
+    # ← КОНЕЦ ДОБАВЛЕНИЯ
 
     # Получаем выбранную дату, категорию услуги, приоритет
     date_str = context.user_data.get("date")  # Может быть None
