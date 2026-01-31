@@ -28,6 +28,10 @@ async def send_reminders(context):
         chat_id = row[13] # [13] = chat_id
 
         try:
+            # Если время в формате "16:45-18:30", берем только начало
+            if "-" in time_str:
+                time_str = time_str.split("-")[0].strip()
+            
             event_time = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
             event_time = TIMEZONE.localize(event_time)
         except ValueError:
@@ -135,4 +139,3 @@ async def handle_cancel_reminder(record_id: str, query, context):
         await query.edit_message_text("❌ Ошибка при обработке отмены.")
 
 print("✅ Модуль reminders.py загружен.")
-
