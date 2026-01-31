@@ -370,14 +370,20 @@ async def cleanup_stuck_reservations_job(context: ContextTypes.DEFAULT_TYPE):
 async def health_check_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         test_data = safe_get_sheet_data(SHEET_ID, "Настройки!A1:B1") or []
+
+        # Проверяем календарь - ищем события на сегодня
+        today_start = datetime.now(TIMEZONE).replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow_start = today_start + timedelta(days=1)
+        
         test_events = (
             safe_get_calendar_events(
                 CALENDAR_ID,
-                datetime.now(TIMEZONE).isoformat(),
-                (datetime.now(TIMEZONE) + timedelta(hours=1)).isoformat(),
+                today_start.isoformat(),
+                tomorrow_start.isoformat(),
             )
             or []
         )
+
         active_users = len(context.application.user_data)
         active_jobs = len(context.job_queue.jobs())
         logger.info(
