@@ -808,6 +808,7 @@ async def show_record_details(
     # Форматируем сообщение (ТОЧНО как ты просил)
     msg = (
         f"📋 <b>Запись #{rid}</b>\n\n"
+        f"👤 <b>Клиент:</b> {name}\n\n"
         f"📅 <b>Дата:</b> {date}\n"
         f"⏰ <b>Время:</b> {time_range}\n"
         f"💅 <b>Услуга:</b> {service}\n"
@@ -2933,7 +2934,7 @@ date_str, st, ss]):
             
         else:
             # ОБЫЧНЫЙ РЕЖИМ: показываем "время — специалист"
-            m = s.get("specialist", "N/A")
+            m = s.get("specialist") or "N/A"
             
             # Рассчитываем диапазон времени
             try:
@@ -2950,6 +2951,7 @@ date_str, st, ss]):
             except Exception as e:
                 logger.error(f"Ошибка расчета времени для слота {t}: {e}")
                 kb.append([InlineKeyboardButton(f"{t} — {m}", callback_data=f"slot_{m}_{t}")])
+
     # Добавить кнопку "Назад" в конец
     if kb:  # Если есть слоты, добавляем кнопку "Назад"
         kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
@@ -3669,11 +3671,11 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # 2. Добавляем примечание об изменении
             # Колонка K (индекс 10) - Примечание
-            # record_id - это ID НОВОЙ записи, которая будет создана
+            # new_record_id будет создан позже, пока пишем "новая запись"
             if len(updated) > 10:
-                updated[10] = f"изменено на #{record_id} от {datetime.now(TIMEZONE).strftime('%d.%m.%Y')}"
+                updated[10] = f"изменено на новую запись от {datetime.now(TIMEZONE).strftime('%d.%m.%Y')}"
             elif len(updated) == 10:
-                updated.append(f"изменено на #{record_id} от {datetime.now(TIMEZONE).strftime('%d.%m.%Y')}")
+                updated.append(f"изменено на новую запись от {datetime.now(TIMEZONE).strftime('%d.%m.%Y')}")
             
             # 3. Обновляем в таблице
             safe_update_sheet_row(SHEET_ID, "Записи", original_record_idx, updated)
