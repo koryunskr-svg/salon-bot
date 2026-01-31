@@ -3608,51 +3608,55 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # === 0. ЕСЛИ ЭТО ИЗМЕНЕНИЕ ЗАПИСИ - НАХОДИМ И ОТМЕНЯЕМ ОРИГИНАЛ ===
     old_record_id = context.user_data.get("old_record_id")
     if old_record_id and context.user_data.get("modify_mode"):
-        logger.info(f"🔄 Изменение записи: ищем оригинальную запись {old_record_id}")
+        logger.info(f"🔄 Изменение записи: ищем и ОТМЕНЯЕМ оригинал {old_record_id}")
         
-        # Ищем ВСЕ записи с этим ID
+        # Находим ОРИГИНАЛЬНУЮ запись (самую старую с этим ID и статусом "подтверждено")
         records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
-        original_records = []
+        original_record_idx = None
+        original_record = None
         
         for idx, r in enumerate(records, start=2):
-            if len(r) > 8 and str(r[0]).strip() == old_record_id:
-                original_records.append((idx, r))
+            if (len(r) > 8 and 
+                str(r[0]).strip() == old_record_id and 
+                str(r[8]).strip() == "подтверждено"):
+                original_record_idx = idx
+                original_record = r
+                break
         
-        logger.info(f"🔍 Найдено {len(original_records)} записей с ID {old_record_id}")
-        
-        if original_records:
-            # Находим ОРИГИНАЛ - самую старую запись с ID (по дате создания)
-            # Предполагаем, что первая найденная - оригинал
-            oldest_idx, oldest_record = original_records[0]
+        if original_record and original_record_idx:
+            logger.info(f"✅ Нашли оригинал в строке {original_record_idx}, ОТМЕНЯЕМ")
             
-            logger.info(f"✅ Выбрана запись в строке {oldest_idx} для отмены")
-            
-            # Обновляем статус оригинала
-            updated = list(oldest_record)
-            updated[8] = "изменена клиентом"
+            # 1. Меняем статус на "отменено клиентом" (не "изменена")
+            updated = list(original_record)
+            updated[8] = "отменено клиентом"
             updated[9] = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
-            safe_update_sheet_row(SHEET_ID, "Записи", oldest_idx, updated)
             
-            # Удаляем из календаря
-            event_id = oldest_record[14] if len(oldest_record) > 14 else None
+            # 2. Обновляем в таблице
+            safe_update_sheet_row(SHEET_ID, "Записи", original_record_idx, updated)
+            
+            # 3. Удаляем из календаря
+            event_id = original_record[14] if len(original_record) > 14 else None
             if event_id:
                 safe_delete_calendar_event(CALENDAR_ID, event_id)
                 logger.info(f"🗑️ Удалили событие календаря {event_id}")
             
-            logger.info(f"✅ Оригинальная запись {old_record_id} отменена")
+            # 4. Проверяем лист ожидания для освободившегося слота
+            if len(original_record) > 6 and len(original_record) > 7 and len(original_record) > 5:
+                await check_waiting_list(
+                    str(original_record[6]).strip(), 
+                    str(original_record[7]).strip(), 
+                    str(original_record[5]).strip(), 
+                    context
+                )
             
-            # Уведомляем о новой записи
-            new_record_id = context.user_data.get("new_record_id")
-            if new_record_id:
-                logger.info(f"📝 Создана новая запись {new_record_id} вместо {old_record_id}")
+            logger.info(f"✅ Оригинальная запись {old_record_id} ОТМЕНЕНА")
         else:
-            logger.error(f"❌ Не нашли ни одной записи с ID {old_record_id}")
+            logger.error(f"❌ Не нашли оригинальную подтверждённую запись с ID {old_record_id}")
         
         # Очищаем флаги изменения
         context.user_data.pop("old_record_id", None)
         context.user_data.pop("modify_record_id", None)
         context.user_data.pop("modify_mode", None)
-        context.user_data.pop("new_record_id", None)
 
     # === ДЕТАЛЬНАЯ ОТЛАДКА ===
     logger.info("🔍🔍🔍 finalize_booking НАЧАЛО 🔍🔍🔍")
