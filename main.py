@@ -466,8 +466,8 @@ def remove_lock_file():
     
 ) = range(34)
 
-ACTIVE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано"}
-CANCELLABLE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано"}
+ACTIVE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано", "изменено клиентом"}
+CANCELLABLE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано", "изменено клиентом"}
 
 # --- HELPERS ---
 
@@ -1842,7 +1842,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["phone"] = str(target_record[2]).strip() if len(target_record) > 2 else ""
         context.user_data["service_type"] = str(target_record[3]).strip() if len(target_record) > 3 else ""
         context.user_data["subservice"] = str(target_record[4]).strip() if len(target_record) > 4 else ""
-        
+        context.user_data["selected_specialist"] = str(target_record[5]).strip() if len(target_record) > 5 else ""
+
         # Помечаем старую запись как "изменяется"
         context.user_data["old_record_id"] = record_id
         context.user_data["modify_mode"] = True
@@ -2170,6 +2171,7 @@ async def show_price_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- SELECT DATE ---
+
 async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -2178,14 +2180,10 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ← ДОБАВИТЬ ЭТОТ БЛОК ДЛЯ РЕЖИМА ИЗМЕНЕНИЯ
     if context.user_data.get("modify_mode"):
         # В режиме изменения показываем особое сообщение
-        await query.edit_message_text(
-            f"✏️ <b>Изменение записи</b>\n\n"
-            f"👤 Клиент: {context.user_data.get('name', 'Неизвестно')}\n"
-            f"💅 Услуга: {context.user_data.get('subservice', 'Неизвестно')}\n"
-            f"👩‍💼 Текущий специалист: {context.user_data.get('selected_specialist', 'Неизвестно')}\n\n"
-            f"Выберите новую дату:",
-            parse_mode="HTML"
-        )
+        # НЕ редактируем сообщение здесь - это сделает select_date дальше
+        # Просто добавляем информацию в логи
+        current_specialist = context.user_data.get("selected_specialist", "Неизвестно")
+        logger.info(f"🔧 Изменение записи: клиент={context.user_data.get('name')}, услуга={context.user_data.get('subservice')}, спец={current_specialist}")
     # ← КОНЕЦ ДОБАВЛЕНИЯ
 
     # ← ДОБАВЬТЕ ОТЛАДКУ
@@ -2193,6 +2191,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"selected_specialist: {context.user_data.get('selected_specialist')}")
     print(f"time: {context.user_data.get('time')}")
     print(f"date: {context.user_data.get('date')}")
+    print(f"modify_mode: {context.user_data.get('modify_mode')}")
     # ← КОНЕЦ ОТЛАДКИ
 
     # Получаем выбранного специалиста, категорию услуги, приоритет
@@ -3663,21 +3662,29 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if original_record and original_record_idx:
             logger.info(f"✅ Нашли оригинал в строке {original_record_idx}, ОТМЕНЯЕМ")
             
-            # 1. Меняем статус на "отменено клиентом" (не "изменена")
+            # 1. Меняем статус на "изменено клиентом"
             updated = list(original_record)
-            updated[8] = "отменено клиентом"
+            updated[8] = "изменено клиентом"
             updated[9] = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
             
-            # 2. Обновляем в таблице
+            # 2. Добавляем примечание об изменении
+            # Колонка K (индекс 10) - Примечание
+            # record_id - это ID НОВОЙ записи, которая будет создана
+            if len(updated) > 10:
+                updated[10] = f"изменено на #{record_id} от {datetime.now(TIMEZONE).strftime('%d.%m.%Y')}"
+            elif len(updated) == 10:
+                updated.append(f"изменено на #{record_id} от {datetime.now(TIMEZONE).strftime('%d.%m.%Y')}")
+            
+            # 3. Обновляем в таблице
             safe_update_sheet_row(SHEET_ID, "Записи", original_record_idx, updated)
             
-            # 3. Удаляем из календаря
+            # 4. Удаляем из календаря
             event_id = original_record[14] if len(original_record) > 14 else None
             if event_id:
                 safe_delete_calendar_event(CALENDAR_ID, event_id)
                 logger.info(f"🗑️ Удалили событие календаря {event_id}")
             
-            # 4. Проверяем лист ожидания для освободившегося слота
+            # 5. Проверяем лист ожидания для освободившегося слота
             if len(original_record) > 6 and len(original_record) > 7 and len(original_record) > 5:
                 await check_waiting_list(
                     str(original_record[6]).strip(), 
@@ -3996,10 +4003,18 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Ошибка расчета диапазона для таблицы: {e}")
 
         # Определяем комментарий для таблицы
-        comment = ""
+        old_record_id = context.user_data.get("old_record_id", "")
         was_auto_assigned = context.user_data.get('was_auto_assigned', False)
-        if was_auto_assigned:
-            comment = "автоматически"
+        
+        if old_record_id and context.user_data.get("modify_mode"):
+            # Это изменение записи
+            if was_auto_assigned:
+                comment = f"автоматически, изменено с #{old_record_id}"
+            else:
+                comment = f"изменено с #{old_record_id}"
+        else:
+            # Обычная запись
+            comment = "автоматически" if was_auto_assigned else ""
 
         full_record = [
             record_id,  # A: ID записи
