@@ -1876,7 +1876,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Очищаем выбранные дату/время/специалиста для нового выбора
         context.user_data.pop("date", None)
         context.user_data.pop("time", None)
-        context.user_data.pop("selected_specialist", None)
         context.user_data.pop("actual_specialist", None)
         
         # Начинаем новую запись - сразу переходим к выбору даты
