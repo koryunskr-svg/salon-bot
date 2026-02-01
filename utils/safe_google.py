@@ -77,6 +77,7 @@ def safe_append_to_sheet(spreadsheet_id, sheet_name, values):
 
     credentials = get_google_credentials()
     if not credentials:
+        print("❌ Нет credentials для Google API")
         return False
     try:
         service = build('sheets', 'v4', credentials=credentials)
