@@ -66,10 +66,14 @@ def safe_get_sheet_data(spreadsheet_id, range_name):
 
 @retry_google_api()
 def safe_append_to_sheet(spreadsheet_id, sheet_name, values):
-    print("🔧 DEBUG safe_append_to_sheet: Начало")
-    print(f"🔧 spreadsheet_id: {spreadsheet_id}")
-    print(f"🔧 sheet_name: {sheet_name}")
-    print(f"🔧 values: {values}")
+    print("="*80)
+    print("🔧🔧🔧 DEBUG SAFE_APPEND_TO_SHEET ВЫЗВАНА!")
+    print(f"spreadsheet_id: {spreadsheet_id}")
+    print(f"sheet_name: '{sheet_name}'")
+    print(f"values: {values}")
+    print(f"Количество записей: {len(values)}")
+    print(f"Длина первой записи: {len(values[0]) if values else 0}")
+    print("="*80)
 
     credentials = get_google_credentials()
     if not credentials:
