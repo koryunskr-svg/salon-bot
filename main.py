@@ -1859,6 +1859,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["subservice"] = str(target_record[4]).strip() if len(target_record) > 4 else ""
         context.user_data["selected_specialist"] = str(target_record[5]).strip() if len(target_record) > 5 else ""
 
+        # ← ДОБАВЬТЕ ДЛЯ ОТЛАДКИ
+        print(f"=== DEBUG start_modification ===")
+        print(f"Сохранён специалист: '{context.user_data['selected_specialist']}'")
+        print(f"Из колонки: '{target_record[5]}'")
+        print(f"Тип: {type(target_record[5])}")
+        print(f"Длина записи: {len(target_record)}")
+        print(f"=== КОНЕЦ ОТЛАДКИ ===")
+         
         logger.info(f"🔍 DEBUG: Сохранён специалист: '{context.user_data['selected_specialist']}' из колонки {target_record[5]}")
 
         # Помечаем старую запись как "изменяется"
@@ -1871,20 +1879,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("selected_specialist", None)
         context.user_data.pop("actual_specialist", None)
         
-        # Начинаем новую запись
-        await query.edit_message_text(
-            f"✏️ <b>Изменение записи #{record_id}</b>\n\n"
-            f"Ваши данные сохранены:\n"
-            f"👤 Имя: {context.user_data.get('name', '')}\n"
-            f"📞 Телефон: {context.user_data.get('phone', '')}\n\n"
-            f"Теперь выберите новую дату и время:",
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📅 Продолжить", callback_data="modify_select_date")],
-                [InlineKeyboardButton("⬅️ Назад", callback_data=f"record_details_{record_id}")]
-            ])
-        )
-        return  
+        # Начинаем новую запись - сразу переходим к выбору даты
+        context.user_data["state"] = SELECT_DATE
+        
+        # Сразу вызываем select_date для изменения
+        return await select_date(update, context)
 
     if data == "modify_select_date":
         # Это изменение записи - начинаем с выбора даты
@@ -3709,6 +3708,35 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for job in current_jobs:
             job.schedule_removal()
     # === /ОТМЕНА ТАЙМЕРОВ ===
+
+    # === 1.3. ЕСЛИ ЭТО ИЗМЕНЕНИЕ ЗАПИСИ - СОЗДАЕМ TEMP_BOOKING ===
+    if context.user_data.get("modify_mode") and not context.user_data.get("temp_booking"):
+        # Создаем временное бронирование для измененной записи
+        ss = context.user_data.get("subservice", "")
+        date_str = context.user_data.get("date", "")
+        time_str = context.user_data.get("time", "")
+        specialist = context.user_data.get("actual_specialist", context.user_data.get("selected_specialist", ""))
+        
+        if all([ss, date_str, time_str, specialist]):
+            step = calculate_service_step(ss)
+            dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+            start_dt = TIMEZONE.localize(dt)
+            end_dt = start_dt + timedelta(minutes=step)
+            
+            context.user_data["temp_booking"] = {
+                "specialist": specialist,
+                "time": time_str,
+                "date": date_str,
+                "event_id": None,  # Будет создано позже
+                "start_dt": start_dt,
+                "end_dt": end_dt,
+                "subservice": ss,
+                "created_at": datetime.now(TIMEZONE).isoformat(),
+            }
+            logger.info(f"🔄 Создан temp_booking для изменения записи: {specialist}, {date_str} {time_str}")
+    
+    # === 1.5. ПРОВЕРКА TEMP_BOOKING ===
+    temp_booking = context.user_data.get("temp_booking", {})
 
     # === 1.5. ПРОВЕРКА TEMP_BOOKING ===
     temp_booking = context.user_data.get("temp_booking", {})
