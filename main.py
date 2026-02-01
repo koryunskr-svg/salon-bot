@@ -4085,6 +4085,24 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ОТЛАДКА: выводим, что собираемся записать
         print(f"DEBUG: Пытаюсь записать в таблицу: {full_record}")
 
+       # === ДОПОЛНИТЕЛЬНАЯ ОТЛАДКА ===
+        print(f"🔧🔧🔧 ДОПОЛНИТЕЛЬНАЯ ОТЛАДКА:")
+        print(f"🔧 SHEET_ID: {SHEET_ID}")
+        print(f"🔧 Диапазон: 'Записи!A3:O'")
+        print(f"🔧 Длина full_record: {len(full_record)} (должно быть 15)")
+        print(f"🔧 full_record по индексам:")
+        for i, value in enumerate(full_record):
+            print(f"  [{i}] '{value}' (тип: {type(value).__name__})")
+        
+        # Проверяем, что все значения строковые
+        for i, value in enumerate(full_record):
+            if not isinstance(value, str):
+                print(f"⚠️  Внимание: [{i}] не строка! Преобразую...")
+                full_record[i] = str(value) if value is not None else ""
+        
+        print(f"🔧 Исправленный full_record: {full_record}")
+        # === /ОТЛАДКА === 
+
         # Добавляем в таблицу
         success = safe_append_to_sheet(SHEET_ID, "Записи!A3:O", [full_record])
         print(f"DEBUG: Результат safe_append_to_sheet: {success}")
