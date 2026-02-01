@@ -4674,7 +4674,12 @@ async def handle_my_records_input(update: Update, context: ContextTypes.DEFAULT_
                 update, context, found, "Ваши активные записи (по введённым данным):"
             )
         else:
-            await update.message.reply_text("❌ Записей с такими данными не найдено.")
+            await update.message.reply_text(
+                "❌ Записей с такими данными не найдено.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+                ])
+            )
         context.user_data.pop("temp_my_records_name", None)
         context.user_data.pop("state", None)
         return MENU
