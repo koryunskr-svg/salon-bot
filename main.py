@@ -3963,67 +3963,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = AWAITING_PHONE_CONFIRMATION
         return AWAITING_PHONE_CONFIRMATION
 
-    # === 3. ОБНОВЛЯЕМ СОБЫТИЕ В КАЛЕНДАРЕ ===
-
-    if event_id:
-        try:
-            # Получаем цену услуги для описания
-            services = get_cached_services()
-            price_info = "цена не указана"
-            for row in services:
-                if len(row) > 1 and row[1] == ss:
-                    price_info = safe_parse_price(row[5] if len(row) > 5 else "")
-                    break
-
-            new_summary = f"{name} - {ss}"
-            new_description = (
-                f"Клиент: {name}\n"
-                f"Телефон: {phone}\n"
-                f"Услуга: {ss} ({st})\n"
-                f"Стоимость: {price_info}"
-            )
-            # Получаем start_dt и end_dt из temp_booking
-            start_dt = temp_booking.get("start_dt")
-            end_dt = temp_booking.get("end_dt")
-            if start_dt and end_dt:
-                logger.info(f"🟢 ОБНОВЛЕНИЕ КАЛЕНДАРЯ: event_id={event_id}")
-                logger.info(f"🟢 Данные: name={name}, услуга={ss}, время={start_dt}-{end_dt}")
-                
-                logger.info(f"🎯 ВЫЗЫВАЮ safe_update_calendar_event для {event_id}")
-                
-                logger.info(f"🔍 ДЕТАЛИ ПЕРЕДАВАЕМЫХ ДАННЫХ:")
-                logger.info(f"🔍 start_dt: {start_dt}")
-                logger.info(f"🔍 start_dt.isoformat(): {start_dt.isoformat()}")
-                logger.info(f"🔍 end_dt: {end_dt}")
-                logger.info(f"🔍 end_dt.isoformat(): {end_dt.isoformat()}")
-                logger.info(f"🔍 Разница времени: {(end_dt - start_dt).total_seconds()} секунд")
-
-                result = safe_update_calendar_event(
-                    CALENDAR_ID,
-                    event_id,
-                    summary=new_summary,
-                    start_time=start_dt.isoformat(),
-                    end_time=end_dt.isoformat(),
-                    description=new_description,
-                    color_id="10",  # Зелёный цвет для подтверждённых
-                )
-                
-                logger.info(f"🟢 Результат safe_update_calendar_event: {result}")
-                logger.info(f"✅ Календарь обновлён: {event_id}")
-
-                if result:
-                    logger.info(f"✅✅✅ УСПЕХ! Календарь обновлён: {result}")
-                else:
-                    logger.error(f"❌❌❌ ОШИБКА! safe_update_calendar_event вернула None для {event_id}")
-                    logger.error(f"❌ Проверь логи выше для деталей ошибки")
-            else:
-                logger.error(
-                    f"❌ Не найдены start_dt или end_dt в temp_booking: {temp_booking}"
-                )
-                print(f"ERROR: Missing start_dt or end_dt in temp_booking")
-        except Exception as e:
-            logger.error(f"❌ Ошибка обновления календаря: {e}")
-            print(f"ERROR updating calendar: {e}")
 
     # === 4. ЗАПИСЫВАЕМ В ТАБЛИЦУ "ЗАПИСИ" ===
     try:
@@ -4113,6 +4052,68 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raise Exception("safe_append_to_sheet вернул False или None")
 
         logger.info(f"✅ Запись сохранена в таблицу: {record_id}")
+
+    # === 3. ОБНОВЛЯЕМ СОБЫТИЕ В КАЛЕНДАРЕ ===
+
+    if event_id:
+        try:
+            # Получаем цену услуги для описания
+            services = get_cached_services()
+            price_info = "цена не указана"
+            for row in services:
+                if len(row) > 1 and row[1] == ss:
+                    price_info = safe_parse_price(row[5] if len(row) > 5 else "")
+                    break
+
+            new_summary = f"{name} - {ss}"
+            new_description = (
+                f"Клиент: {name}\n"
+                f"Телефон: {phone}\n"
+                f"Услуга: {ss} ({st})\n"
+                f"Стоимость: {price_info}"
+            )
+            # Получаем start_dt и end_dt из temp_booking
+            start_dt = temp_booking.get("start_dt")
+            end_dt = temp_booking.get("end_dt")
+            if start_dt and end_dt:
+                logger.info(f"🟢 ОБНОВЛЕНИЕ КАЛЕНДАРЯ: event_id={event_id}")
+                logger.info(f"🟢 Данные: name={name}, услуга={ss}, время={start_dt}-{end_dt}")
+                
+                logger.info(f"🎯 ВЫЗЫВАЮ safe_update_calendar_event для {event_id}")
+                
+                logger.info(f"🔍 ДЕТАЛИ ПЕРЕДАВАЕМЫХ ДАННЫХ:")
+                logger.info(f"🔍 start_dt: {start_dt}")
+                logger.info(f"🔍 start_dt.isoformat(): {start_dt.isoformat()}")
+                logger.info(f"🔍 end_dt: {end_dt}")
+                logger.info(f"🔍 end_dt.isoformat(): {end_dt.isoformat()}")
+                logger.info(f"🔍 Разница времени: {(end_dt - start_dt).total_seconds()} секунд")
+
+                result = safe_update_calendar_event(
+                    CALENDAR_ID,
+                    event_id,
+                    summary=new_summary,
+                    start_time=start_dt.isoformat(),
+                    end_time=end_dt.isoformat(),
+                    description=new_description,
+                    color_id="10",  # Зелёный цвет для подтверждённых
+                )
+                
+                logger.info(f"🟢 Результат safe_update_calendar_event: {result}")
+                logger.info(f"✅ Календарь обновлён: {event_id}")
+
+                if result:
+                    logger.info(f"✅✅✅ УСПЕХ! Календарь обновлён: {result}")
+                else:
+                    logger.error(f"❌❌❌ ОШИБКА! safe_update_calendar_event вернула None для {event_id}")
+                    logger.error(f"❌ Проверь логи выше для деталей ошибки")
+            else:
+                logger.error(
+                    f"❌ Не найдены start_dt или end_dt в temp_booking: {temp_booking}"
+                )
+                print(f"ERROR: Missing start_dt or end_dt in temp_booking")
+        except Exception as e:
+            logger.error(f"❌ Ошибка обновления календаря: {e}")
+            print(f"ERROR updating calendar: {e}")
 
         # === 4.5. ОБНОВЛЯЕМ СТАРУЮ ЗАПИСЬ ЕСЛИ ЭТО ИЗМЕНЕНИЕ ===
         old_record_id = context.user_data.get("old_record_id", "")
