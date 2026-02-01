@@ -4345,14 +4345,14 @@ async def show_my_records_edit(update: Update, context: ContextTypes.DEFAULT_TYP
         if not name or not phone:
             if query:
                 await query.edit_message_text(
-                    "🔍 Я не нашёл ваши записи. Пожалуйста, введите ваше имя:"
+                    "🔍 Я не нашёл ваши записи. Пожалуйста, введите ваше имя:",
                      reply_markup=InlineKeyboardMarkup([
                             [InlineKeyboardButton("🏠 В меню", callback_data="start")]
                         ])
                     )
             elif update.message:
                 await update.message.reply_text(
-                    "🔍 Я не нашёл ваши записи. Пожалуйста, введите ваше имя:"
+                    "🔍 Я не нашёл ваши записи. Пожалуйста, введите ваше имя:",
                     reply_markup=InlineKeyboardMarkup([
                         [InlineKeyboardButton("🏠 В меню", callback_data="start")]
                     ])
