@@ -66,37 +66,38 @@ def safe_get_sheet_data(spreadsheet_id, range_name):
 
 @retry_google_api()
 def safe_append_to_sheet(spreadsheet_id, sheet_name, values):
-    print("="*80)
+    print("\n" + "="*80)
     print("🔧🔧🔧 DEBUG SAFE_APPEND_TO_SHEET ВЫЗВАНА!")
-    print(f"spreadsheet_id: {spreadsheet_id}")
-    print(f"sheet_name: '{sheet_name}'")
-    print(f"values: {values}")
-    print(f"Количество записей: {len(values)}")
-    print(f"Длина первой записи: {len(values[0]) if values else 0}")
+    print(f"🔧 spreadsheet_id: {spreadsheet_id}")
+    print(f"🔧 sheet_name: '{sheet_name}'")
+    print(f"🔧 values: {values}")
+    print(f"🔧 len(values): {len(values)}")
+    print(f"🔧 Длина первой записи: {len(values[0]) if values else 0}")
     print("="*80)
-
+    
     credentials = get_google_credentials()
     if not credentials:
         print("❌ Нет credentials для Google API")
         return False
+    
     try:
         service = build('sheets', 'v4', credentials=credentials)
         body = {'values': values}
-        print(f"🔧 DEBUG: Отправляю запрос к Google Sheets...")
-
+        print(f"🔧 Отправляю запрос к Google Sheets...")
+        
         result = service.spreadsheets().values().append(
             spreadsheetId=spreadsheet_id,
             range=sheet_name,
             valueInputOption='RAW',
             body=body
         ).execute()
-
-        print(f"🔧 DEBUG: Google Sheets ответил: {result}")
+        
+        print(f"🔧 Google Sheets ответил: {result}")
         print(f"✅ Добавлено {result.get('updates', {}).get('updatedCells', 0)} ячеек в {sheet_name}")
         return True
 
     except Exception as e:
-        print(f"❌ Ошибка при добавлении данных в таблицу: {e}")
+        print(f"❌❌❌ ОШИБКА в safe_append_to_sheet: {e}")
         import traceback
         traceback.print_exc()
         return False
