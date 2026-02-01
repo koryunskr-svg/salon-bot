@@ -4045,7 +4045,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Ошибка расчета диапазона для таблицы: {e}")
 
-        # Определяем комментарий для таблицы
+        # Определяем примечание для таблицы
         old_record_id = context.user_data.get("old_record_id", "")
         was_auto_assigned = context.user_data.get('was_auto_assigned', False)
         
@@ -4059,22 +4059,22 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Обычная запись
             comment = "автоматически" if was_auto_assigned else ""
 
-        full_record = [
-            record_id,  # A: ID записи
+                full_record = [
+            record_id,  # A: ID
             name,  # B: Имя
             phone,  # C: Телефон
-            st,  # D: Категория услуги
+            st,  # D: Категория
             ss,  # E: Услуга
             specialist,  # F: Специалист
             date_str,  # G: Дата
             time_range,  # H: Время с диапазоном
             "подтверждено",  # I: Статус
             created_at,  # J: Дата создания
-            comment,  # K: Комментарий ← ИСПРАВЛЕНО
-            "❌",  # L: Напоминание 24ч
-            "❌",  # M: Напоминание 1ч
-            str(chat_id),  # N: Chat ID
-            event_id or "",  # O: Event ID
+            comment,  # K: Примечания
+            "❌",  # L: Напоминание 24 часа
+            "❌",  # M: Напоминание 1 час
+            str(chat_id),  # N: chat_id
+            event_id or "",  # O: event_id
         ]
 
         print(f"=== DEBUG: Формирую запись для таблицы ===")
