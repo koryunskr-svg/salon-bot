@@ -1823,16 +1823,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 job.schedule_removal()
         logger.info(f"⏰ Отменены таймеры для изменения записи {record_id}")
 
-        # Находим запись (только со статусом "подтверждено")
+        # Находим запись (только со статусом "подтверждено" и самую последнюю по дате создания)
         records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
         target_record = None
+        latest_date = None
         
         for r in records:
             if (len(r) > 8 and 
                 str(r[0]).strip() == record_id and 
                 str(r[8]).strip() == "подтверждено"):
-                target_record = r
-                break
+                
+                # Берем дату создания записи
+                record_date_str = str(r[9]).strip() if len(r) > 9 else ""
+                
+                # Если это первая найденная или дата создания позже
+                if not target_record or (record_date_str > latest_date if latest_date else True):
+                    target_record = r
+                    latest_date = record_date_str
+        
+        # Если не нашли "подтверждено", ищем любую с этим ID
+        if not target_record:
+            for r in records:
+                if len(r) > 8 and str(r[0]).strip() == record_id:
+                    target_record = r
+                    break
         
         if not target_record:
             await query.answer("❌ Запись не найдена")
@@ -1844,6 +1858,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["service_type"] = str(target_record[3]).strip() if len(target_record) > 3 else ""
         context.user_data["subservice"] = str(target_record[4]).strip() if len(target_record) > 4 else ""
         context.user_data["selected_specialist"] = str(target_record[5]).strip() if len(target_record) > 5 else ""
+
+        logger.info(f"🔍 DEBUG: Сохранён специалист: '{context.user_data['selected_specialist']}' из колонки {target_record[5]}")
 
         # Помечаем старую запись как "изменяется"
         context.user_data["old_record_id"] = record_id
@@ -3643,67 +3659,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    # === 0. ЕСЛИ ЭТО ИЗМЕНЕНИЕ ЗАПИСИ - НАХОДИМ И ОТМЕНЯЕМ ОРИГИНАЛ ===
-    old_record_id = context.user_data.get("old_record_id")
-    if old_record_id and context.user_data.get("modify_mode"):
-        logger.info(f"🔄 Изменение записи: ищем и ОТМЕНЯЕМ оригинал {old_record_id}")
-        
-        # Находим ОРИГИНАЛЬНУЮ запись (самую старую с этим ID и статусом "подтверждено")
-        records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
-        original_record_idx = None
-        original_record = None
-        
-        for idx, r in enumerate(records, start=2):
-            if (len(r) > 8 and 
-                str(r[0]).strip() == old_record_id and 
-                str(r[8]).strip() == "подтверждено"):
-                original_record_idx = idx
-                original_record = r
-                break
-        
-        if original_record and original_record_idx:
-            logger.info(f"✅ Нашли оригинал в строке {original_record_idx}, ОТМЕНЯЕМ")
-            
-            # 1. Меняем статус на "изменено клиентом"
-            updated = list(original_record)
-            updated[8] = "изменено клиентом"
-            updated[9] = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
-            
-            # 2. Добавляем примечание об изменении
-            # Колонка K (индекс 10) - Примечание
-            # new_record_id будет создан позже, пока пишем "новая запись"
-            if len(updated) > 10:
-                updated[10] = f"изменено на новую запись от {datetime.now(TIMEZONE).strftime('%d.%m.%Y')}"
-            elif len(updated) == 10:
-                updated.append(f"изменено на новую запись от {datetime.now(TIMEZONE).strftime('%d.%m.%Y')}")
-            
-            # 3. Обновляем в таблице
-            safe_update_sheet_row(SHEET_ID, "Записи", original_record_idx, updated)
-            
-            # 4. Удаляем из календаря
-            event_id = original_record[14] if len(original_record) > 14 else None
-            if event_id:
-                safe_delete_calendar_event(CALENDAR_ID, event_id)
-                logger.info(f"🗑️ Удалили событие календаря {event_id}")
-            
-            # 5. Проверяем лист ожидания для освободившегося слота
-            if len(original_record) > 6 and len(original_record) > 7 and len(original_record) > 5:
-                await check_waiting_list(
-                    str(original_record[6]).strip(), 
-                    str(original_record[7]).strip(), 
-                    str(original_record[5]).strip(), 
-                    context
-                )
-            
-            logger.info(f"✅ Оригинальная запись {old_record_id} ОТМЕНЕНА")
-        else:
-            logger.error(f"❌ Не нашли оригинальную подтверждённую запись с ID {old_record_id}")
-        
-        # Очищаем флаги изменения
-        context.user_data.pop("old_record_id", None)
-        context.user_data.pop("modify_record_id", None)
-        context.user_data.pop("modify_mode", None)
-
     # === ДЕТАЛЬНАЯ ОТЛАДКА ===
     logger.info("🔍🔍🔍 finalize_booking НАЧАЛО 🔍🔍🔍")
     logger.info(f"🔍 Ключи user_data: {list(context.user_data.keys())}")
@@ -3988,8 +3943,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         record_id = str(len(all_records) + 1)  # "1", "2", "3"...
         created_at = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
 
-        # Формируем полную запись
-
         # Рассчитываем диапазон для таблицы
         time_range = time_str
         try:
@@ -4054,6 +4007,34 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raise Exception("safe_append_to_sheet вернул False или None")
 
         logger.info(f"✅ Запись сохранена в таблицу: {record_id}")
+
+        # === 4.5. ОБНОВЛЯЕМ СТАРУЮ ЗАПИСЬ ЕСЛИ ЭТО ИЗМЕНЕНИЕ ===
+        old_record_id = context.user_data.get("old_record_id", "")
+        if old_record_id and context.user_data.get("modify_mode"):
+            # Находим старую запись и обновляем её статус
+            all_records_for_update = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
+            
+            for idx, r in enumerate(all_records_for_update, start=2):
+                if len(r) > 8 and str(r[0]).strip() == old_record_id:
+                    # Находим самую свежую запись с этим ID
+                    if str(r[8]).strip() == "подтверждено":
+                        updated_old = list(r)
+                        updated_old[8] = "изменено клиентом"
+                        
+                        # Добавляем примечание с ID новой записи
+                        if len(updated_old) > 10:
+                            updated_old[10] = f"изменено на #{record_id} от {date_str}"
+                        elif len(updated_old) == 10:
+                            updated_old.append(f"изменено на #{record_id} от {date_str}")
+                        
+                        # Удаляем событие календаря старой записи
+                        old_event_id = r[14] if len(r) > 14 else None
+                        if old_event_id:
+                            safe_delete_calendar_event(CALENDAR_ID, old_event_id)
+                        
+                        safe_update_sheet_row(SHEET_ID, "Записи", idx, updated_old)
+                        logger.info(f"✅ Старая запись {old_record_id} отмечена как 'изменено клиентом' (новая запись: #{record_id})")
+                        break
 
     except Exception as e:
         logger.error(f"❌ Ошибка записи в таблицу: {e}")
