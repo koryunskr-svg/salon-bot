@@ -3206,13 +3206,59 @@ async def reserve_slot(
     logger.info(f"🎯 temp_booking сохранен с event_id={event_id}")
     logger.info(f"🎯 Все ключи user_data: {list(context.user_data.keys())}")
 
-    kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
-    await query.edit_message_text(
-        "⏳ Слот зарезервирован! Введите ваше имя:",
-        reply_markup=InlineKeyboardMarkup(kb),
-    )
-    context.user_data["state"] = ENTER_NAME
-    return ENTER_NAME
+    # === ЕСЛИ ЭТО ИЗМЕНЕНИЕ ЗАПИСИ - ПРОПУСКАЕМ ВВОД ИМЕНИ ===
+    if context.user_data.get("modify_mode") and context.user_data.get("name"):
+        # Пропускаем ввод имени и телефона, сразу переходим к подтверждению
+        context.user_data["state"] = AWAITING_CONFIRMATION
+        
+        # Показываем подтверждение сразу
+        kb = [
+            [
+                InlineKeyboardButton(
+                    "✅ Подтвердить запись", callback_data="confirm_booking"
+                )
+            ],
+            [InlineKeyboardButton("❌ Отменить", callback_data="cancel_booking")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+        ]
+        
+        # Рассчитываем диапазон времени
+        time_display = time_str
+        try:
+            total_duration = calculate_service_step(ss)
+            hour = int(time_str.split(':')[0])
+            minute = int(time_str.split(':')[1])
+            end_minutes = hour * 60 + minute + total_duration
+            end_hour = end_minutes // 60
+            end_minute = end_minutes % 60
+            end_time = f"{end_hour:02d}:{end_minute:02d}"
+            time_display = f"{time_str}-{end_time}"
+        except Exception as e:
+            logger.error(f"Ошибка расчета времени: {e}")
+        
+        await query.edit_message_text(
+            f"✏️ <b>Изменение записи #{context.user_data.get('old_record_id', '')}</b>\n\n"
+            f"📋 Пожалуйста, подтвердите ИЗМЕНЕННУЮ запись:\n\n"
+            f"Услуга: {ss} ({context.user_data.get('service_type', 'N/A')})\n"
+            f"Специалист: {specialist}\n"
+            f"Дата: {date_str}\n"
+            f"Время: {time_display}\n"
+            f"Имя: {context.user_data.get('name', 'N/A')}\n"
+            f"Телефон: {context.user_data.get('phone', 'N/A')}\n\n"
+            "Всё верно? Выберите действие:",
+            reply_markup=InlineKeyboardMarkup(kb),
+            parse_mode="HTML"
+        )
+        return AWAITING_CONFIRMATION
+    else:
+        # Обычная запись - просим имя
+        kb = [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]]
+        await query.edit_message_text(
+            "⏳ Слот зарезервирован! Введите ваше имя:",
+            reply_markup=InlineKeyboardMarkup(kb),
+        )
+        context.user_data["state"] = ENTER_NAME
+        return ENTER_NAME
 
 
 # --- WARN / RELEASE RESERVATION ---
