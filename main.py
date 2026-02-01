@@ -4346,18 +4346,34 @@ async def show_my_records_edit(update: Update, context: ContextTypes.DEFAULT_TYP
             if query:
                 await query.edit_message_text(
                     "🔍 Я не нашёл ваши записи. Пожалуйста, введите ваше имя:"
-                )
+                     reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+                        ])
+                    )
             elif update.message:
                 await update.message.reply_text(
                     "🔍 Я не нашёл ваши записи. Пожалуйста, введите ваше имя:"
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+                    ])
                 )
             context.user_data["state"] = AWAITING_MY_RECORDS_NAME
             return AWAITING_MY_RECORDS_NAME
         else:
             if query:
-                await query.edit_message_text("📋 У вас нет активных записей.")
+                await query.edit_message_text(
+                    "📋 У вас нет активных записей.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+                    ])
+                )
             elif update.message:
-                await update.message.reply_text("📋 У вас нет активных записей.")
+                await update.message.reply_text(
+                    "📋 У вас нет активных записей.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+                    ])
+                )
             return MENU
 
     await _display_records(update, context, found, "Ваши активные записи:")
