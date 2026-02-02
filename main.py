@@ -3432,10 +3432,15 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         name = context.user_data.get("name", "")
         context.user_data["state"] = ENTER_NAME
+        kb = [
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+        ]
         # Показываем текущее имя и просим ввести новое
         await query.edit_message_text(
             f"⏳ Слот зарезервирован! Введите ваше имя: (текущее: {name})\n\n"
             f"Введите новое имя или оставьте текущее:"
+            reply_markup=InlineKeyboardMarkup(kb)
         )
         return ENTER_NAME
 
@@ -3605,9 +3610,15 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         phone = context.user_data.get("phone", "")
         context.user_data["state"] = ENTER_PHONE
+        kb = [
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+        ]
+        
         await query.edit_message_text(
             f"📞 Теперь введите ваш телефон: (текущий: {phone})\n\n"
-            f"Введите новый номер или оставьте текущий:"
+            f"Введите новый номер или оставьте текущий:",
+            reply_markup=InlineKeyboardMarkup(kb)  # ← ДОБАВИТЬ ЭТУ СТРОКУ
         )
         return ENTER_PHONE
 
@@ -3627,6 +3638,10 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     normalized_phone = validate_phone(phone)  # ← теперь возвращает строку или ""
 
     if not normalized_phone:  # если пустая строка - ошибка
+        kb = [
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+        ]
         await update.message.reply_text(
             "❌ Неверный формат номера телефона. Введите номер длиной 10-15 цифр."
         )
