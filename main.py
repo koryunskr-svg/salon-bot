@@ -3439,7 +3439,7 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Показываем текущее имя и просим ввести новое
         await query.edit_message_text(
             f"⏳ Слот зарезервирован! Введите ваше имя: (текущее: {name})\n\n"
-            f"Введите новое имя или оставьте текущее:"
+            f"Введите новое имя или оставьте текущее:",
             reply_markup=InlineKeyboardMarkup(kb)
         )
         return ENTER_NAME
