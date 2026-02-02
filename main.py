@@ -3974,7 +3974,19 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # === 4. ЗАПИСЫВАЕМ В ТАБЛИЦУ "ЗАПИСИ" ===
         all_records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
-        record_id = str(len(all_records) + 1)  # "1", "2", "3"...
+        
+        # === ИСПРАВЛЕНИЕ: Находим МАКСИМАЛЬНЫЙ ID, а не количество записей ===
+        max_id = 0
+        for r in all_records:
+            if len(r) > 0:
+                try:
+                    current_id = int(r[0])  # Пробуем преобразовать ID в число
+                    if current_id > max_id:
+                        max_id = current_id
+                except (ValueError, TypeError):
+                    continue  # Если не число, пропускаем
+        
+        record_id = str(max_id + 1)  # Следующий ID после максимального
         created_at = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
 
         # Рассчитываем диапазон для таблицы
@@ -4413,7 +4425,7 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
         if (
             len(r) > 13
             and str(r[13]).strip() == str(user_id)
-            and str(r[8]).strip() in ACTIVE_STATUSES
+            and str(r[8]).strip() == "подтверждено"  # ← ИЗМЕНИЛ: только "подтверждено", а не все ACTIVE_STATUSES
         ):
             found.append(r)
     
@@ -4424,7 +4436,7 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
                 len(r) > 2
                 and str(r[1]).strip() == name
                 and str(r[2]).strip() == phone
-                and str(r[8]).strip() in ACTIVE_STATUSES
+                and str(r[8]).strip() == "подтверждено"  # ← ИЗМЕНИЛ: только "подтверждено"
             ):
                 found.append(r)
     
