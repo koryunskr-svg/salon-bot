@@ -4042,6 +4042,11 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"🔧 Исправленный full_record: {full_record}")
         # === /ОТЛАДКА === 
 
+        print("🎯🎯🎯 ПЕРЕД ВЫЗОВОМ safe_append_to_sheet 🎯🎯🎯")
+        print(f"📊 full_record длина: {len(full_record)}")
+        print(f"📊 Тип: {type(full_record)}")
+        print(f"📊 SHEET_ID: {SHEET_ID}")
+
         # Добавляем в таблицу
         success = safe_append_to_sheet(SHEET_ID, "Записи!A3:O", [full_record])
         print(f"DEBUG: Результат safe_append_to_sheet: {success}")
