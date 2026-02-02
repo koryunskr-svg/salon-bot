@@ -3718,6 +3718,14 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    print("\n" + "="*80)
+    print("🚨🚨🚨 FINALIZE_BOOKING НАЧАЛАСЬ 🚨🚨🚨")
+    print(f"📱 Chat ID: {update.effective_chat.id}")
+    print(f"🎯 Данные из user_data:")
+    for key, value in context.user_data.items():
+        print(f"   {key}: {value}")
+    print("="*80 + "\n")
+
     # === ДЕТАЛЬНАЯ ОТЛАДКА ===
     logger.info("🔍🔍🔍 finalize_booking НАЧАЛО 🔍🔍🔍")
     logger.info(f"🔍 Ключи user_data: {list(context.user_data.keys())}")
