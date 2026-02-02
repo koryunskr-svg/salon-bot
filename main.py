@@ -3010,6 +3010,30 @@ async def reserve_slot(
 ):
     query = update.callback_query
     await query.answer()
+    
+    # === УДАЛЯЕМ ПРЕДЫДУЩИЙ ЖЕЛТЫЙ РЕЗЕРВ ЕСЛИ ОН ЕСТЬ ===
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    
+    # Отменяем старые таймеры
+    job_names = [f"reservation_timeout_{chat_id}", f"reservation_warn_{chat_id}"]
+    for job_name in job_names:
+        current_jobs = context.job_queue.get_jobs_by_name(job_name)
+        for job in current_jobs:
+            job.schedule_removal()
+    
+    # Удаляем старый желтый резерв из календаря
+    old_temp_booking = context.user_data.get("temp_booking")
+    if old_temp_booking and old_temp_booking.get("event_id"):
+        try:
+            safe_delete_calendar_event(CALENDAR_ID, old_temp_booking["event_id"])
+            logger.info(f"🗑️ Удалён старый желтый резерв: {old_temp_booking['event_id']}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка удаления старого резерва: {e}")
+    
+    # Очищаем старый temp_booking
+    context.user_data.pop("temp_booking", None)
+    # === /УДАЛЕНИЕ ПРЕДЫДУЩЕГО РЕЗЕРВА ===
 
     # === ЕДИНАЯ ЛОГИКА ДЛЯ "ЛЮБОЙ" ===
     original_specialist = context.user_data.get("selected_specialist", "")
@@ -4172,10 +4196,13 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if old_event_id:
                         event_ids_to_delete.add(old_event_id)
                     
-                    # Обновляем запись в таблице
-                    safe_update_sheet_row(SHEET_ID, "Записи", idx, updated_old)
-                    updated_count += 1
-                    logger.info(f"✅ Обновлена старая запись {old_record_id} в строке {idx}")
+                    # Обновляем запись в таблице (ИСПРАВЛЕНО: используем by_id вместо индекса)
+                    success = safe_update_sheet_row_by_id(SHEET_ID, "Записи", old_record_id, updated_old)
+                    if success:
+                        updated_count += 1
+                        logger.info(f"✅ Обновлена старая запись {old_record_id} в строке {idx}")
+                    else:
+                        logger.error(f"❌ Не удалось обновить запись {old_record_id} в строке {idx}")
                 else:
                     logger.info(f"⚠️ Пропускаем запись {old_record_id} в строке {idx}: статус '{status}'")
             
@@ -4338,7 +4365,7 @@ async def show_my_records_edit(update: Update, context: ContextTypes.DEFAULT_TYP
         if (
             len(r) > 13
             and str(r[13]).strip() == str(user_id)
-            and str(r[8]).strip() in ACTIVE_STATUSES
+            and str(r[8]).strip() == "подтверждено"  # ТОЛЬКО подтвержденные записи
         ):
             found.append(r)
     if not found and name and phone:
@@ -4347,7 +4374,7 @@ async def show_my_records_edit(update: Update, context: ContextTypes.DEFAULT_TYP
                 len(r) > 2
                 and str(r[1]).strip() == name
                 and str(r[2]).strip() == phone
-                and str(r[8]).strip() in ACTIVE_STATUSES
+                and str(r[8]).strip() == "подтверждено"  # ТОЛЬКО подтвержденные записи
             ):
                 found.append(r)
 
