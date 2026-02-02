@@ -1,4 +1,4 @@
-# main.py- D -29.01.26 - тест
+# main.py- D - 01.02.26 - тест
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -1181,11 +1181,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             org_name_display = f"⚠️ Заведение '{org_name_setting}' не найдено в графике."
             schedule_text = "Не могу отобразить расписание."
 
-        # === ПРОВЕРКА: ЕСТЬ ЛИ НЕЗАВЕРШЕННАЯ ЗАПИСЬ? ===
+    # === ПРОВЕРКА: ЕСТЬ ЛИ НЕЗАВЕРШЕННАЯ ЗАПИСЬ? ===
     has_booking_data = any(key in context.user_data for key in ["date", "time", "selected_specialist", "subservice"])
+    has_complete_data = all(key in context.user_data for key in ["date", "time", "selected_specialist", "subservice", "name", "phone"])
     
-    if has_booking_data:
-        # Есть незавершенная запись - показываем специальное меню
+    # ПОКАЗЫВАЕМ "ПРОДОЛЖИТЬ" ТОЛЬКО ЕСЛИ ЕСТЬ ПОЛНЫЕ ДАННЫЕ
+    if has_complete_data:
+        # Есть незавершенная запись с полными данными
         kb = [
             [InlineKeyboardButton("📋 Продолжить запись", callback_data="continue_booking")],
             [InlineKeyboardButton("🔄 Начать новую запись", callback_data="start_new")],
@@ -3375,27 +3377,25 @@ async def release_reservation(context: ContextTypes.DEFAULT_TYPE):
     if uid in context.application.user_data:
         user_state = context.application.user_data[uid].get("state")
         
-        # Если пользователь активно вводит данные - СБРАСЫВАЕМ состояние!
-        if user_state in [ENTER_NAME, ENTER_PHONE, AWAITING_CONFIRMATION]:
-            logger.info(f"⚠️ release_reservation: пользователь {uid} активно вводит данные (state={user_state}), СБРАСЫВАЕМ состояние")
-            # Сбрасываем состояние чтобы бот не принимал дальнейший ввод
-            context.application.user_data[uid]["state"] = MENU
-            # Очищаем ВСЕ данные бронирования
-            context.application.user_data[uid].pop("temp_booking", None)
-            context.application.user_data[uid].pop("time", None)
-            context.application.user_data[uid].pop("selected_specialist", None)
-            context.application.user_data[uid].pop("actual_specialist", None)
-            context.application.user_data[uid].pop("date", None)
-            context.application.user_data[uid].pop("service_type", None)
-            context.application.user_data[uid].pop("subservice", None)
-            context.application.user_data[uid].pop("name", None)
-            context.application.user_data[uid].pop("phone", None)
-        else:
-            # Очищаем только если пользователь неактивен
-            context.application.user_data[uid].pop("temp_booking", None)
-            context.application.user_data[uid].pop("time", None)
-            context.application.user_data[uid].pop("selected_specialist", None)
-            context.application.user_data[uid].pop("actual_specialist", None)
+        # ПРИ ЛЮБОМ состоянии очищаем ВСЕ данные бронирования
+        logger.info(f"⚠️ release_reservation: очищаем ВСЕ данные бронирования для пользователя {uid}")
+        
+        # Список ключей для удаления
+        keys_to_remove = [
+            "temp_booking", "time", "selected_specialist", "actual_specialist",
+            "date", "service_type", "subservice", "name", "phone",
+            "priority", "repeat_booking_conflict", "phone_conflict",
+            "confirmed_repeat", "available_count", "was_auto_assigned",
+            "modify_mode", "old_record_id", "modify_old_date", "modify_old_time"
+        ]
+        
+        for key in keys_to_remove:
+            context.application.user_data[uid].pop(key, None)
+        
+        # Сбрасываем состояние в MENU
+        context.application.user_data[uid]["state"] = MENU
+        
+        logger.info(f"✅ release_reservation: данные очищены, состояние сброшено в MENU")
     
     # 3. Отправляем сообщение с кнопкой в меню
     try:
