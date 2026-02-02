@@ -4118,57 +4118,63 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Получаем ВСЕ записи для поиска
         all_records_for_update = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
         
-        # Находим ТУ САМУЮ запись, которую изменяем (сравниваем даты и время)
-        found_old_idx = -1
-        found_old_record = None
+        # Ищем ВСЕ записи с этим ID
+        found_old_records = []  # Список для хранения всех найденных записей
         
         for idx, r in enumerate(all_records_for_update, start=2):
             if len(r) > 8 and str(r[0]).strip() == old_record_id:
-                # Проверяем, что это именно СТАРАЯ запись (не дубль)
-                old_date = str(r[6]).strip() if len(r) > 6 else ""
-                old_time = str(r[7]).strip() if len(r) > 7 else ""
-                
-                # Получаем данные из user_data о старой записи
-                modify_old_date = context.user_data.get("modify_old_date", "")
-                modify_old_time = context.user_data.get("modify_old_time", "")
-                
-                # Если есть сохраненные данные о старой записи - сверяем
-                if modify_old_date and modify_old_time:
-                    if old_date == modify_old_date and old_time == modify_old_time:
-                        found_old_idx = idx
-                        found_old_record = r
-                        logger.info(f"🔍 Нашёл именно старую запись: {old_date} {old_time}")
-                        break
-                else:
-                    # Иначе берем первую найденную с подтвержденным статусом
-                    if str(r[8]).strip() == "подтверждено":
-                        found_old_idx = idx
-                        found_old_record = r
-                        # Сохраняем дату/время старой записи для проверки
-                        context.user_data["modify_old_date"] = old_date
-                        context.user_data["modify_old_time"] = old_time
-                        logger.info(f"⚠️ Нет сохраненных данных, беру первую: {old_date} {old_time}")
-                        break
+                # Сохраняем индекс и запись
+                found_old_records.append({
+                    "idx": idx,
+                    "record": r,
+                    "old_date": str(r[6]).strip() if len(r) > 6 else "",
+                    "old_time": str(r[7]).strip() if len(r) > 7 else "",
+                    "status": str(r[8]).strip() if len(r) > 8 else ""
+                })
         
-        if found_old_idx != -1 and found_old_record:
-            updated_old = list(found_old_record)
-            updated_old[8] = "изменено клиентом"
+        logger.info(f"🔍 Найдено записей с ID {old_record_id}: {len(found_old_records)}")
+        
+        if found_old_records:
+            # Обновляем ВСЕ найденные записи
+            updated_count = 0
+            event_ids_to_delete = set()  # Множество для уникальных event_id
             
-            # Добавляем примечание с ID новой записи
-            if len(updated_old) > 10:
-                updated_old[10] = f"изменено на #{record_id} от {date_str}"
-            elif len(updated_old) == 10:
-                updated_old.append(f"изменено на #{record_id} от {date_str}")
+            for found in found_old_records:
+                idx = found["idx"]
+                r = found["record"]
+                status = found["status"]
+                
+                # Обновляем только записи со статусом "подтверждено"
+                if status == "подтверждено":
+                    updated_old = list(r)
+                    updated_old[8] = "изменено клиентом"
+                    
+                    # Добавляем примечание с ID новой записи
+                    if len(updated_old) > 10:
+                        updated_old[10] = f"изменено на #{record_id} от {date_str}"
+                    elif len(updated_old) == 10:
+                        updated_old.append(f"изменено на #{record_id} от {date_str}")
+                    
+                    # Сохраняем event_id для удаления
+                    old_event_id = r[14] if len(r) > 14 else None
+                    if old_event_id:
+                        event_ids_to_delete.add(old_event_id)
+                    
+                    # Обновляем запись в таблице
+                    safe_update_sheet_row(SHEET_ID, "Записи", idx, updated_old)
+                    updated_count += 1
+                    logger.info(f"✅ Обновлена старая запись {old_record_id} в строке {idx}")
+                else:
+                    logger.info(f"⚠️ Пропускаем запись {old_record_id} в строке {idx}: статус '{status}'")
             
-            # Удаляем событие календаря старой записи
-            old_event_id = found_old_record[14] if len(found_old_record) > 14 else None
-            if old_event_id:
-                safe_delete_calendar_event(CALENDAR_ID, old_event_id)
+            # Удаляем события календаря для ВСЕХ старых записей
+            for event_id in event_ids_to_delete:
+                safe_delete_calendar_event(CALENDAR_ID, event_id)
+                logger.info(f"🗑️ Удалено событие календаря: {event_id}")
             
-            safe_update_sheet_row(SHEET_ID, "Записи", found_old_idx, updated_old)
-            logger.info(f"✅ Старая запись {old_record_id} отмечена как 'изменено клиентом' (новая запись: #{record_id})")
+            logger.info(f"✅ Обновлено {updated_count} старых записей {old_record_id} (новая запись: #{record_id})")
         else:
-            logger.error(f"❌ Не удалось найти старую запись {old_record_id} для обновления")
+            logger.error(f"❌ Не удалось найти старые записи {old_record_id} для обновления")
 
     # === 5. УВЕДОМЛЯЕМ АДМИНИСТРАТОРОВ ===
     # Рассчитываем время окончания для уведомления
