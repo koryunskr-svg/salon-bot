@@ -1061,7 +1061,11 @@ async def _validate_booking_checks(
             record_status = str(r[8]).strip()                           
 
             # Проверяем что дата записи не прошедшая (только будущие записи)
-            record_date_str = str(r[6]).strip() if len(r) > 6 else ""
+            date_cell = r[6] if len(r) > 6 else ""
+            if isinstance(date_cell, datetime):
+                record_date_str = date_cell.strftime("%d.%m.%Y")
+            else:
+                record_date_str = str(date_cell).strip()
             try:
                 record_date_obj = datetime.strptime(record_date_str, "%d.%m.%Y").date()
                 today_date = datetime.now(TIMEZONE).date()
@@ -4517,7 +4521,7 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
     # СОРТИРУЕМ записи по дате и времени
     def sort_key(r):
         try:
-            date_str = str(r[6]).strip() if len(r) > 6 else ""
+            date_cell = r[6] if len(r) > 6 else ""
             time_str = str(r[7]).strip() if len(r) > 7 else ""
             
             # Извлекаем время начала
@@ -4525,6 +4529,12 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
                 time_start = time_str.split("-")[0].strip()
             else:
                 time_start = time_str
+            
+            # Обрабатываем дату (может быть строкой или датой)
+            if isinstance(date_cell, datetime):
+                date_str = date_cell.strftime("%d.%m.%Y")
+            else:
+                date_str = str(date_cell).strip()
             
             # Создаем datetime для сортировки
             dt_str = f"{date_str} {time_start}"
