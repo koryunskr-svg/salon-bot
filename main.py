@@ -4030,6 +4030,13 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue  # Если не число, пропускаем
         
         record_id = str(max_id + 1)  # Следующий ID после максимального
+    
+        # Форматируем дату создания тоже как формулу
+        now = datetime.now(TIMEZONE)
+        created_date_formula = f"=DATE({now.year},{now.month},{now.day})"
+        created_time = now.strftime("%H:%M")
+        # Объединяем дату и время
+        created_at = f"{created_date_formula} {created_time}"
         created_at = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
 
         # Рассчитываем диапазон для таблицы
@@ -4042,9 +4049,20 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             end_hour = end_minutes // 60
             end_minute = end_minutes % 60
             end_time = f"{end_hour:02d}:{end_minute:02d}"
-            time_range = f"{time_str}-{end_time}"
+            
+            # Форматируем время как время в Google Sheets
+            # Формула Google Sheets =TIME(час, минута, секунда)
+            time_formula_start = f"=TIME({hour},{minute},0)"
+            time_formula_end = f"=TIME({end_hour},{end_minute},0)"
+            
+            # Объединяем в диапазон
+            time_range = f"{time_formula_start}-{time_formula_end}"
+            logger.info(f"✅ Время как формула Google Sheets: {time_range}")
+            
         except Exception as e:
             logger.error(f"Ошибка расчета диапазона для таблицы: {e}")
+            # Если ошибка, используем текстовый формат
+            time_range = f"{time_str}-{end_time}" if 'end_time' in locals() else time_str
 
         # Определяем примечание для таблицы
         old_record_id = context.user_data.get("old_record_id", "")
@@ -4060,17 +4078,34 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Обычная запись
             comment = "автоматически" if was_auto_assigned else ""
 
-        # Форматируем дату для Google Sheets в формате DD.MM.YYYY
-        # Google Sheets распознает это как дату при русской локали
+        # Форматируем дату как формулу Google Sheets =DATE()
+        # Это гарантирует что Google Sheets распознает это как дату
         try:
-            # date_str уже в формате "09.02.2026"
-            # Проверяем что это валидная дата, но оставляем в том же формате
+            # Парсим дату из формата "10.02.2026"
             parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
-            gsheet_date = date_str  # Оставляем в исходном формате DD.MM.YYYY
-            logger.info(f"✅ Дата для таблицы: {gsheet_date} (формат DD.MM.YYYY)")
+            day = parsed_date.day
+            month = parsed_date.month
+            year = parsed_date.year
+            
+            # Создаем формулу Google Sheets =DATE(год, месяц, день)
+            gsheet_date = f"=DATE({year},{month},{day})"
+            logger.info(f"✅ Дата как формула Google Sheets: {gsheet_date}")
+            
         except Exception as e:
             logger.error(f"❌ Ошибка парсинга даты {date_str}: {e}")
-            gsheet_date = date_str  # оставляем как есть
+            # Если ошибка, используем формулу с текстовой датой
+            try:
+                # Пытаемся извлечь части даты через точку
+                parts = date_str.split(".")
+                if len(parts) == 3:
+                    day = int(parts[0])
+                    month = int(parts[1])
+                    year = int(parts[2])
+                    gsheet_date = f"=DATE({year},{month},{day})"
+                else:
+                    gsheet_date = date_str  # оставляем как есть
+            except:
+                gsheet_date = date_str
 
         full_record = [
             record_id,  # A: ID
