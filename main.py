@@ -4062,6 +4062,54 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Обычная запись
             comment = "автоматически" if was_auto_assigned else ""
 
+        # Определяем примечание для таблицы
+        old_record_id = context.user_data.get("old_record_id", "")
+        was_auto_assigned = context.user_data.get('was_auto_assigned', False)
+        
+        if old_record_id and context.user_data.get("modify_mode"):
+            # Это изменение записи
+            if was_auto_assigned:
+                comment = f"автоматически, изменено с #{old_record_id}"
+            else:
+                comment = f"изменено с #{old_record_id}"
+        else:
+            # Обычная запись
+            comment = "автоматически" if was_auto_assigned else ""
+
+        # === ПРЕОБРАЗОВАНИЕ ДАТЫ ДЛЯ GOOGLE SHEETS ===
+        # date_str в формате "05.02.2026", нужно преобразовать в формат даты Google Sheets
+        try:
+            # 1. Парсим дату
+            parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
+            # 2. Преобразуем в формат Excel/Google Sheets (число дней с 30.12.1899)
+            #    Например, 05.02.2026 = 46287 дней с 30.12.1899
+            excel_date = (parsed_date - datetime(1899, 12, 30)).days
+            # 3. Записываем как число (без кавычек!)
+            gsheet_date_value = excel_date  # число, например 46287
+            logger.info(f"✅ Дата преобразована: {date_str} → {gsheet_date_value}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка преобразования даты {date_str}: {e}")
+            # Если ошибка, оставляем как текст
+            gsheet_date_value = date_str
+
+        full_record = [
+            record_id,  # A: ID
+            name,  # B: Имя
+            phone,  # C: Телефон
+            st,  # D: Категория
+            ss,  # E: Услуга
+            specialist,  # F: Специалист
+            gsheet_date_value,    # G: Дата как число (46287) ← ИЗМЕНЕНО!
+            time_range,  # H: Время в формате "17:30-19:15"
+            "подтверждено",  # I: Статус
+            created_at,  # J: Дата создания "03.02.2026 20:35"
+            comment,     # K: Примечания
+            "❌",        # L: Напоминание 24 часа
+            "❌",        # M: Напоминание 1 час
+            str(chat_id),  # N: chat_id
+            event_id or "",  # O: event_id
+        ]
+
         full_record = [
             record_id,  # A: ID
             name,  # B: Имя
