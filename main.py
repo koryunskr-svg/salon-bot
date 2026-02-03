@@ -4077,20 +4077,16 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             comment = "автоматически" if was_auto_assigned else ""
 
         # === ПРЕОБРАЗОВАНИЕ ДАТЫ ДЛЯ GOOGLE SHEETS ===
-        # date_str в формате "05.02.2026", нужно преобразовать в формат даты Google Sheets
         try:
             # 1. Парсим дату
             parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
-            # 2. Преобразуем в формат Excel/Google Sheets (число дней с 30.12.1899)
-            #    Например, 05.02.2026 = 46287 дней с 30.12.1899
-            excel_date = (parsed_date - datetime(1899, 12, 30)).days
-            # 3. Записываем как число (без кавычек!)
-            gsheet_date_value = excel_date  # число, например 46287
-            logger.info(f"✅ Дата преобразована: {date_str} → {gsheet_date_value}")
+            # 2. Записываем в формате ISO (YYYY-MM-DD) - Google Sheets автоматически распознает как дату
+            gsheet_date_value = parsed_date.strftime("%Y-%m-%d")  # "2026-02-06"
+            logger.info(f"✅ Дата преобразована: {date_str} → {gsheet_date_value} (ISO формат)")
         except Exception as e:
             logger.error(f"❌ Ошибка преобразования даты {date_str}: {e}")
             # Если ошибка, оставляем как текст
-            gsheet_date_value = date_str
+            gsheet_date_value = date_str 
 
         full_record = [
             record_id,  # A: ID
