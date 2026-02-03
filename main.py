@@ -4030,7 +4030,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue  # Если не число, пропускаем
         
         record_id = str(max_id + 1)  # Следующий ID после максимального
-        created_at = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
+        created_at = datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M")
 
         # Рассчитываем диапазон для таблицы
         time_range = time_str
@@ -4060,6 +4060,16 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Обычная запись
             comment = "автоматически" if was_auto_assigned else ""
 
+        # Форматируем дату для Google Sheets (формат даты, а не текст)
+        try:
+            # Преобразуем "09.02.2026" в объект даты
+            parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
+            # Форматируем в YYYY-MM-DD для Google Sheets
+            gsheet_date = parsed_date.strftime("%Y-%m-%d")
+        except Exception as e:
+            logger.error(f"❌ Ошибка форматирования даты {date_str}: {e}")
+            gsheet_date = date_str  # оставляем как есть, если ошибка
+
         full_record = [
             record_id,  # A: ID
             name,  # B: Имя
@@ -4067,10 +4077,10 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             st,  # D: Категория
             ss,  # E: Услуга
             specialist,  # F: Специалист
-            date_str,  # G: Дата
+            gsheet_date,  # G: Дата ← ИЗМЕНЕНО! Формат YYYY-MM-DD
             time_range,  # H: Время с диапазоном
             "подтверждено",  # I: Статус
-            created_at,  # J: Дата создания
+            created_at,  # J: Дата создания (оставляем текст)
             comment,  # K: Примечания
             "❌",  # L: Напоминание 24 часа
             "❌",  # M: Напоминание 1 час
