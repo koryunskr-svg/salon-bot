@@ -4030,7 +4030,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue  # Если не число, пропускаем
         
         record_id = str(max_id + 1)  # Следующий ID после максимального
-        created_at = datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M")
+        created_at = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
 
         # Рассчитываем диапазон для таблицы
         time_range = time_str
@@ -4060,15 +4060,17 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Обычная запись
             comment = "автоматически" if was_auto_assigned else ""
 
-        # Форматируем дату для Google Sheets (формат даты, а не текст)
+        # Форматируем дату для Google Sheets в формате DD.MM.YYYY
+        # Google Sheets распознает это как дату при русской локали
         try:
-            # Преобразуем "09.02.2026" в объект даты
+            # date_str уже в формате "09.02.2026"
+            # Проверяем что это валидная дата, но оставляем в том же формате
             parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
-            # Форматируем в YYYY-MM-DD для Google Sheets
-            gsheet_date = parsed_date.strftime("%Y-%m-%d")
+            gsheet_date = date_str  # Оставляем в исходном формате DD.MM.YYYY
+            logger.info(f"✅ Дата для таблицы: {gsheet_date} (формат DD.MM.YYYY)")
         except Exception as e:
-            logger.error(f"❌ Ошибка форматирования даты {date_str}: {e}")
-            gsheet_date = date_str  # оставляем как есть, если ошибка
+            logger.error(f"❌ Ошибка парсинга даты {date_str}: {e}")
+            gsheet_date = date_str  # оставляем как есть
 
         full_record = [
             record_id,  # A: ID
