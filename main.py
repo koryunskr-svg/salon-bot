@@ -4031,12 +4031,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         record_id = str(max_id + 1)  # Следующий ID после максимального
     
-        # Форматируем дату создания тоже как формулу
-        now = datetime.now(TIMEZONE)
-        created_date_formula = f"=DATE({now.year},{now.month},{now.day})"
-        created_time = now.strftime("%H:%M")
-        # Объединяем дату и время
-        created_at = f"{created_date_formula} {created_time}"
+        # Дата создания - в формате DD.MM.YYYY HH:MM (текст)
         created_at = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
 
         # Рассчитываем диапазон для таблицы
@@ -4107,6 +4102,36 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 gsheet_date = date_str
 
+        # Форматируем дату и время отдельно для правильной сортировки
+        try:
+            # Парсим дату для формулы
+            parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
+            # Дата как формула для сортировки
+            gsheet_date_formula = f"=DATE({parsed_date.year},{parsed_date.month},{parsed_date.day})"
+            
+            # Время начала как формула для сортировки
+            hour = int(time_str.split(':')[0])
+            minute = int(time_str.split(':')[1])
+            time_start_formula = f"=TIME({hour},{minute},0)"
+            
+            # Время окончания
+            total_duration = calculate_service_step(ss)
+            end_minutes = hour * 60 + minute + total_duration
+            end_hour = end_minutes // 60
+            end_minute = end_minutes % 60
+            time_end_formula = f"=TIME({end_hour},{end_minute},0)"
+            
+            # Отображаемое время (текст)
+            end_time_display = f"{end_hour:02d}:{end_minute:02d}"
+            time_display = f"{time_str}-{end_time_display}"
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка форматирования даты/времени: {e}")
+            gsheet_date_formula = date_str
+            time_start_formula = time_str
+            time_end_formula = time_str
+            time_display = time_str
+
         full_record = [
             record_id,  # A: ID
             name,  # B: Имя
@@ -4114,15 +4139,17 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             st,  # D: Категория
             ss,  # E: Услуга
             specialist,  # F: Специалист
-            gsheet_date,  # G: Дата ← ИЗМЕНЕНО! Формат YYYY-MM-DD
-            time_range,  # H: Время с диапазоном
-            "подтверждено",  # I: Статус
-            created_at,  # J: Дата создания (оставляем текст)
-            comment,  # K: Примечания
-            "❌",  # L: Напоминание 24 часа
-            "❌",  # M: Напоминание 1 час
-            str(chat_id),  # N: chat_id
-            event_id or "",  # O: event_id
+            gsheet_date_formula,  # G: Дата как формула =DATE()
+            time_start_formula,   # H: Время начала как формула =TIME()
+            time_end_formula,     # I: Время окончания как формула =TIME()
+            time_display,         # J: Время для отображения (текст)
+            "подтверждено",       # K: Статус
+            created_at,           # L: Дата создания
+            comment,              # M: Примечания
+            "❌",                 # N: Напоминание 24 часа
+            "❌",                 # O: Напоминание 1 час
+            str(chat_id),         # P: chat_id
+            event_id or "",       # Q: event_id
         ]
 
         print(f"=== DEBUG: Формирую запись для таблицы ===")
