@@ -83,7 +83,7 @@ def safe_append_to_sheet(spreadsheet_id, sheet_name, values):
         result = service.spreadsheets().values().append(
             spreadsheetId=spreadsheet_id,
             range=sheet_name,
-            valueInputOption='RAW',
+            valueInputOption='USER_ENTERED',  # ← ЭТО ИСПРАВЛЕНИЕ!
             body=body
         ).execute()
         
