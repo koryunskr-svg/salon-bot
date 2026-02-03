@@ -4384,9 +4384,24 @@ async def show_my_records_edit(update: Update, context: ContextTypes.DEFAULT_TYP
         if (
             len(r) > 13
             and str(r[13]).strip() == str(user_id)
-            and str(r[8]).strip() == "подтверждено"  # ТОЛЬКО подтвержденные записи
+            and str(r[8]).strip() == "подтверждено"
         ):
-            found.append(r)
+            # ← ТАКАЯ ЖЕ ПРОВЕРКА ДАТЫ
+            date_cell = r[6] if len(r) > 6 else ""
+            if isinstance(date_cell, datetime):
+                record_date_str = date_cell.strftime("%d.%m.%Y")
+            else:
+                record_date_str = str(date_cell).strip()
+            
+            # Проверяем что дата не прошедшая
+            try:
+                record_date = datetime.strptime(record_date_str, "%d.%m.%Y").date()
+                today = datetime.now(TIMEZONE).date()
+                if record_date >= today:
+                    found.append(r)
+            except ValueError:
+                # Если ошибка формата даты, все равно показываем
+                found.append(r)
     if not found and name and phone:
         for r in records:
             if (
@@ -4459,6 +4474,12 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
     if query:
         await query.answer()
     
+    # ← ДОБАВЬТЕ ОТЛАДКУ:
+    print(f"🔍 DEBUG: Ищу записи для user_id={update.effective_user.id}")
+    print(f"🔍 DEBUG: Таблица содержит {len(records)} записей")
+    for i, r in enumerate(records[:3]):  # первые 3 записи
+        print(f"🔍 DEBUG: Запись {i}: ID={r[0]}, Дата={r[6]}, Тип даты={type(r[6])}")
+
     user_id = update.effective_user.id
     name = context.user_data.get("name")
     phone = context.user_data.get("phone")
@@ -4471,9 +4492,37 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
         if (
             len(r) > 13
             and str(r[13]).strip() == str(user_id)
-            and str(r[8]).strip() == "подтверждено"  # ← ИЗМЕНИЛ: только "подтверждено", а не все ACTIVE_STATUSES
+            and str(r[8]).strip() == "подтверждено"
         ):
-            found.append(r)
+            # ← ДОБАВЬТЕ ПРОВЕРКУ ДАТЫ (может быть датой или строкой)
+            date_cell = r[6] if len(r) > 6 else ""
+            if isinstance(date_cell, datetime):
+                record_date_str = date_cell.strftime("%d.%m.%Y")
+            else:
+                record_date_str = str(date_cell).strip()
+            
+            # ← ДОБАВЬТЕ ПРОВЕРКУ ВРЕМЕНИ
+            time_str = str(r[7]).strip() if len(r) > 7 else ""
+            
+            # Извлекаем время начала (если формат "10:00-11:00")
+            if "-" in time_str:
+                time_start_str = time_str.split("-")[0].strip()
+            else:
+                time_start_str = time_str
+            
+            try:
+                # Создаем datetime объекта записи
+                record_datetime_str = f"{record_date_str} {time_start_str}"
+                record_datetime = datetime.strptime(record_datetime_str, "%d.%m.%Y %H:%M")
+                record_datetime = TIMEZONE.localize(record_datetime)
+                
+                # Сравниваем с текущим временем
+                now = datetime.now(TIMEZONE)
+                if record_datetime >= now:
+                    found.append(r)
+            except ValueError:
+                # Если ошибка парсинга, не показываем запись
+                continue
     
     # Если не нашли по chat_id, ищем по имени и телефону
     if not found and name and phone:
