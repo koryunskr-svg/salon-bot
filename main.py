@@ -4496,15 +4496,20 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
             and str(r[13]).strip() == str(user_id)
             and str(r[8]).strip() == "подтверждено"
         ):
+            print(f"🔍 НАЙДЕНА ЗАПИСЬ: ID={r[0]}, Дата={r[6]}, Статус={r[8]}")
+            
             # ← ПРОВЕРКА ДАТЫ (может быть датой или строкой)
             date_cell = r[6] if len(r) > 6 else ""
             if isinstance(date_cell, datetime):
                 record_date_str = date_cell.strftime("%d.%m.%Y")
+                print(f"🔍 Дата как datetime: {date_cell} → строка: {record_date_str}")
             else:
                 record_date_str = str(date_cell).strip()
+                print(f"🔍 Дата как строка: {record_date_str}")
             
             # ← ПРОВЕРКА ВРЕМЕНИ
             time_str = str(r[7]).strip() if len(r) > 7 else ""
+            print(f"🔍 Время из таблицы: '{time_str}'")
             
             # Извлекаем время начала
             if "-" in time_str:
@@ -4512,19 +4517,32 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
             else:
                 time_start_str = time_str
             
+            print(f"🔍 Время начала: '{time_start_str}'")
+            
             try:
                 # Создаем datetime объекта записи
                 record_datetime_str = f"{record_date_str} {time_start_str}"
+                print(f"🔍 Пытаюсь распарсить: '{record_datetime_str}'")
+                
                 record_datetime = datetime.strptime(record_datetime_str, "%d.%m.%Y %H:%M")
                 record_datetime = TIMEZONE.localize(record_datetime)
+                
+                print(f"🔍 Дата+время записи: {record_datetime}")
+                print(f"🔍 Текущее время: {datetime.now(TIMEZONE)}")
                 
                 # Сравниваем с текущим временем
                 now = datetime.now(TIMEZONE)
                 if record_datetime >= now:
+                    print(f"✅ ЗАПИСЬ БУДУЩАЯ - ДОБАВЛЯЕМ!")
                     found.append(r)
-            except ValueError:
+                else:
+                    print(f"❌ ЗАПИСЬ ПРОШЕДШАЯ - ПРОПУСКАЕМ")
+            except ValueError as e:
                 # Если ошибка парсинга, не показываем запись
+                print(f"❌ ОШИБКА ПАРСИНГА: {e}")
                 continue
+    
+    print(f"🔍 ИТОГО найдено записей: {len(found)}")
     
     # Если не нашли по chat_id, ищем по имени и телефону
     if not found and name and phone:
