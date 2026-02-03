@@ -4469,23 +4469,25 @@ async def show_my_records_edit(update: Update, context: ContextTypes.DEFAULT_TYP
 # --- SHOW MY RECORDS VIEW (только просмотр) ---
 
 async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает записи только для просмотра, без возможности отмены"""
+    """Показывает записи только для просмотра"""
     query = update.callback_query
     if query:
         await query.answer()
     
-    # ← ДОБАВЬТЕ ОТЛАДКУ:
-    print(f"🔍 DEBUG: Ищу записи для user_id={update.effective_user.id}")
-    print(f"🔍 DEBUG: Таблица содержит {len(records)} записей")
-    for i, r in enumerate(records[:3]):  # первые 3 записи
-        print(f"🔍 DEBUG: Запись {i}: ID={r[0]}, Дата={r[6]}, Тип даты={type(r[6])}")
-
     user_id = update.effective_user.id
     name = context.user_data.get("name")
     phone = context.user_data.get("phone")
+    
+    # 1. Сначала получаем записи
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     
-    # Ищем записи пользователя
+    # 2. Теперь можно делать отладку (если нужно)
+    print(f"🔍 DEBUG: Ищу записи для user_id={user_id}")
+    print(f"🔍 DEBUG: Таблица содержит {len(records)} записей")
+    for i, r in enumerate(records[:3]):  # первые 3 записи
+        print(f"🔍 DEBUG: Запись {i}: ID={r[0]}, Дата={r[6]}, Тип даты={type(r[6])}")
+    
+    # 3. Ищем записи пользователя
     found = []
     for r in records:
         # Ищем по chat_id
@@ -4494,17 +4496,17 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
             and str(r[13]).strip() == str(user_id)
             and str(r[8]).strip() == "подтверждено"
         ):
-            # ← ДОБАВЬТЕ ПРОВЕРКУ ДАТЫ (может быть датой или строкой)
+            # ← ПРОВЕРКА ДАТЫ (может быть датой или строкой)
             date_cell = r[6] if len(r) > 6 else ""
             if isinstance(date_cell, datetime):
                 record_date_str = date_cell.strftime("%d.%m.%Y")
             else:
                 record_date_str = str(date_cell).strip()
             
-            # ← ДОБАВЬТЕ ПРОВЕРКУ ВРЕМЕНИ
+            # ← ПРОВЕРКА ВРЕМЕНИ
             time_str = str(r[7]).strip() if len(r) > 7 else ""
             
-            # Извлекаем время начала (если формат "10:00-11:00")
+            # Извлекаем время начала
             if "-" in time_str:
                 time_start_str = time_str.split("-")[0].strip()
             else:
