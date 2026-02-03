@@ -4354,6 +4354,72 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     logger.info(f"✅ Запись {record_id} полностью завершена для пользователя {chat_id}")
 
+    # === 8. АВТОМАТИЧЕСКАЯ СОРТИРОВКА ТАБЛИЦЫ ПО ДАТЕ ===
+    try:
+        # Импортируем необходимые модули
+        from google.oauth2.service_account import Credentials
+        from googleapiclient.discovery import build
+        import json
+        
+        # Получаем credentials
+        creds_data = json.loads(GOOGLE_CREDENTIALS_JSON)
+        credentials = Credentials.from_service_account_info(
+            creds_data, 
+            scopes=['https://www.googleapis.com/auth/spreadsheets']
+        )
+        
+        service = build('sheets', 'v4', credentials=credentials)
+        
+        # Сначала узнаем ID листа "Записи"
+        spreadsheet = service.spreadsheets().get(
+            spreadsheetId=SHEET_ID
+        ).execute()
+        
+        sheet_id = None
+        for sheet in spreadsheet.get('sheets', []):
+            if sheet.get('properties', {}).get('title') == 'Записи':
+                sheet_id = sheet.get('properties', {}).get('sheetId')
+                break
+        
+        if not sheet_id:
+            logger.error("❌ Не найден лист 'Записи'")
+            return MENU
+        
+        # Запрос на сортировку (ПРОСТОЙ ВАРИАНТ - работает надежнее)
+        sort_request = {
+            "requests": [
+                {
+                    "sortRange": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": 2,       # Строка 3 (индекс 2)
+                            "endRowIndex": 1000,      # До строки 1000
+                            "startColumnIndex": 0,    # Колонка A
+                            "endColumnIndex": 15      # Колонка O (15 колонок A-O)
+                        },
+                        "sortSpecs": [
+                            {
+                                "dimensionIndex": 6,     # Колонка G (индекс 6)
+                                "sortOrder": "ASCENDING" # По возрастанию
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        
+        # Выполняем сортировку
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=SHEET_ID,
+            body=sort_request
+        ).execute()
+        
+        logger.info("✅ Таблица 'Записи' отсортирована по дате (столбец G)")
+        
+    except Exception as e:
+        logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
+        # НЕ прерываем выполнение - это второстепенная функция
+    
     return MENU
 
 
