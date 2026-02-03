@@ -4587,9 +4587,10 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
     found = future_records  # Заменяем на отфильтрованные
     # ← КОНЕЦ ИСПРАВЛЕННОГО БЛОКА
    
-    # СОРТИРУЕМ записи по дате и времени
+        # СОРТИРУЕМ записи по дате и времени (ПРОСТАЯ ФУНКЦИЯ ВНУТРИ)
     def sort_key(r):
         try:
+            # Получаем дату и время из записи
             date_cell = r[6] if len(r) > 6 else ""
             time_str = str(r[7]).strip() if len(r) > 7 else ""
             
@@ -4608,8 +4609,9 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
             # Создаем datetime для сортировки
             dt_str = f"{date_str} {time_start}"
             return datetime.strptime(dt_str, "%d.%m.%Y %H:%M")
-        except:
+        except Exception as e:
             # Если ошибка - в конец списка
+            logger.error(f"Ошибка сортировки записи: {e}")
             return datetime.max
     
     found.sort(key=sort_key)
