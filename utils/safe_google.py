@@ -83,7 +83,7 @@ def safe_append_to_sheet(spreadsheet_id, sheet_name, values):
         result = service.spreadsheets().values().append(
             spreadsheetId=spreadsheet_id,
             range=sheet_name,
-            valueInputOption='USER_ENTERED',  # ← ЭТО ИСПРАВЛЕНИЕ!
+            valueInputOption='RAW'
             body=body
         ).execute()
         
@@ -110,7 +110,7 @@ def safe_update_sheet_row(spreadsheet_id, sheet_name, row_index, values):
         result = service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
             range=range_name,
-            valueInputOption='USER_ENTERED',  # ← ЭТО ИСПРАВЛЕНИЕ!
+            valueInputOption='RAW'
             body=body
         ).execute()
         logger.info(f"✅ Обновлено {result.get('updatedCells', 0)} ячеек в строке {row_index}")
