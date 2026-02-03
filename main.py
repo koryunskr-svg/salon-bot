@@ -4110,24 +4110,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             event_id or "",  # O: event_id
         ]
 
-        full_record = [
-            record_id,  # A: ID
-            name,  # B: Имя
-            phone,  # C: Телефон
-            st,  # D: Категория
-            ss,  # E: Услуга
-            specialist,  # F: Специалист
-            date_str,    # G: Дата в формате "06.02.2026"
-            time_range,  # H: Время в формате "17:30-19:15"
-            "подтверждено",  # I: Статус
-            created_at,  # J: Дата создания "03.02.2026 20:35"
-            comment,     # K: Примечания
-            "❌",        # L: Напоминание 24 часа
-            "❌",        # M: Напоминание 1 час
-            str(chat_id),  # N: chat_id
-            event_id or "",  # O: event_id
-        ]
-
         print(f"=== DEBUG: Формирую запись для таблицы ===")
         print(f"Запись выглядит так: {full_record}")
         print(f"Колонок в записи: {len(full_record)}")
