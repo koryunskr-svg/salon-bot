@@ -1,4 +1,4 @@
-# main.py- D - 01.02.26 - тест
+# main.py- D - 02.02.26 - тест
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -4202,9 +4202,9 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     
                     # Добавляем примечание с ID новой записи
                     if len(updated_old) > 10:
-                        updated_old[10] = f"изменено на #{record_id} от {date_str}"
+                        updated_old[10] = f"изменено на #{record_id}"
                     elif len(updated_old) == 10:
-                        updated_old.append(f"изменено на #{record_id} от {date_str}")
+                        updated_old.append(f"изменено на #{record_id}")
                     
                     # Сохраняем event_id для удаления
                     old_event_id = r[14] if len(r) > 14 else None
