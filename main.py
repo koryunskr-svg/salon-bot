@@ -3761,6 +3761,11 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    # Добавьте эти импорты здесь или в начале файла
+    import json
+    from google.oauth2.service_account import Credentials
+    from googleapiclient.discovery import build
+
     print("\n" + "="*80)
     print("🚨🚨🚨 FINALIZE_BOOKING НАЧАЛАСЬ 🚨🚨🚨")
     print(f"📱 Chat ID: {update.effective_chat.id}")
@@ -4077,37 +4082,40 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             comment = "автоматически" if was_auto_assigned else ""
 
         # === ПРЕОБРАЗОВАНИЕ ДАТЫ ДЛЯ GOOGLE SHEETS ===
+        gsheet_date_value = date_str  # по умолстанию - текст
         try:
             # 1. Парсим дату
             parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
             # 2. Преобразуем в число Excel (дни с 30.12.1899)
-            excel_date = (parsed_date - datetime(1899, 12, 30)).days
-            # 3. Записываем как ЧИСЛО
-            gsheet_date_value = float(excel_date)  # 46287.0 ← ЧИСЛО!
-            logger.info(f"✅ Дата преобразована: {date_str} → {gsheet_date_value} (Excel date)")
+            # Внимание: Excel считает 1 = 01.01.1900, но есть ошибка (1900 високосный)
+            # Правильная формула:
+            base_date = datetime(1899, 12, 30)
+            delta = parsed_date - base_date
+            excel_date = delta.days
+            # 3. Записываем как ЧИСЛО (без float)
+            gsheet_date_value = excel_date
+            logger.info(f"✅ Дата преобразована: {date_str} → {excel_date} (Excel date)")
         except Exception as e:
             logger.error(f"❌ Ошибка преобразования даты {date_str}: {e}")
-            # В случае ошибки пробуем получить дату из temp_booking
+            # В крайнем случае пробуем из temp_booking
             try:
                 temp_booking = context.user_data.get("temp_booking", {})
-                start_dt = temp_booking.get("start_dt")
-                if start_dt:
-                    # Используем дату из временного бронирования
-                    parsed_date = start_dt.date()
-                    excel_date = (parsed_date - datetime(1899, 12, 30).date()).days
-                    gsheet_date_value = float(excel_date)
-                    logger.info(f"✅ Дата восстановлена из temp_booking: {gsheet_date_value}")
-                else:
-                    # В крайнем случае - сегодняшняя дата
-                    today = datetime.now(TIMEZONE).date()
-                    excel_date = (today - datetime(1899, 12, 30).date()).days
-                    gsheet_date_value = float(excel_date)
-                    logger.warning(f"⚠️ Использована сегодняшняя дата: {gsheet_date_value}")
+                if temp_booking:
+                    start_dt = temp_booking.get("start_dt")
+                    if start_dt:
+                        # Берем дату из уже существующего datetime объекта
+                        gsheet_date_value = (start_dt.date() - datetime(1899, 12, 30).date()).days
+                        logger.info(f"✅ Дата взята из temp_booking: {gsheet_date_value}")
+                    else:
+                        # Сегодняшняя дата как запасной вариант
+                        today_days = (datetime.now(TIMEZONE).date() - datetime(1899, 12, 30).date()).days
+                        gsheet_date_value = today_days
+                        logger.warning(f"⚠️ Использована сегодняшняя дата: {gsheet_date_value}")
             except Exception as e2:
                 logger.error(f"❌ Критическая ошибка даты: {e2}")
-                # Аварийный вариант - номер дня с 1.1.2024
-                import random
-                gsheet_date_value = float(45293 + random.randint(1, 365))  # 2024 год
+                # Оставляем как текст (лучше текст, чем неправильное число)
+                gsheet_date_value = date_str
+                logger.warning(f"⚠️ Дата оставлена как текст: {date_str}")
 
 
         full_record = [
@@ -4401,45 +4409,32 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error("❌ Не найден лист 'Записи'")
             return MENU
         
-        # 2. Запрос на сортировку по ДВУМ колонкам: Дата (G) и Время (H)
-        sort_request = {
+        # 2. СОРТИРОВКА И ФОРМАТИРОВАНИЕ В ОДНОМ ЗАПРОСЕ
+        batch_requests = {
             "requests": [
+                # Сортировка по дате и времени
                 {
                     "sortRange": {
                         "range": {
                             "sheetId": sheet_id,
-                            "startRowIndex": 2,       # Строка 3 (индекс 2)
-                            "endRowIndex": 1000,      # До строки 1000
-                            "startColumnIndex": 0,    # Колонка A
-                            "endColumnIndex": 15      # Колонка O (15 колонок A-O)
+                            "startRowIndex": 2,
+                            "endRowIndex": 1000,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 15
                         },
                         "sortSpecs": [
                             {
-                                "dimensionIndex": 6,     # Колонка G (индекс 6) - Дата
-                                "sortOrder": "ASCENDING" # По возрастанию
+                                "dimensionIndex": 6,     # Колонка G - Дата
+                                "sortOrder": "ASCENDING"
                             },
                             {
-                                "dimensionIndex": 7,     # Колонка H (индекс 7) - Время  
-                                "sortOrder": "ASCENDING" # По возрастанию
+                                "dimensionIndex": 7,     # Колонка H - Время  
+                                "sortOrder": "ASCENDING"
                             }
                         ]
                     }
-                }
-            ]
-        }
-        
-        # 3. Выполняем сортировку
-        result = service.spreadsheets().batchUpdate(
-            spreadsheetId=SHEET_ID,
-            body=sort_request
-        ).execute()
-        
-        logger.info(f"✅ Таблица 'Записи' отсортирована! Результат: {result}")
-        
-        # 4. Проверяем, что формат дат правильный
-        # Устанавливаем формат для колонки G (дата) как ДД.ММ.ГГГГ
-        format_request = {
-            "requests": [
+                },
+                # Формат дат
                 {
                     "repeatCell": {
                         "range": {
@@ -4447,7 +4442,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             "startRowIndex": 2,
                             "endRowIndex": 1000,
                             "startColumnIndex": 6,  # Колонка G
-                            "endColumnIndex": 7     # До колонки G (только она)
+                            "endColumnIndex": 7     # До колонки G
                         },
                         "cell": {
                             "userEnteredFormat": {
@@ -4463,17 +4458,18 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         }
         
-        format_result = service.spreadsheets().batchUpdate(
+        # 3. Выполняем ВСЕ операции одним запросом
+        result = service.spreadsheets().batchUpdate(
             spreadsheetId=SHEET_ID,
-            body=format_request
+            body=batch_requests
         ).execute()
         
-        logger.info(f"✅ Формат дат установлен: {format_result}")
+        logger.info(f"✅ Таблица 'Записи' отсортирована и отформатирована! Результат: {result}")
         
     except Exception as e:
         logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
         # НЕ прерываем выполнение - это второстепенная функция
-        
+               
         # Сначала узнаем ID листа "Записи"
         spreadsheet = service.spreadsheets().get(
             spreadsheetId=SHEET_ID
