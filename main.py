@@ -4384,62 +4384,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error("❌ Не найден лист 'Записи'")
             return MENU
         
-        # 2. СОРТИРОВКА И ФОРМАТИРОВАНИЕ В ОДНОМ ЗАПРОСЕ
-        batch_requests = {
-            "requests": [
-                # Сортировка по дате и времени
-                {
-                    "sortRange": {
-                        "range": {
-                            "sheetId": sheet_id,
-                            "startRowIndex": 2,
-                            "endRowIndex": 1000,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": 15
-                        },
-                        "sortSpecs": [
-                            {
-                                "dimensionIndex": 6,     # Колонка G - Дата
-                                "sortOrder": "ASCENDING"
-                            },
-                            {
-                                "dimensionIndex": 7,     # Колонка H - Время  
-                                "sortOrder": "ASCENDING"
-                            }
-                        ]
-                    }
-                }
-            ]
-        }
-        
-        # 3. Выполняем операцию сортировки
-        result = service.spreadsheets().batchUpdate(
-            spreadsheetId=SHEET_ID,
-            body=batch_requests
-        ).execute()
-        
-        logger.info(f"✅ Таблица 'Записи' отсортирована! Результат: {result}")
-        
-    except Exception as e:
-        logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
-        # НЕ прерываем выполнение - это второстепенная функция
-               
-        # Сначала узнаем ID листа "Записи"
-        spreadsheet = service.spreadsheets().get(
-            spreadsheetId=SHEET_ID
-        ).execute()
-        
-        sheet_id = None
-        for sheet in spreadsheet.get('sheets', []):
-            if sheet.get('properties', {}).get('title') == 'Записи':
-                sheet_id = sheet.get('properties', {}).get('sheetId')
-                break
-        
-        if not sheet_id:
-            logger.error("❌ Не найден лист 'Записи'")
-            return MENU
-        
-        # Запрос на сортировку (ПРОСТОЙ ВАРИАНТ - работает надежнее)
+        # 2. СОРТИРОВКА по дате (столбец G) и времени (столбец H)
         sort_request = {
             "requests": [
                 {
@@ -4453,7 +4398,11 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         },
                         "sortSpecs": [
                             {
-                                "dimensionIndex": 6,     # Колонка G (индекс 6)
+                                "dimensionIndex": 6,     # Колонка G (индекс 6) - Дата
+                                "sortOrder": "ASCENDING" # По возрастанию
+                            },
+                            {
+                                "dimensionIndex": 7,     # Колонка H (индекс 7) - Время
                                 "sortOrder": "ASCENDING" # По возрастанию
                             }
                         ]
@@ -4462,18 +4411,19 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         }
         
-        # Выполняем сортировку
-        service.spreadsheets().batchUpdate(
+        # 3. Выполняем сортировку
+        result = service.spreadsheets().batchUpdate(
             spreadsheetId=SHEET_ID,
             body=sort_request
         ).execute()
         
-        logger.info("✅ Таблица 'Записи' отсортирована по дате (столбец G)")
+        logger.info(f"✅ Таблица 'Записи' отсортирована по дате и времени!")
         
     except Exception as e:
         logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
         # НЕ прерываем выполнение - это второстепенная функция
-    
+        # Просто логируем ошибку и продолжаем
+                    
     return MENU
 
 
