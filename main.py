@@ -4082,31 +4082,27 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             comment = "автоматически" if was_auto_assigned else ""
 
         # === ПРЕОБРАЗОВАНИЕ ДАТЫ ДЛЯ GOOGLE SHEETS ===
-        # Правильное преобразование в число Excel
-        gsheet_date_value = date_str  # по умолчанию - текст
-        
+        # ПРАВИЛЬНОЕ преобразование в число Excel
         try:
             # 1. Парсим дату
             parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
             
-            # 2. Правильное преобразование в число Excel
-            # Excel считает 1 = 01.01.1900 (но 1900 считается високосным, хотя это ошибка)
-            # Правильная формула для Google Sheets:
-            # Дата в днях с 30.12.1899
-            base_date = datetime(1899, 12, 30)
-            delta = parsed_date - base_date
-            excel_date = delta.days
+            # 2. Простое преобразование: Excel считает дни с 30.12.1899
+            # 01.01.1900 = 1 (но из-за ошибки Excel 1900 считается високосным)
+            # Для Google Sheets эта ошибка тоже есть
+            excel_date = (parsed_date - datetime(1899, 12, 30)).days
             
-            # 3. Преобразуем в число с плавающей точкой (как ожидает Google Sheets)
+            # 3. Записываем как ЧИСЛО с плавающей точкой
             gsheet_date_value = float(excel_date)
             
-            logger.info(f"✅ Дата преобразована: {date_str} → {excel_date} (Excel date)")
+            logger.info(f"✅ Дата преобразована в число Excel: {date_str} → {excel_date}")
             
         except Exception as e:
             logger.error(f"❌ Ошибка преобразования даты {date_str}: {e}")
-            # В крайнем случае оставляем как текст
-            gsheet_date_value = date_str
-            logger.warning(f"⚠️ Дата оставлена как текст: {date_str}")
+            # Запасной вариант: сегодняшняя дата
+            today_excel = (datetime.now(TIMEZONE).date() - datetime(1899, 12, 30).date()).days
+            gsheet_date_value = float(today_excel)
+            logger.warning(f"⚠️ Использована сегодняшняя дата: {today_excel}")
 
         full_record = [
             record_id,  # A: ID
@@ -4400,10 +4396,8 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return MENU
         
         # 2. СОРТИРОВКА по дате (столбец G) и времени (столбец H)
-        # И ФОРМАТИРОВАНИЕ дат в один запрос!
-        batch_requests = {
+        sort_request = {
             "requests": [
-                # Сортировка
                 {
                     "sortRange": {
                         "range": {
@@ -4424,38 +4418,17 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             }
                         ]
                     }
-                },
-                # Форматирование дат как ДАТ (а не текст)
-                {
-                    "repeatCell": {
-                        "range": {
-                            "sheetId": sheet_id,
-                            "startRowIndex": 2,
-                            "endRowIndex": 1000,
-                            "startColumnIndex": 6,  # Колонка G
-                            "endColumnIndex": 7     # До колонки H
-                        },
-                        "cell": {
-                            "userEnteredFormat": {
-                                "numberFormat": {
-                                    "type": "DATE",
-                                    "pattern": "dd.mm.yyyy"
-                                }
-                            }
-                        },
-                        "fields": "userEnteredFormat.numberFormat"
-                    }
                 }
             ]
         }
         
-        # 3. Выполняем сортировку и форматирование
+        # 3. Выполняем сортировку
         result = service.spreadsheets().batchUpdate(
             spreadsheetId=SHEET_ID,
-            body=batch_requests
+            body=sort_request
         ).execute()
         
-        logger.info(f"✅ Таблица 'Записи' отсортирована и отформатирована!")
+        logger.info(f"✅ Таблица 'Записи' отсортирована по дате и времени!")
         
     except Exception as e:
         logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
