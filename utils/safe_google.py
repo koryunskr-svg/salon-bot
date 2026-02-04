@@ -110,7 +110,7 @@ def safe_update_sheet_row(spreadsheet_id, sheet_name, row_index, values):
         result = service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
             range=range_name,
-            valueInputOption='RAW'
+            valueInputOption='RAW',
             body=body
         ).execute()
         logger.info(f"✅ Обновлено {result.get('updatedCells', 0)} ячеек в строке {row_index}")
