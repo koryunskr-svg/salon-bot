@@ -1045,7 +1045,7 @@ async def _validate_booking_checks(
 
                 except (ValueError, TypeError):
                     continue
-    
+
     # === ПРОВЕРКА 3: ПОВТОРНАЯ ЗАПИСЬ В КАТЕГОРИИ ===
     # Проверяем по телефону (разные люди могут использовать один телефон)
     repeat_records = []
@@ -1053,11 +1053,12 @@ async def _validate_booking_checks(
     different_name_same_phone = False
     
     for r in records:
-        if len(r) > 4:
-            record_name = str(r[1]).strip() if len(r) > 1 else ""             # ← ИСПРАВЛЕНО
-            record_phone = str(r[2]).strip() if len(r) > 2 else ""            # ← ИСПРАВЛЕНО
-            record_category = str(r[3]).strip() if len(r) > 3 else ""         # ← ИСПРАВЛЕНО
-            record_status = str(r[8]).strip() if len(r) > 8 else ""           # ← ИСПРАВЛЕНО                           
+        # ← ИЗМЕНЕНИЕ: проверяем ДОСТАТОЧНОЕ количество колонок
+        if len(r) > 8:  # ← МЕНЯЕМ с >4 на >8 (нужен доступ к r[8] - статус)
+            record_name = str(r[1]).strip() if len(r) > 1 else ""             
+            record_phone = str(r[2]).strip() if len(r) > 2 else ""            
+            record_category = str(r[3]).strip() if len(r) > 3 else ""         
+            record_status = str(r[8]).strip() if len(r) > 8 else ""           # ← ТЕПЕРЬ БЕЗОПАСНО                          
 
             # Проверяем что дата записи не прошедшая (только будущие записи)
             date_cell = r[6] if len(r) > 6 else ""
