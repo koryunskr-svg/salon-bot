@@ -4469,6 +4469,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
         # НЕ прерываем выполнение - это второстепенная функция
+        # Просто логируем ошибку и продолжаем
                
         # Сначала узнаем ID листа "Записи"
         spreadsheet = service.spreadsheets().get(
