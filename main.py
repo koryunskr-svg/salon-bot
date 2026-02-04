@@ -4082,41 +4082,16 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             comment = "автоматически" if was_auto_assigned else ""
 
         # === ПРЕОБРАЗОВАНИЕ ДАТЫ ДЛЯ GOOGLE SHEETS ===
-        gsheet_date_value = date_str  # по умолстанию - текст
+        # ПРОСТОЙ ВАРИАНТ: оставляем как текст
+        # Google Sheets автоматически распознает дату в формате ДД.ММ.ГГГГ
+        gsheet_date_value = date_str
+        
+        # Только для логирования проверяем формат
         try:
-            # 1. Парсим дату
-            parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
-            # 2. Преобразуем в число Excel (дни с 30.12.1899)
-            # Внимание: Excel считает 1 = 01.01.1900, но есть ошибка (1900 високосный)
-            # Правильная формула:
-            base_date = datetime(1899, 12, 30)
-            delta = parsed_date - base_date
-            excel_date = delta.days
-            # 3. Записываем как ЧИСЛО (без float)
-            gsheet_date_value = excel_date
-            logger.info(f"✅ Дата преобразована: {date_str} → {excel_date} (Excel date)")
-        except Exception as e:
-            logger.error(f"❌ Ошибка преобразования даты {date_str}: {e}")
-            # В крайнем случае пробуем из temp_booking
-            try:
-                temp_booking = context.user_data.get("temp_booking", {})
-                if temp_booking:
-                    start_dt = temp_booking.get("start_dt")
-                    if start_dt:
-                        # Берем дату из уже существующего datetime объекта
-                        gsheet_date_value = (start_dt.date() - datetime(1899, 12, 30).date()).days
-                        logger.info(f"✅ Дата взята из temp_booking: {gsheet_date_value}")
-                    else:
-                        # Сегодняшняя дата как запасной вариант
-                        today_days = (datetime.now(TIMEZONE).date() - datetime(1899, 12, 30).date()).days
-                        gsheet_date_value = today_days
-                        logger.warning(f"⚠️ Использована сегодняшняя дата: {gsheet_date_value}")
-            except Exception as e2:
-                logger.error(f"❌ Критическая ошибка даты: {e2}")
-                # Оставляем как текст (лучше текст, чем неправильное число)
-                gsheet_date_value = date_str
-                logger.warning(f"⚠️ Дата оставлена как текст: {date_str}")
-
+            datetime.strptime(date_str, "%d.%m.%Y")
+            logger.info(f"✅ Дата {date_str} имеет правильный формат для Google Sheets")
+        except ValueError:
+            logger.error(f"❌ Неверный формат даты: {date_str}")
 
         full_record = [
             record_id,  # A: ID
@@ -4433,43 +4408,21 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             }
                         ]
                     }
-                },
-                # Формат дат
-                {
-                    "repeatCell": {
-                        "range": {
-                            "sheetId": sheet_id,
-                            "startRowIndex": 2,
-                            "endRowIndex": 1000,
-                            "startColumnIndex": 6,  # Колонка G
-                            "endColumnIndex": 7     # До колонки G
-                        },
-                        "cell": {
-                            "userEnteredFormat": {
-                                "numberFormat": {
-                                    "type": "DATE",
-                                    "pattern": "dd.mm.yyyy"
-                                }
-                            }
-                        },
-                        "fields": "userEnteredFormat.numberFormat"
-                    }
                 }
             ]
         }
         
-        # 3. Выполняем ВСЕ операции одним запросом
+        # 3. Выполняем операцию сортировки
         result = service.spreadsheets().batchUpdate(
             spreadsheetId=SHEET_ID,
             body=batch_requests
         ).execute()
         
-        logger.info(f"✅ Таблица 'Записи' отсортирована и отформатирована! Результат: {result}")
+        logger.info(f"✅ Таблица 'Записи' отсортирована! Результат: {result}")
         
     except Exception as e:
         logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
         # НЕ прерываем выполнение - это второстепенная функция
-        # Просто логируем ошибку и продолжаем
                
         # Сначала узнаем ID листа "Записи"
         spreadsheet = service.spreadsheets().get(
