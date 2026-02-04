@@ -4083,7 +4083,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # 2. Преобразуем в ISO формат (YYYY-MM-DD)
             # Google Sheets 100% поймет это как дату
             gsheet_date_value = parsed_date.strftime("%Y-%m-%d")  # "2026-02-05"
-            logger.info(f"✅ Дата преобразована: {date_str} → {gsheet_date_value}")
+            logger.info(f"✅ Дата преобразована: {date_str} → {gsheet_date_value} (ISO формат)")
         except Exception as e:
             logger.error(f"❌ Ошибка преобразования даты {date_str}: {e}")
             # Если ошибка, оставляем как текст
@@ -4096,7 +4096,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             st,  # D: Категория
             ss,  # E: Услуга
             specialist,  # F: Специалист
-            gsheet_date_value,    # G: Дата в формате "2026-02-05" ← ИЗМЕНЕНО!
+            gsheet_date_value,    # G: Дата в формате "2026-02-05" (ISO) ← КОММЕНТАРИЙ ИСПРАВЛЕН!
             time_range,  # H: Время в формате "17:30-19:15"
             "подтверждено",  # I: Статус
             created_at,  # J: Дата создания "03.02.2026 20:35"
