@@ -861,17 +861,17 @@ async def _validate_booking_checks(
         # === ТОЛЬКО ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
         for r in records:
             if len(r) > 8:
-                record_specialist = str(r[5]).strip()
-                record_status = str(r[8]).strip()
-                record_date = str(r[6]).strip()
+                record_specialist = str(r[5]).strip() if len(r) > 5 else ""  # ← ИСПРАВЛЕНО
+                record_status = str(r[8]).strip() if len(r) > 8 else ""      # ← ИСПРАВЛЕНО
+                record_date = str(r[6]).strip() if len(r) > 6 else ""        # ← ИСПРАВЛЕНО
                 
                 # Проверяем только подтвержденные записи того же специалиста в тот же день
                 if (record_specialist == specialist and 
                     record_status == "подтверждено" and 
                     record_date == date_str):
                     
-                    record_time = str(r[7]).strip()
-                    record_service = str(r[4]).strip() if len(r) > 4 else ""
+                    record_time = str(r[7]).strip() if len(r) > 7 else ""    # ← ИСПРАВЛЕНО
+                    record_service = str(r[4]).strip() if len(r) > 4 else "" # ← ИСПРАВЛЕНО
                     
                     try:
                         record_start = TIMEZONE.localize(
@@ -967,24 +967,22 @@ async def _validate_booking_checks(
                 print(f"  [{i}] {r[1]}: ОШИБКА парсинга времени")
     print(f"Всего записей с этим телефоном: {phone_matches}")
     print(f"=== КОНЕЦ ОТЛАДКИ ===")
-    # ← КОНЕЦ ДОБАВЛЕНИЯ ↑↑↑
-    
-    # === ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
+    # ← КОНЕЦ ДОБАВЛЕНИЯ ↑
     
     # === ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
     for r in records:
         if len(r) > 8:
-            record_specialist = str(r[5]).strip()
-            record_status = str(r[8]).strip()
-            record_date = str(r[6]).strip()
+            record_specialist = str(r[5]).strip() if len(r) > 5 else ""       # ← ИСПРАВЛЕНО
+            record_status = str(r[8]).strip() if len(r) > 8 else ""           # ← ИСПРАВЛЕНО
+            record_date = str(r[6]).strip() if len(r) > 6 else ""             # ← ИСПРАВЛЕНО
             
             # Проверяем только подтвержденные записи того же специалиста в тот же день
             if (record_specialist == specialist and 
                 record_status == "подтверждено" and 
                 record_date == date_str):
                 
-                record_time = str(r[7]).strip()
-                record_service = str(r[4]).strip() if len(r) > 4 else ""
+                record_time = str(r[7]).strip() if len(r) > 7 else ""         # ← ИСПРАВЛЕНО
+                record_service = str(r[4]).strip() if len(r) > 4 else ""      # ← ИСПРАВЛЕНО
                 
                 try:
                     record_start = TIMEZONE.localize(
@@ -1009,19 +1007,19 @@ async def _validate_booking_checks(
     # === ПРОВЕРКА 2: КЛИЕНТ (ПО ТЕЛЕФОНУ) ЗАНЯТ? ===
     for r in records:
         if len(r) > 8:
-            record_phone = str(r[2]).strip()
-            record_status = str(r[8]).strip()
-            record_date = str(r[6]).strip()
+            record_phone = str(r[2]).strip() if len(r) > 2 else ""            # ← ИСПРАВЛЕНО
+            record_status = str(r[8]).strip() if len(r) > 8 else ""           # ← ИСПРАВЛЕНО
+            record_date = str(r[6]).strip() if len(r) > 6 else ""             # ← ИСПРАВЛЕНО
                      
             # Проверяем тот же телефон (разные люди могут использовать один телефон)
             if (record_phone == phone and 
                 record_status == "подтверждено" and 
                 record_date == date_str):
                 
-                record_name = str(r[1]).strip()
-                record_time = str(r[7]).strip()
-                record_service = str(r[4]).strip() if len(r) > 4 else ""
-                record_specialist = str(r[5]).strip()
+                record_name = str(r[1]).strip() if len(r) > 1 else ""         # ← ИСПРАВЛЕНО
+                record_time = str(r[7]).strip() if len(r) > 7 else ""         # ← ИСПРАВЛЕНО
+                record_service = str(r[4]).strip() if len(r) > 4 else ""      # ← ИСПРАВЛЕНО
+                record_specialist = str(r[5]).strip() if len(r) > 5 else ""   # ← ИСПРАВЛЕНО
                 
                 try:
                     record_start = TIMEZONE.localize(
@@ -1041,6 +1039,7 @@ async def _validate_booking_checks(
                         else:
                             # Разные люди, но один телефон (семья) - РАЗРЕШАЕМ
                             logger.info(f"⚠️ Разные люди используют один телефон: {record_name} и {name}")
+
                             # Пропускаем проверку, разрешаем запись
                             continue
 
@@ -1055,10 +1054,10 @@ async def _validate_booking_checks(
     
     for r in records:
         if len(r) > 4:
-            record_name = str(r[1]).strip()
-            record_phone = str(r[2]).strip()
-            record_category = str(r[3]).strip()
-            record_status = str(r[8]).strip()                           
+            record_name = str(r[1]).strip() if len(r) > 1 else ""             # ← ИСПРАВЛЕНО
+            record_phone = str(r[2]).strip() if len(r) > 2 else ""            # ← ИСПРАВЛЕНО
+            record_category = str(r[3]).strip() if len(r) > 3 else ""         # ← ИСПРАВЛЕНО
+            record_status = str(r[8]).strip() if len(r) > 8 else ""           # ← ИСПРАВЛЕНО                           
 
             # Проверяем что дата записи не прошедшая (только будущие записи)
             date_cell = r[6] if len(r) > 6 else ""
