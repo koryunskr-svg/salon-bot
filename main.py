@@ -4082,16 +4082,31 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             comment = "автоматически" if was_auto_assigned else ""
 
         # === ПРЕОБРАЗОВАНИЕ ДАТЫ ДЛЯ GOOGLE SHEETS ===
-        # ПРОСТОЙ ВАРИАНТ: оставляем как текст
-        # Google Sheets автоматически распознает дату в формате ДД.ММ.ГГГГ
-        gsheet_date_value = date_str
+        # Правильное преобразование в число Excel
+        gsheet_date_value = date_str  # по умолчанию - текст
         
-        # Только для логирования проверяем формат
         try:
-            datetime.strptime(date_str, "%d.%m.%Y")
-            logger.info(f"✅ Дата {date_str} имеет правильный формат для Google Sheets")
-        except ValueError:
-            logger.error(f"❌ Неверный формат даты: {date_str}")
+            # 1. Парсим дату
+            parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
+            
+            # 2. Правильное преобразование в число Excel
+            # Excel считает 1 = 01.01.1900 (но 1900 считается високосным, хотя это ошибка)
+            # Правильная формула для Google Sheets:
+            # Дата в днях с 30.12.1899
+            base_date = datetime(1899, 12, 30)
+            delta = parsed_date - base_date
+            excel_date = delta.days
+            
+            # 3. Преобразуем в число с плавающей точкой (как ожидает Google Sheets)
+            gsheet_date_value = float(excel_date)
+            
+            logger.info(f"✅ Дата преобразована: {date_str} → {excel_date} (Excel date)")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка преобразования даты {date_str}: {e}")
+            # В крайнем случае оставляем как текст
+            gsheet_date_value = date_str
+            logger.warning(f"⚠️ Дата оставлена как текст: {date_str}")
 
         full_record = [
             record_id,  # A: ID
@@ -4385,44 +4400,66 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return MENU
         
         # 2. СОРТИРОВКА по дате (столбец G) и времени (столбец H)
-        sort_request = {
+        # И ФОРМАТИРОВАНИЕ дат в один запрос!
+        batch_requests = {
             "requests": [
+                # Сортировка
                 {
                     "sortRange": {
                         "range": {
                             "sheetId": sheet_id,
-                            "startRowIndex": 2,       # Строка 3 (индекс 2)
-                            "endRowIndex": 1000,      # До строки 1000
-                            "startColumnIndex": 0,    # Колонка A
-                            "endColumnIndex": 15      # Колонка O (15 колонок A-O)
+                            "startRowIndex": 2,
+                            "endRowIndex": 1000,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 15
                         },
                         "sortSpecs": [
                             {
-                                "dimensionIndex": 6,     # Колонка G (индекс 6) - Дата
-                                "sortOrder": "ASCENDING" # По возрастанию
+                                "dimensionIndex": 6,     # Колонка G - Дата
+                                "sortOrder": "ASCENDING"
                             },
                             {
-                                "dimensionIndex": 7,     # Колонка H (индекс 7) - Время
-                                "sortOrder": "ASCENDING" # По возрастанию
+                                "dimensionIndex": 7,     # Колонка H - Время
+                                "sortOrder": "ASCENDING"
                             }
                         ]
+                    }
+                },
+                # Форматирование дат как ДАТ (а не текст)
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": 2,
+                            "endRowIndex": 1000,
+                            "startColumnIndex": 6,  # Колонка G
+                            "endColumnIndex": 7     # До колонки H
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "numberFormat": {
+                                    "type": "DATE",
+                                    "pattern": "dd.mm.yyyy"
+                                }
+                            }
+                        },
+                        "fields": "userEnteredFormat.numberFormat"
                     }
                 }
             ]
         }
         
-        # 3. Выполняем сортировку
+        # 3. Выполняем сортировку и форматирование
         result = service.spreadsheets().batchUpdate(
             spreadsheetId=SHEET_ID,
-            body=sort_request
+            body=batch_requests
         ).execute()
         
-        logger.info(f"✅ Таблица 'Записи' отсортирована по дате и времени!")
+        logger.info(f"✅ Таблица 'Записи' отсортирована и отформатирована!")
         
     except Exception as e:
         logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
         # НЕ прерываем выполнение - это второстепенная функция
-        # Просто логируем ошибку и продолжаем
                     
     return MENU
 
