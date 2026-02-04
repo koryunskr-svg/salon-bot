@@ -4087,8 +4087,28 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"✅ Дата преобразована: {date_str} → {gsheet_date_value} (Excel date)")
         except Exception as e:
             logger.error(f"❌ Ошибка преобразования даты {date_str}: {e}")
-            # Если ошибка, оставляем как текст
-            gsheet_date_value = date_str 
+            # В случае ошибки пробуем получить дату из temp_booking
+            try:
+                temp_booking = context.user_data.get("temp_booking", {})
+                start_dt = temp_booking.get("start_dt")
+                if start_dt:
+                    # Используем дату из временного бронирования
+                    parsed_date = start_dt.date()
+                    excel_date = (parsed_date - datetime(1899, 12, 30).date()).days
+                    gsheet_date_value = float(excel_date)
+                    logger.info(f"✅ Дата восстановлена из temp_booking: {gsheet_date_value}")
+                else:
+                    # В крайнем случае - сегодняшняя дата
+                    today = datetime.now(TIMEZONE).date()
+                    excel_date = (today - datetime(1899, 12, 30).date()).days
+                    gsheet_date_value = float(excel_date)
+                    logger.warning(f"⚠️ Использована сегодняшняя дата: {gsheet_date_value}")
+            except Exception as e2:
+                logger.error(f"❌ Критическая ошибка даты: {e2}")
+                # Аварийный вариант - номер дня с 1.1.2024
+                import random
+                gsheet_date_value = float(45293 + random.randint(1, 365))  # 2024 год
+
 
         full_record = [
             record_id,  # A: ID
@@ -4352,12 +4372,9 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     logger.info(f"✅ Запись {record_id} полностью завершена для пользователя {chat_id}")
 
-    # === 8. АВТОМАТИЧЕСКАЯ СОРТИРОВКА ТАБЛИЦЫ ПО ДАТЕ ===
+    # === 8. АВТОМАТИЧЕСКАЯ СОРТИРОВКА ТАБЛИЦЫ ПО ДАТЕ И ВРЕМЕНИ ===
     try:
-        # Импортируем необходимые модули
-        from google.oauth2.service_account import Credentials
-        from googleapiclient.discovery import build
-        import json
+        logger.info("🔄 Начинаю автоматическую сортировку таблицы...")
         
         # Получаем credentials
         creds_data = json.loads(GOOGLE_CREDENTIALS_JSON)
@@ -4367,6 +4384,95 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         service = build('sheets', 'v4', credentials=credentials)
+        
+        # 1. Узнаём ID листа "Записи"
+        spreadsheet = service.spreadsheets().get(
+            spreadsheetId=SHEET_ID
+        ).execute()
+        
+        sheet_id = None
+        for sheet in spreadsheet.get('sheets', []):
+            if sheet.get('properties', {}).get('title') == 'Записи':
+                sheet_id = sheet.get('properties', {}).get('sheetId')
+                logger.info(f"✅ Найден лист 'Записи' с ID: {sheet_id}")
+                break
+        
+        if not sheet_id:
+            logger.error("❌ Не найден лист 'Записи'")
+            return MENU
+        
+        # 2. Запрос на сортировку по ДВУМ колонкам: Дата (G) и Время (H)
+        sort_request = {
+            "requests": [
+                {
+                    "sortRange": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": 2,       # Строка 3 (индекс 2)
+                            "endRowIndex": 1000,      # До строки 1000
+                            "startColumnIndex": 0,    # Колонка A
+                            "endColumnIndex": 15      # Колонка O (15 колонок A-O)
+                        },
+                        "sortSpecs": [
+                            {
+                                "dimensionIndex": 6,     # Колонка G (индекс 6) - Дата
+                                "sortOrder": "ASCENDING" # По возрастанию
+                            },
+                            {
+                                "dimensionIndex": 7,     # Колонка H (индекс 7) - Время  
+                                "sortOrder": "ASCENDING" # По возрастанию
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        
+        # 3. Выполняем сортировку
+        result = service.spreadsheets().batchUpdate(
+            spreadsheetId=SHEET_ID,
+            body=sort_request
+        ).execute()
+        
+        logger.info(f"✅ Таблица 'Записи' отсортирована! Результат: {result}")
+        
+        # 4. Проверяем, что формат дат правильный
+        # Устанавливаем формат для колонки G (дата) как ДД.ММ.ГГГГ
+        format_request = {
+            "requests": [
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": 2,
+                            "endRowIndex": 1000,
+                            "startColumnIndex": 6,  # Колонка G
+                            "endColumnIndex": 7     # До колонки G (только она)
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "numberFormat": {
+                                    "type": "DATE",
+                                    "pattern": "dd.mm.yyyy"
+                                }
+                            }
+                        },
+                        "fields": "userEnteredFormat.numberFormat"
+                    }
+                }
+            ]
+        }
+        
+        format_result = service.spreadsheets().batchUpdate(
+            spreadsheetId=SHEET_ID,
+            body=format_request
+        ).execute()
+        
+        logger.info(f"✅ Формат дат установлен: {format_result}")
+        
+    except Exception as e:
+        logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
+        # НЕ прерываем выполнение - это второстепенная функция
         
         # Сначала узнаем ID листа "Записи"
         spreadsheet = service.spreadsheets().get(
