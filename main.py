@@ -4411,6 +4411,8 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"⚠️ Ошибка сортировки: {e}")
 
+    return MENU
+
     # === 9. ЗАВЕРШЕНИЕ - НЕ ОСТАНАВЛИВАЕМ БОТ! ===
     print(f"\n{'='*80}")
     print(f"✅ FINALIZE_BOOKING ЗАВЕРШЕНА УСПЕШНО")
