@@ -349,22 +349,19 @@ def safe_sort_sheet_records(spreadsheet_id: str) -> bool:
         from google.oauth2.service_account import Credentials
         from googleapiclient.discovery import build
 
-        # Получаем креды из переменной окружения
         creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON") or os.getenv("GOOGLE_CREDENTIALS")
         if not creds_json:
             logger.error("❌ GOOGLE_CREDENTIALS_JSON не найден в окружении")
             return False
 
-        # Парсим креды (поддержка как JSON-строки, так и пути к файлу)
         try:
             creds_data = json.loads(creds_json)
         except json.JSONDecodeError:
-            # Если это путь к файлу — читаем его
             if os.path.exists(creds_json):
                 with open(creds_json, 'r', encoding='utf-8') as f:
                     creds_data = json.load(f)
             else:
-                logger.error(f"❌ Неверный формат GOOGLE_CREDENTIALS: {creds_json[:50]}...")
+                logger.error(f"❌ Неверный формат кредов: {creds_json[:50]}...")
                 return False
 
         creds = Credentials.from_service_account_info(
@@ -373,7 +370,6 @@ def safe_sort_sheet_records(spreadsheet_id: str) -> bool:
         )
         service = build('sheets', 'v4', credentials=creds)
 
-        # Находим ID листа "Записи"
         spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         sheet_id = None
         for sheet in spreadsheet.get('sheets', []):
@@ -385,36 +381,34 @@ def safe_sort_sheet_records(spreadsheet_id: str) -> bool:
             logger.error("❌ Лист 'Записи' не найден в таблице")
             return False
 
-        # Запрос на сортировку: дата (G) → время (H)
         body = {
             "requests": [{
                 "sortRange": {
                     "range": {
                         "sheetId": sheet_id,
-                        "startRowIndex": 2,      # Пропускаем заголовки (строки 1-2)
-                        "endRowIndex": 10000,    # Макс. строк
+                        "startRowIndex": 2,
+                        "endRowIndex": 10000,
                         "startColumnIndex": 0,
-                        "endColumnIndex": 15     # Колонки A-O
+                        "endColumnIndex": 15
                     },
                     "sortSpecs": [
-                        {"dimensionIndex": 6, "sortOrder": "ASCENDING"},  # Дата (G)
-                        {"dimensionIndex": 7, "sortOrder": "ASCENDING"}   # Время (H)
+                        {"dimensionIndex": 6, "sortOrder": "ASCENDING"},
+                        {"dimensionIndex": 7, "sortOrder": "ASCENDING"}
                     ]
                 }
             }]
         }
 
-        result = service.spreadsheets().batchUpdate(
+        service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id,
             body=body
         ).execute()
 
-        logger.info(f"✅ Сортировка выполнена: {len(result.get('replies', []))} операций")
+        logger.info("✅ Сортировка листа 'Записи' выполнена")
         return True
 
     except Exception as e:
         logger.error(f"❌ Ошибка сортировки: {e}", exc_info=True)
         return False
-
 
 print("✅ Модуль safe_google.py загружен.")
