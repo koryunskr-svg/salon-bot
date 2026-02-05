@@ -1,4 +1,4 @@
-# main.py- D - 02.02.26 - для изм.
+# main.py- D - 02.02.26
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
