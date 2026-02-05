@@ -4407,9 +4407,9 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if sort_success:
             logger.info("✅ Таблица 'Записи' отсортирована по дате и времени")
         else:
-            logger.warning("⚠️ Сортировка выполнена с предупреждениями")
+            logger.warning("⚠️ Сортировка не удалась, но запись сохранена")
     except Exception as e:
-        logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
+        logger.error(f"⚠️ Ошибка сортировки: {e}")
         # Не прерываем работу бота — сортировка второстепенна
 
     # === 9. ЗАВЕРШЕНИЕ - НЕ ОСТАНАВЛИВАЕМ БОТ! ===
