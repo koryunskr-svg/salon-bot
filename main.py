@@ -1,4 +1,4 @@
-# main.py- D - 05.02.26 - GPT
+# main.py- D - 02.02.26 - тест
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -4420,7 +4420,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception:
         logger.exception("⚠️ Ошибка при сортировке таблицы")
-
 
         # === 9. ЗАВЕРШЕНИЕ - НЕ ОСТАНАВЛИВАЕМ БОТ! ===
         print(f"\n{'='*80}")
