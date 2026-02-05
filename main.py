@@ -4410,7 +4410,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning("⚠️ Сортировка не удалась, но запись сохранена")
     except Exception as e:
         logger.error(f"⚠️ Ошибка сортировки: {e}")
-        # Не прерываем работу бота — сортировка второстепенна
 
     # === 9. ЗАВЕРШЕНИЕ - НЕ ОСТАНАВЛИВАЕМ БОТ! ===
     print(f"\n{'='*80}")
