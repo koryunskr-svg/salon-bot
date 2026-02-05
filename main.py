@@ -4401,110 +4401,23 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("🔍 Проверка: достигнут блок перед сортировкой")
 
     # === 8. АВТОМАТИЧЕСКАЯ СОРТИРОВКА ТАБЛИЦЫ ПО ДАТЕ И ВРЕМЕНИ ===
-    try:
-        # === ПРОСТАЯ ПРОВЕРКА - ВЫПОЛНЯЕТСЯ ЛИ БЛОК? ===
-        print(f"\n{'='*80}")
-        print(f"🔧🔧🔧 БЛОК СОРТИРОВКИ ВЫПОЛНЯЕТСЯ! 🔧🔧🔧")
-        print(f"🔧 Время: {datetime.now(TIMEZONE).strftime('%H:%M:%S')}")
-        print(f"🔧 SHEET_ID: {SHEET_ID}")
-        print(f"{'='*80}\n")
-        
-        logger.info("🔄 БЛОК СОРТИРОВКИ ВЫПОЛНЯЕТСЯ - начинаю сортировку...")
-        
-        # ПРОСТОЙ ТЕСТ - запишем в лог факт выполнения
-        test_message = f"Сортировка вызвана для записи {record_id} в {datetime.now(TIMEZONE).strftime('%H:%M:%S')}"
-        logger.info(test_message)
-        print(f"✅ {test_message}")
-        
-        # === УПРОЩЕННАЯ СОРТИРОВКА - ТОЛЬКО ПРОВЕРКА ===
-        # 1. Проверяем credentials
-        if not GOOGLE_CREDENTIALS_JSON:
-            print(f"❌ GOOGLE_CREDENTIALS_JSON пуст!")
-            logger.error("❌ GOOGLE_CREDENTIALS_JSON пуст!")
-            return MENU
-        
-        # 2. Пытаемся выполнить простой запрос
-        import json
-        from google.oauth2.service_account import Credentials
-        from googleapiclient.discovery import build
-        
-        creds_data = json.loads(GOOGLE_CREDENTIALS_JSON)
-        credentials = Credentials.from_service_account_info(
-            creds_data, 
-            scopes=['https://www.googleapis.com/auth/spreadsheets']
-        )
-        
-        service = build('sheets', 'v4', credentials=credentials)
-        
-        # 3. Просто получаем информацию о таблице (тест)
-        print(f"🔧 Тест: запрашиваю информацию о таблице...")
-        spreadsheet = service.spreadsheets().get(spreadsheetId=SHEET_ID).execute()
-        
-        # 4. Ищем лист "Записи"
-        sheet_id = None
-        for sheet in spreadsheet.get('sheets', []):
-            if sheet.get('properties', {}).get('title') == 'Записи':
-                sheet_id = sheet.get('properties', {}).get('sheetId')
-                break
-        
-        if sheet_id:
-            print(f"✅ Лист 'Записи' найден, ID: {sheet_id}")
-            logger.info(f"✅ Лист 'Записи' найден, ID: {sheet_id}")
-            
-            # 5. ПРОСТАЯ СОРТИРОВКА - только если все проверки пройдены
-            sort_request = {
-                "requests": [
-                    {
-                        "sortRange": {
-                            "range": {
-                                "sheetId": sheet_id,
-                                "startRowIndex": 2,
-                                "endRowIndex": 100,
-                                "startColumnIndex": 0,
-                                "endColumnIndex": 15
-                            },
-                            "sortSpecs": [
-                                {
-                                    "dimensionIndex": 6,  # Колонка G
-                                    "sortOrder": "ASCENDING"
-                                },
-                                {
-                                    "dimensionIndex": 7,  # Колонка H
-                                    "sortOrder": "ASCENDING"
-                                }
-                            ]
-                        }
-                    }
-                ]
-            }
-            
-            print(f"🔧 Отправляю запрос на сортировку...")
-            result = service.spreadsheets().batchUpdate(
-                spreadsheetId=SHEET_ID,
-                body=sort_request
-            ).execute()
-            
-            print(f"✅ Сортировка выполнена! Результат: {result}")
-            logger.info(f"✅ Таблица 'Записи' отсортирована по дате и времени!")
-            
-        else:
-            print(f"❌ Лист 'Записи' не найден!")
-            logger.error("❌ Лист 'Записи' не найден")
-        
-        print(f"\n{'='*80}")
-        print(f"✅ БЛОК СОРТИРОВКИ ЗАВЕРШЕН УСПЕШНО")
-        print(f"{'='*80}\n")
-        
-    except Exception as e:
-        print(f"\n{'='*80}")
-        print(f"❌ ОШИБКА В БЛОКЕ СОРТИРОВКИ: {e}")
-        print(f"{'='*80}\n")
-        
-        logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        # НЕ прерываем выполнение - это второстепенная функция
+    
+    print(f"\n{'='*80}")
+    print(f"🔧🔧🔧 БЛОК 8 СОРТИРОВКИ НАЧАЛ ВЫПОЛНЕНИЕ! 🔧🔧🔧")
+    print(f"🔧 Время: {datetime.now().strftime('%H:%M:%S')}")
+    print(f"🔧 ID записи: {record_id}")
+    print(f"{'='*80}\n")
+    
+try:
+    from utils.safe_google import safe_sort_sheet_records
+    sort_success = safe_sort_sheet_records(SHEET_ID)
+    if sort_success:
+        logger.info("✅ Таблица 'Записи' отсортирована по дате и времени")
+    else:
+        logger.warning("⚠️ Сортировка выполнена с предупреждениями")
+except Exception as e:
+    logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
+    # Не прерываем работу бота — сортировка второстепенн
 
     # === 9. ЗАВЕРШЕНИЕ - НЕ ОСТАНАВЛИВАЕМ БОТ! ===
     print(f"\n{'='*80}")
