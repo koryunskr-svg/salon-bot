@@ -1,4 +1,4 @@
-# main.py- D - 02.02.26 - тест
+# main.py- D - 02.02.26 - для изм.
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -56,7 +56,7 @@ try:
         safe_create_calendar_event,
         safe_update_calendar_event,
         safe_delete_calendar_event,
-        safe_log_missed_call,
+        # safe_log_missed_call,  # ← ЗАКОММЕНТИРУЙТЕ ЭТУ СТРОКУ
     )
     print("✅ Импорт safe_google успешен")
 except ImportError as e:
@@ -861,17 +861,17 @@ async def _validate_booking_checks(
         # === ТОЛЬКО ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
         for r in records:
             if len(r) > 8:
-                record_specialist = str(r[5]).strip() if len(r) > 5 else ""  # ← ИСПРАВЛЕНО
-                record_status = str(r[8]).strip() if len(r) > 8 else ""      # ← ИСПРАВЛЕНО
-                record_date = str(r[6]).strip() if len(r) > 6 else ""        # ← ИСПРАВЛЕНО
+                record_specialist = str(r[5]).strip()
+                record_status = str(r[8]).strip()
+                record_date = str(r[6]).strip()
                 
                 # Проверяем только подтвержденные записи того же специалиста в тот же день
                 if (record_specialist == specialist and 
                     record_status == "подтверждено" and 
                     record_date == date_str):
                     
-                    record_time = str(r[7]).strip() if len(r) > 7 else ""    # ← ИСПРАВЛЕНО
-                    record_service = str(r[4]).strip() if len(r) > 4 else "" # ← ИСПРАВЛЕНО
+                    record_time = str(r[7]).strip()
+                    record_service = str(r[4]).strip() if len(r) > 4 else ""
                     
                     try:
                         record_start = TIMEZONE.localize(
@@ -967,22 +967,24 @@ async def _validate_booking_checks(
                 print(f"  [{i}] {r[1]}: ОШИБКА парсинга времени")
     print(f"Всего записей с этим телефоном: {phone_matches}")
     print(f"=== КОНЕЦ ОТЛАДКИ ===")
-    # ← КОНЕЦ ДОБАВЛЕНИЯ ↑
+    # ← КОНЕЦ ДОБАВЛЕНИЯ ↑↑↑
+    
+    # === ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
     
     # === ПРОВЕРКА 1: СПЕЦИАЛИСТ ЗАНЯТ? ===
     for r in records:
         if len(r) > 8:
-            record_specialist = str(r[5]).strip() if len(r) > 5 else ""       # ← ИСПРАВЛЕНО
-            record_status = str(r[8]).strip() if len(r) > 8 else ""           # ← ИСПРАВЛЕНО
-            record_date = str(r[6]).strip() if len(r) > 6 else ""             # ← ИСПРАВЛЕНО
+            record_specialist = str(r[5]).strip()
+            record_status = str(r[8]).strip()
+            record_date = str(r[6]).strip()
             
             # Проверяем только подтвержденные записи того же специалиста в тот же день
             if (record_specialist == specialist and 
                 record_status == "подтверждено" and 
                 record_date == date_str):
                 
-                record_time = str(r[7]).strip() if len(r) > 7 else ""         # ← ИСПРАВЛЕНО
-                record_service = str(r[4]).strip() if len(r) > 4 else ""      # ← ИСПРАВЛЕНО
+                record_time = str(r[7]).strip()
+                record_service = str(r[4]).strip() if len(r) > 4 else ""
                 
                 try:
                     record_start = TIMEZONE.localize(
@@ -1007,19 +1009,19 @@ async def _validate_booking_checks(
     # === ПРОВЕРКА 2: КЛИЕНТ (ПО ТЕЛЕФОНУ) ЗАНЯТ? ===
     for r in records:
         if len(r) > 8:
-            record_phone = str(r[2]).strip() if len(r) > 2 else ""            # ← ИСПРАВЛЕНО
-            record_status = str(r[8]).strip() if len(r) > 8 else ""           # ← ИСПРАВЛЕНО
-            record_date = str(r[6]).strip() if len(r) > 6 else ""             # ← ИСПРАВЛЕНО
+            record_phone = str(r[2]).strip()
+            record_status = str(r[8]).strip()
+            record_date = str(r[6]).strip()
                      
             # Проверяем тот же телефон (разные люди могут использовать один телефон)
             if (record_phone == phone and 
                 record_status == "подтверждено" and 
                 record_date == date_str):
                 
-                record_name = str(r[1]).strip() if len(r) > 1 else ""         # ← ИСПРАВЛЕНО
-                record_time = str(r[7]).strip() if len(r) > 7 else ""         # ← ИСПРАВЛЕНО
-                record_service = str(r[4]).strip() if len(r) > 4 else ""      # ← ИСПРАВЛЕНО
-                record_specialist = str(r[5]).strip() if len(r) > 5 else ""   # ← ИСПРАВЛЕНО
+                record_name = str(r[1]).strip()
+                record_time = str(r[7]).strip()
+                record_service = str(r[4]).strip() if len(r) > 4 else ""
+                record_specialist = str(r[5]).strip()
                 
                 try:
                     record_start = TIMEZONE.localize(
@@ -1039,13 +1041,12 @@ async def _validate_booking_checks(
                         else:
                             # Разные люди, но один телефон (семья) - РАЗРЕШАЕМ
                             logger.info(f"⚠️ Разные люди используют один телефон: {record_name} и {name}")
-
                             # Пропускаем проверку, разрешаем запись
                             continue
 
                 except (ValueError, TypeError):
                     continue
-
+    
     # === ПРОВЕРКА 3: ПОВТОРНАЯ ЗАПИСЬ В КАТЕГОРИИ ===
     # Проверяем по телефону (разные люди могут использовать один телефон)
     repeat_records = []
@@ -1053,19 +1054,14 @@ async def _validate_booking_checks(
     different_name_same_phone = False
     
     for r in records:
-        # ← ИЗМЕНЕНИЕ: проверяем ДОСТАТОЧНОЕ количество колонок
-        if len(r) > 8:  # ← МЕНЯЕМ с >4 на >8 (нужен доступ к r[8] - статус)
-            record_name = str(r[1]).strip() if len(r) > 1 else ""             
-            record_phone = str(r[2]).strip() if len(r) > 2 else ""            
-            record_category = str(r[3]).strip() if len(r) > 3 else ""         
-            record_status = str(r[8]).strip() if len(r) > 8 else ""           # ← ТЕПЕРЬ БЕЗОПАСНО                          
+        if len(r) > 4:
+            record_name = str(r[1]).strip()
+            record_phone = str(r[2]).strip()
+            record_category = str(r[3]).strip()
+            record_status = str(r[8]).strip()                           
 
             # Проверяем что дата записи не прошедшая (только будущие записи)
-            date_cell = r[6] if len(r) > 6 else ""
-            if isinstance(date_cell, datetime):
-                record_date_str = date_cell.strftime("%d.%m.%Y")
-            else:
-                record_date_str = str(date_cell).strip()
+            record_date_str = str(r[6]).strip() if len(r) > 6 else ""
             try:
                 record_date_obj = datetime.strptime(record_date_str, "%d.%m.%Y").date()
                 today_date = datetime.now(TIMEZONE).date()
@@ -3761,26 +3757,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    # === КРИТИЧЕСКАЯ ОТЛАДКА - проверяем почему останавливается ===
-    print(f"\n{'='*80}")
-    print(f"🚨🚨🚨 FINALIZE_BOOKING НАЧАЛАСЬ 🚨🚨🚨")
-    print(f"📱 Chat ID: {update.effective_chat.id}")
-    print(f"🎯 Бот работает: {context.application.running}")
-    print(f"🎯 Job queue работает: {context.job_queue.scheduler.running if hasattr(context.job_queue, 'scheduler') else 'N/A'}")
-    print(f"{'='*80}\n")
-    
-    logger.info("🔍🔍🔍 finalize_booking НАЧАЛО - проверка работы бота 🔍🔍🔍")
-    
-    # Проверяем, не собирается ли бот останавливаться
-    if not context.application.running:
-        logger.error("❌❌❌ БОТ УЖЕ ОСТАНОВЛЕН! Сортировка не будет выполнена!")
-        print(f"❌ КРИТИЧЕСКАЯ ОШИБКА: Бот уже остановлен!")
-
-    # Добавьте эти импорты здесь или в начале файла
-    import json
-    from google.oauth2.service_account import Credentials
-    from googleapiclient.discovery import build
-
     print("\n" + "="*80)
     print("🚨🚨🚨 FINALIZE_BOOKING НАЧАЛАСЬ 🚨🚨🚨")
     print(f"📱 Chat ID: {update.effective_chat.id}")
@@ -4050,8 +4026,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue  # Если не число, пропускаем
         
         record_id = str(max_id + 1)  # Следующий ID после максимального
-    
-        # Дата создания - в формате DD.MM.YYYY HH:MM (текст)
         created_at = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
 
         # Рассчитываем диапазон для таблицы
@@ -4082,53 +4056,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Обычная запись
             comment = "автоматически" if was_auto_assigned else ""
 
-        # Определяем примечание для таблицы
-        old_record_id = context.user_data.get("old_record_id", "")
-        was_auto_assigned = context.user_data.get('was_auto_assigned', False)
-        
-        if old_record_id and context.user_data.get("modify_mode"):
-            # Это изменение записи
-            if was_auto_assigned:
-                comment = f"автоматически, изменено с #{old_record_id}"
-            else:
-                comment = f"изменено с #{old_record_id}"
-        else:
-            # Обычная запись
-            comment = "автоматически" if was_auto_assigned else ""
-
-        # === ПРЕОБРАЗОВАНИЕ ДАТЫ ДЛЯ GOOGLE SHEETS ===
-        # ПРАВИЛЬНОЕ преобразование в число Excel
-        try:
-            # 1. Парсим дату
-            parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
-            
-            # 2. Простое преобразование: Excel считает дни с 30.12.1899
-            # 01.01.1900 = 1 (но из-за ошибки Excel 1900 считается високосным)
-            # Для Google Sheets эта ошибка тоже есть
-            excel_date = (parsed_date - datetime(1899, 12, 30)).days
-            
-            # 3. Записываем как ЧИСЛО с плавающей точкой
-            gsheet_date_value = float(excel_date)
-            
-            # === ДЕТАЛЬНАЯ ОТЛАДКА ===
-            print(f"\n{'='*80}")
-            print(f"🔧 DEBUG ПРЕОБРАЗОВАНИЕ ДАТЫ:")
-            print(f"🔧 Входная дата: '{date_str}'")
-            print(f"🔧 Парсированная: {parsed_date}")
-            print(f"🔧 Разница дней от 30.12.1899: {excel_date}")
-            print(f"🔧 gsheet_date_value: {gsheet_date_value}")
-            print(f"🔧 Тип gsheet_date_value: {type(gsheet_date_value)}")
-            print(f"{'='*80}\n")
-
-            logger.info(f"✅ Дата преобразована в число Excel: {date_str} → {excel_date}")
-            
-        except Exception as e:
-            logger.error(f"❌ Ошибка преобразования даты {date_str}: {e}")
-            # Запасной вариант: сегодняшняя дата
-            today_excel = (datetime.now(TIMEZONE).date() - datetime(1899, 12, 30).date()).days
-            gsheet_date_value = float(today_excel)
-            logger.warning(f"⚠️ Использована сегодняшняя дата: {today_excel}")
-
         full_record = [
             record_id,  # A: ID
             name,  # B: Имя
@@ -4136,13 +4063,13 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             st,  # D: Категория
             ss,  # E: Услуга
             specialist,  # F: Специалист
-            gsheet_date_value,    # G: Дата как число Excel (46287.0)
-            time_range,  # H: Время в формате "17:30-19:15"
+            date_str,  # G: Дата
+            time_range,  # H: Время с диапазоном
             "подтверждено",  # I: Статус
-            created_at,  # J: Дата создания "03.02.2026 20:35"
-            comment,     # K: Примечания
-            "❌",        # L: Напоминание 24 часа
-            "❌",        # M: Напоминание 1 час
+            created_at,  # J: Дата создания
+            comment,  # K: Примечания
+            "❌",  # L: Напоминание 24 часа
+            "❌",  # M: Напоминание 1 час
             str(chat_id),  # N: chat_id
             event_id or "",  # O: event_id
         ]
@@ -4391,44 +4318,8 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     logger.info(f"✅ Запись {record_id} полностью завершена для пользователя {chat_id}")
 
-    # === ДИАГНОСТИКА: ДОСТИГАЕТ ЛИ КОД ЭТОГО МЕСТА? ===
-    print(f"\n{'='*80}")
-    print(f"🔍 ДИАГНОСТИКА: ДОСТИГНУТ КОНЕЦ БЛОКА 7")
-    print(f"🔍 Время: {datetime.now(TIMEZONE).strftime('%H:%M:%S')}")
-    print(f"🔍 ID записи: {record_id}")
-    print(f"{'='*80}\n")
-    
-    logger.info("🔍 ДИАГНОСТИКА: Достигнут конец блока 7")
+    return MENU
 
-    # === 7.5. ОТЛАДКА - ПРОВЕРКА ДОСТИЖЕНИЯ БЛОКА СОРТИРОВКИ ===
-    print(f"\n{'='*80}")
-    print(f"🎯 ДОСТИГНУТ БЛОК ПЕРЕД СОРТИРОВКОЙ!")
-    print(f"🎯 Время: {datetime.now(TIMEZONE).strftime('%H:%M:%S')}")
-    print(f"🎯 ID записи: {record_id}")
-    print(f"{'='*80}\n")
-    
-    logger.info("🔍 Проверка: достигнут блок перед сортировкой")
-
-    # === 8. АВТОСОРТИРОВКА ТАБЛИЦЫ ===
-    try:
-        from utils.safe_google import safe_sort_sheet_records
-
-        if safe_sort_sheet_records(SHEET_ID):
-            logger.info("✅ Таблица 'Записи' отсортирована")
-        else:
-            logger.warning("⚠️ Сортировка не выполнена")
-
-    except Exception:
-        logger.exception("⚠️ Ошибка при сортировке таблицы")
-
-        # === 9. ЗАВЕРШЕНИЕ - НЕ ОСТАНАВЛИВАЕМ БОТ! ===
-        print(f"\n{'='*80}")
-        print(f"✅ FINALIZE_BOOKING ЗАВЕРШЕНА УСПЕШНО")
-        print(f"✅ Бот продолжает работать")
-        print(f"{'='*80}\n")
-        
-        return MENU
-              
 
 # --- /FINALIZE BOOKING ---
 
@@ -4489,24 +4380,9 @@ async def show_my_records_edit(update: Update, context: ContextTypes.DEFAULT_TYP
         if (
             len(r) > 13
             and str(r[13]).strip() == str(user_id)
-            and str(r[8]).strip() == "подтверждено"
+            and str(r[8]).strip() == "подтверждено"  # ТОЛЬКО подтвержденные записи
         ):
-            # ← ТАКАЯ ЖЕ ПРОВЕРКА ДАТЫ
-            date_cell = r[6] if len(r) > 6 else ""
-            if isinstance(date_cell, datetime):
-                record_date_str = date_cell.strftime("%d.%m.%Y")
-            else:
-                record_date_str = str(date_cell).strip()
-            
-            # Проверяем что дата не прошедшая
-            try:
-                record_date = datetime.strptime(record_date_str, "%d.%m.%Y").date()
-                today = datetime.now(TIMEZONE).date()
-                if record_date >= today:
-                    found.append(r)
-            except ValueError:
-                # Если ошибка формата даты, все равно показываем
-                found.append(r)
+            found.append(r)
     if not found and name and phone:
         for r in records:
             if (
@@ -4574,7 +4450,7 @@ async def show_my_records_edit(update: Update, context: ContextTypes.DEFAULT_TYP
 # --- SHOW MY RECORDS VIEW (только просмотр) ---
 
 async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает записи только для просмотра"""
+    """Показывает записи только для просмотра, без возможности отмены"""
     query = update.callback_query
     if query:
         await query.answer()
@@ -4582,72 +4458,18 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.effective_user.id
     name = context.user_data.get("name")
     phone = context.user_data.get("phone")
-    
-    # 1. Сначала получаем записи
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     
-    # 2. Теперь можно делать отладку (если нужно)
-    print(f"🔍 DEBUG: Ищу записи для user_id={user_id}")
-    print(f"🔍 DEBUG: Таблица содержит {len(records)} записей")
-    for i, r in enumerate(records[:3]):  # первые 3 записи
-        print(f"🔍 DEBUG: Запись {i}: ID={r[0]}, Дата={r[6]}, Тип даты={type(r[6])}")
-    
-    # 3. Ищем записи пользователя
+    # Ищем записи пользователя
     found = []
     for r in records:
         # Ищем по chat_id
         if (
             len(r) > 13
             and str(r[13]).strip() == str(user_id)
-            and str(r[8]).strip() == "подтверждено"
+            and str(r[8]).strip() == "подтверждено"  # ← ИЗМЕНИЛ: только "подтверждено", а не все ACTIVE_STATUSES
         ):
-            print(f"🔍 НАЙДЕНА ЗАПИСЬ: ID={r[0]}, Дата={r[6]}, Статус={r[8]}")
-            
-            # ← ПРОВЕРКА ДАТЫ (может быть датой или строкой)
-            date_cell = r[6] if len(r) > 6 else ""
-            if isinstance(date_cell, datetime):
-                record_date_str = date_cell.strftime("%d.%m.%Y")
-                print(f"🔍 Дата как datetime: {date_cell} → строка: {record_date_str}")
-            else:
-                record_date_str = str(date_cell).strip()
-                print(f"🔍 Дата как строка: {record_date_str}")
-            
-            # ← ПРОВЕРКА ВРЕМЕНИ
-            time_str = str(r[7]).strip() if len(r) > 7 else ""
-            print(f"🔍 Время из таблицы: '{time_str}'")
-            
-            # Извлекаем время начала
-            if "-" in time_str:
-                time_start_str = time_str.split("-")[0].strip()
-            else:
-                time_start_str = time_str
-            
-            print(f"🔍 Время начала: '{time_start_str}'")
-            
-            try:
-                # Создаем datetime объекта записи
-                record_datetime_str = f"{record_date_str} {time_start_str}"
-                print(f"🔍 Пытаюсь распарсить: '{record_datetime_str}'")
-                
-                record_datetime = datetime.strptime(record_datetime_str, "%d.%m.%Y %H:%M")
-                record_datetime = TIMEZONE.localize(record_datetime)
-                
-                print(f"🔍 Дата+время записи: {record_datetime}")
-                print(f"🔍 Текущее время: {datetime.now(TIMEZONE)}")
-                
-                # Сравниваем с текущим временем
-                now = datetime.now(TIMEZONE)
-                if record_datetime >= now:
-                    print(f"✅ ЗАПИСЬ БУДУЩАЯ - ДОБАВЛЯЕМ!")
-                    found.append(r)
-                else:
-                    print(f"❌ ЗАПИСЬ ПРОШЕДШАЯ - ПРОПУСКАЕМ")
-            except ValueError as e:
-                # Если ошибка парсинга, не показываем запись
-                print(f"❌ ОШИБКА ПАРСИНГА: {e}")
-                continue
-    
-    print(f"🔍 ИТОГО найдено записей: {len(found)}")
+            found.append(r)
     
     # Если не нашли по chat_id, ищем по имени и телефону
     if not found and name and phone:
@@ -4692,11 +4514,10 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
     found = future_records  # Заменяем на отфильтрованные
     # ← КОНЕЦ ИСПРАВЛЕННОГО БЛОКА
    
-        # СОРТИРУЕМ записи по дате и времени (ПРОСТАЯ ФУНКЦИЯ ВНУТРИ)
+    # СОРТИРУЕМ записи по дате и времени
     def sort_key(r):
         try:
-            # Получаем дату и время из записи
-            date_cell = r[6] if len(r) > 6 else ""
+            date_str = str(r[6]).strip() if len(r) > 6 else ""
             time_str = str(r[7]).strip() if len(r) > 7 else ""
             
             # Извлекаем время начала
@@ -4705,18 +4526,11 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
             else:
                 time_start = time_str
             
-            # Обрабатываем дату (может быть строкой или датой)
-            if isinstance(date_cell, datetime):
-                date_str = date_cell.strftime("%d.%m.%Y")
-            else:
-                date_str = str(date_cell).strip()
-            
             # Создаем datetime для сортировки
             dt_str = f"{date_str} {time_start}"
             return datetime.strptime(dt_str, "%d.%m.%Y %H:%M")
-        except Exception as e:
+        except:
             # Если ошибка - в конец списка
-            logger.error(f"Ошибка сортировки записи: {e}")
             return datetime.max
     
     found.sort(key=sort_key)
