@@ -4393,18 +4393,33 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === 8. АВТОМАТИЧЕСКАЯ СОРТИРОВКА ТАБЛИЦЫ ПО ДАТЕ И ВРЕМЕНИ ===
     try:
+        # === КРИТИЧЕСКАЯ ОТЛАДКА - УБЕДИТЬСЯ ЧТО БЛОК ВЫПОЛНЯЕТСЯ ===
+        print(f"\n{'='*80}")
+        print(f"🔧🔧🔧 АВТОМАТИЧЕСКАЯ СОРТИРОВКА НАЧАТА 🔧🔧🔧")
+        print(f"🔧 Время начала: {datetime.now(TIMEZONE).strftime('%H:%M:%S')}")
+        print(f"🔧 SHEET_ID: {SHEET_ID}")
+        print(f"🔧 Дата для сортировки: {date_str}")
+        print(f"{'='*80}\n")
+        
         logger.info("🔄 Начинаю автоматическую сортировку таблицы...")
         
-        # Проверяем credentials
-        if not GOOGLE_CREDENTIALS_JSON:
+        # Проверяем наличие credentials
+        if not GOOGLE_CREDENTIALS_JSON or GOOGLE_CREDENTIALS_JSON.strip() == "":
+            print(f"❌ КРИТИЧЕСКАЯ ОШИБКА: GOOGLE_CREDENTIALS_JSON пуст!")
             logger.error("❌ GOOGLE_CREDENTIALS_JSON пуст!")
-            print("❌ GOOGLE_CREDENTIALS_JSON пуст!")
             return MENU
             
-        print(f"🔧 DEBUG: Длина GOOGLE_CREDENTIALS_JSON: {len(GOOGLE_CREDENTIALS_JSON) if GOOGLE_CREDENTIALS_JSON else 0}")
+        print(f"🔧 Длина GOOGLE_CREDENTIALS_JSON: {len(GOOGLE_CREDENTIALS_JSON)} символов")
         
         # Получаем credentials
-        creds_data = json.loads(GOOGLE_CREDENTIALS_JSON)
+        try:
+            creds_data = json.loads(GOOGLE_CREDENTIALS_JSON)
+            print(f"🔧 JSON успешно распарсен")
+        except json.JSONDecodeError as e:
+            print(f"❌ ОШИБКА ПАРСИНГА JSON: {e}")
+            logger.error(f"❌ Ошибка парсинга GOOGLE_CREDENTIALS_JSON: {e}")
+            return MENU
+            
         credentials = Credentials.from_service_account_info(
             creds_data, 
             scopes=['https://www.googleapis.com/auth/spreadsheets']
@@ -4414,21 +4429,32 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # 1. Узнаём ID листа "Записи"
         print(f"🔧 Запрашиваю информацию о таблице...")
-        spreadsheet = service.spreadsheets().get(
-            spreadsheetId=SHEET_ID
-        ).execute()
+        try:
+            spreadsheet = service.spreadsheets().get(
+                spreadsheetId=SHEET_ID
+            ).execute()
+            print(f"🔧 Информация о таблице получена успешно")
+        except Exception as e:
+            print(f"❌ ОШИБКА ЗАПРОСА К ТАБЛИЦЕ: {e}")
+            logger.error(f"❌ Не удалось получить информацию о таблице: {e}")
+            return MENU
         
         sheet_id = None
         for sheet in spreadsheet.get('sheets', []):
-            if sheet.get('properties', {}).get('title') == 'Записи':
+            sheet_title = sheet.get('properties', {}).get('title')
+            print(f"🔧 Проверяю лист: '{sheet_title}'")
+            if sheet_title == 'Записи':
                 sheet_id = sheet.get('properties', {}).get('sheetId')
+                print(f"✅ Найден лист 'Записи' с ID: {sheet_id}")
                 logger.info(f"✅ Найден лист 'Записи' с ID: {sheet_id}")
-                print(f"🔧 Лист 'Записи' найден: sheet_id={sheet_id}")
                 break
         
         if not sheet_id:
+            print(f"❌ КРИТИЧЕСКАЯ ОШИБКА: лист 'Записи' не найден в таблице!")
+            print(f"🔧 Доступные листы:")
+            for sheet in spreadsheet.get('sheets', []):
+                print(f"   - '{sheet.get('properties', {}).get('title')}'")
             logger.error("❌ Не найден лист 'Записи'")
-            print(f"❌ ОШИБКА: лист 'Записи' не найден!")
             return MENU
         
         # 2. СОРТИРОВКА по дате (столбец G) и времени (столбец H)
@@ -4438,18 +4464,18 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "sortRange": {
                         "range": {
                             "sheetId": sheet_id,
-                            "startRowIndex": 2,
-                            "endRowIndex": 1000,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": 15
+                            "startRowIndex": 2,  # Строка 3 (индекс 2)
+                            "endRowIndex": 1000, # До строки 1000
+                            "startColumnIndex": 0,  # Колонка A
+                            "endColumnIndex": 15   # Колонка O
                         },
                         "sortSpecs": [
                             {
-                                "dimensionIndex": 6,     # Колонка G - Дата
+                                "dimensionIndex": 6,     # Колонка G (7-я колонка, индекс 6) - Дата
                                 "sortOrder": "ASCENDING"
                             },
                             {
-                                "dimensionIndex": 7,     # Колонка H - Время
+                                "dimensionIndex": 7,     # Колонка H (8-я колонка, индекс 7) - Время
                                 "sortOrder": "ASCENDING"
                             }
                         ]
@@ -4459,25 +4485,53 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         
         print(f"🔧 Отправляю запрос на сортировку...")
+        print(f"🔧 Параметры сортировки:")
+        print(f"   - Sheet ID: {sheet_id}")
+        print(f"   - Строки: {2}-{1000}")
+        print(f"   - Колонки: {0}-{15}")
+        print(f"   - Сортировка по: колонка G (Дата), колонка H (Время)")
         
         # 3. Выполняем сортировку
-        result = service.spreadsheets().batchUpdate(
-            spreadsheetId=SHEET_ID,
-            body=sort_request
-        ).execute()
+        try:
+            result = service.spreadsheets().batchUpdate(
+                spreadsheetId=SHEET_ID,
+                body=sort_request
+            ).execute()
+            
+            print(f"✅ Сортировка выполнена успешно!")
+            print(f"🔧 Результат: {result}")
+            
+            # Проверяем результат
+            if result.get('responses'):
+                print(f"✅ Ответ от Google Sheets получен, сортировка выполнена")
+            else:
+                print(f"⚠️ Ответ от Google Sheets пустой")
+                
+            logger.info(f"✅ Таблица 'Записи' отсортирована по дате и времени!")
+            
+        except Exception as e:
+            print(f"❌ ОШИБКА ВЫПОЛНЕНИЯ СОРТИРОВКИ: {e}")
+            raise e  # Пробрасываем ошибку вверх для обработки в основном except
         
-        print(f"🔧 Результат сортировки: {result.get('responses', [])}")
-        print(f"✅ Сортировка выполнена успешно!")
-        
-        logger.info(f"✅ Таблица 'Записи' отсортирована по дате и времени!")
+        print(f"\n{'='*80}")
+        print(f"✅ АВТОМАТИЧЕСКАЯ СОРТИРОВКА ЗАВЕРШЕНА УСПЕШНО")
+        print(f"✅ Время завершения: {datetime.now(TIMEZONE).strftime('%H:%M:%S')}")
+        print(f"{'='*80}\n")
         
     except Exception as e:
+        print(f"\n{'='*80}")
+        print(f"❌❌❌ ОШИБКА В АВТОМАТИЧЕСКОЙ СОРТИРОВКЕ! ❌❌❌")
+        print(f"❌ Ошибка: {e}")
+        print(f"❌ Тип ошибки: {type(e).__name__}")
+        print(f"{'='*80}\n")
+        
         logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
-        print(f"❌ ОШИБКА СОРТИРОВКИ: {e}")
         import traceback
-        traceback.print_exc()
+        error_details = traceback.format_exc()
+        logger.error(f"❌ Traceback:\n{error_details}")
+        
         # НЕ прерываем выполнение - это второстепенная функция
-    
+
     # === 9. ЗАВЕРШЕНИЕ - НЕ ОСТАНАВЛИВАЕМ БОТ! ===
     print(f"\n{'='*80}")
     print(f"✅ FINALIZE_BOOKING ЗАВЕРШЕНА УСПЕШНО")
