@@ -2,7 +2,6 @@
 import logging
 import time
 import json
-import os
 from functools import wraps
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -296,90 +295,11 @@ def safe_delete_calendar_event(calendar_id, event_id):
         logger.error(f"❌ Ошибка при удалении события {event_id}: {e}")
         return False
 
-@retry_google_api()
-def safe_sort_sheet_records(spreadsheet_id):
-    """
-    Сортирует лист 'Записи' по дате (колонка G) и времени (колонка H)
-    Возвращает True при успехе, False при ошибке
-    """
-    try:
-        logger.info(f"🔄 Начинаю сортировку таблицы 'Записи'...")
-        logger.info(f"🔄 spreadsheet_id: {spreadsheet_id}")
-        
-        credentials = get_google_credentials()
-        if not credentials:
-            logger.error("❌ Нет credentials для Google API")
-            return False
-        
-        service = build('sheets', 'v4', credentials=credentials)
-        
-        # 1. Находим sheet_id листа "Записи"
-        logger.info("🔍 Ищу лист 'Записи'...")
-        spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-        sheet_id = None
-        
-        for sheet in spreadsheet.get('sheets', []):
-            sheet_title = sheet.get('properties', {}).get('title')
-            logger.info(f"🔍 Найден лист: '{sheet_title}'")
-            if sheet_title == 'Записи':
-                sheet_id = sheet.get('properties', {}).get('sheetId')
-                break
-        
-        if not sheet_id:
-            logger.error("❌ Лист 'Записи' не найден в таблице")
-            return False
-        
-        logger.info(f"✅ Найден лист 'Записи', sheet_id: {sheet_id}")
-        
-        # 2. Создаем запрос на сортировку
-        sort_request = {
-            "requests": [
-                {
-                    "sortRange": {
-                        "range": {
-                            "sheetId": sheet_id,
-                            "startRowIndex": 2,      # Начинаем с 3 строки (A3)
-                            "endRowIndex": 1000,     # До 1000 строк
-                            "startColumnIndex": 0,   # Колонка A
-                            "endColumnIndex": 15     # До колонки O (15 колонок)
-                        },
-                        "sortSpecs": [
-                            {
-                                "dimensionIndex": 6,  # Колонка G (дата)
-                                "sortOrder": "ASCENDING"
-                            },
-                            {
-                                "dimensionIndex": 7,  # Колонка H (время)
-                                "sortOrder": "ASCENDING"
-                            }
-                        ]
-                    }
-                }
-            ]
-        }
-        
-        # 3. Выполняем сортировку
-        logger.info(f"🔧 Отправляю запрос на сортировку...")
-        result = service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body=sort_request
-        ).execute()
-        
-        logger.info(f"✅ Таблица 'Записи' отсортирована успешно")
-        logger.info(f"✅ Результат: {result}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка при сортировке таблицы: {e}")
-        import traceback
-        logger.error(f"❌ Traceback: {traceback.format_exc()}")
-        return False
-
 def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = "", 
                          is_message: bool = True, client_name: str = None):
     """Записывает сообщение или запрос обратного звонка в таблицу"""
     try:
-        timestamp = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
+        timestamp = datetime.now(TIMEZONE).strftime("%d.%m.%Y  %H:%M")  # 2 пробела
         
         # Если имя не указано, используем "Неизвестно"
         if not client_name or client_name.strip() == "":
@@ -417,7 +337,6 @@ def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = "",
     except Exception as e:
         print(f"❌ Ошибка записи: {e}")
         return False
-
 
 
 print("✅ Модуль safe_google.py загружен.")
