@@ -419,4 +419,5 @@ def safe_log_missed_call(phone_from: str, admin_phone: str, note: str = "",
         return False
 
 
+
 print("✅ Модуль safe_google.py загружен.")
