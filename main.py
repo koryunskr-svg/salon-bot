@@ -56,7 +56,7 @@ try:
         safe_create_calendar_event,
         safe_update_calendar_event,
         safe_delete_calendar_event,
-        # safe_log_missed_call,  # ← ЗАКОММЕНТИРУЙТЕ ЭТУ СТРОКУ
+        safe_log_missed_call,
     )
     print("✅ Импорт safe_google успешен")
 except ImportError as e:
@@ -4095,6 +4095,16 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # 3. Записываем как ЧИСЛО с плавающей точкой
             gsheet_date_value = float(excel_date)
             
+            # === ДЕТАЛЬНАЯ ОТЛАДКА ===
+            print(f"\n{'='*80}")
+            print(f"🔧 DEBUG ПРЕОБРАЗОВАНИЕ ДАТЫ:")
+            print(f"🔧 Входная дата: '{date_str}'")
+            print(f"🔧 Парсированная: {parsed_date}")
+            print(f"🔧 Разница дней от 30.12.1899: {excel_date}")
+            print(f"🔧 gsheet_date_value: {gsheet_date_value}")
+            print(f"🔧 Тип gsheet_date_value: {type(gsheet_date_value)}")
+            print(f"{'='*80}\n")
+
             logger.info(f"✅ Дата преобразована в число Excel: {date_str} → {excel_date}")
             
         except Exception as e:
@@ -4370,6 +4380,13 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         logger.info("🔄 Начинаю автоматическую сортировку таблицы...")
         
+        # === ДЕТАЛЬНАЯ ОТЛАДКА СОРТИРОВКИ ===
+        print(f"\n{'='*80}")
+        print(f"🔧 DEBUG СОРТИРОВКА ТАБЛИЦЫ:")
+        print(f"🔧 SHEET_ID: {SHEET_ID}")
+        print(f"🔧 Время: {datetime.now(TIMEZONE).strftime('%H:%M:%S')}")
+        print(f"{'='*80}\n")
+
         # Получаем credentials
         creds_data = json.loads(GOOGLE_CREDENTIALS_JSON)
         credentials = Credentials.from_service_account_info(
@@ -4421,18 +4438,26 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 }
             ]
         }
-        
+
+        print(f"🔧 Отправляю запрос на сортировку...")       
+
         # 3. Выполняем сортировку
         result = service.spreadsheets().batchUpdate(
             spreadsheetId=SHEET_ID,
             body=sort_request
         ).execute()
         
+        print(f"🔧 Результат сортировки: {result}")
+
         logger.info(f"✅ Таблица 'Записи' отсортирована по дате и времени!")
-        
+        print(f"✅ Сортировка выполнена успешно!")
+
     except Exception as e:
         logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
-        # НЕ прерываем выполнение - это второстепенная функция
+        print(f"❌ ОШИБКА СОРТИРОВКИ: {e}")
+        import traceback
+        traceback.print_exc()
+       
                     
     return MENU
 
