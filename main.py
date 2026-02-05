@@ -4434,7 +4434,7 @@ except Exception as e:
     print(f"✅ Бот продолжает работать")
     print(f"{'='*80}\n")
     
-    return MENU
+return MENU
               
 
 # --- /FINALIZE BOOKING ---
