@@ -3761,6 +3761,21 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    # === КРИТИЧЕСКАЯ ОТЛАДКА - проверяем почему останавливается ===
+    print(f"\n{'='*80}")
+    print(f"🚨🚨🚨 FINALIZE_BOOKING НАЧАЛАСЬ 🚨🚨🚨")
+    print(f"📱 Chat ID: {update.effective_chat.id}")
+    print(f"🎯 Бот работает: {context.application.running}")
+    print(f"🎯 Job queue работает: {context.job_queue.scheduler.running if hasattr(context.job_queue, 'scheduler') else 'N/A'}")
+    print(f"{'='*80}\n")
+    
+    logger.info("🔍🔍🔍 finalize_booking НАЧАЛО - проверка работы бота 🔍🔍🔍")
+    
+    # Проверяем, не собирается ли бот останавливаться
+    if not context.application.running:
+        logger.error("❌❌❌ БОТ УЖЕ ОСТАНОВЛЕН! Сортировка не будет выполнена!")
+        print(f"❌ КРИТИЧЕСКАЯ ОШИБКА: Бот уже остановлен!")
+
     # Добавьте эти импорты здесь или в начале файла
     import json
     from google.oauth2.service_account import Credentials
@@ -4380,13 +4395,14 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         logger.info("🔄 Начинаю автоматическую сортировку таблицы...")
         
-        # === ДЕТАЛЬНАЯ ОТЛАДКА СОРТИРОВКИ ===
-        print(f"\n{'='*80}")
-        print(f"🔧 DEBUG СОРТИРОВКА ТАБЛИЦЫ:")
-        print(f"🔧 SHEET_ID: {SHEET_ID}")
-        print(f"🔧 Время: {datetime.now(TIMEZONE).strftime('%H:%M:%S')}")
-        print(f"{'='*80}\n")
-
+        # Проверяем credentials
+        if not GOOGLE_CREDENTIALS_JSON:
+            logger.error("❌ GOOGLE_CREDENTIALS_JSON пуст!")
+            print("❌ GOOGLE_CREDENTIALS_JSON пуст!")
+            return MENU
+            
+        print(f"🔧 DEBUG: Длина GOOGLE_CREDENTIALS_JSON: {len(GOOGLE_CREDENTIALS_JSON) if GOOGLE_CREDENTIALS_JSON else 0}")
+        
         # Получаем credentials
         creds_data = json.loads(GOOGLE_CREDENTIALS_JSON)
         credentials = Credentials.from_service_account_info(
@@ -4397,6 +4413,7 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         service = build('sheets', 'v4', credentials=credentials)
         
         # 1. Узнаём ID листа "Записи"
+        print(f"🔧 Запрашиваю информацию о таблице...")
         spreadsheet = service.spreadsheets().get(
             spreadsheetId=SHEET_ID
         ).execute()
@@ -4406,10 +4423,12 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if sheet.get('properties', {}).get('title') == 'Записи':
                 sheet_id = sheet.get('properties', {}).get('sheetId')
                 logger.info(f"✅ Найден лист 'Записи' с ID: {sheet_id}")
+                print(f"🔧 Лист 'Записи' найден: sheet_id={sheet_id}")
                 break
         
         if not sheet_id:
             logger.error("❌ Не найден лист 'Записи'")
+            print(f"❌ ОШИБКА: лист 'Записи' не найден!")
             return MENU
         
         # 2. СОРТИРОВКА по дате (столбец G) и времени (столбец H)
@@ -4438,25 +4457,34 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 }
             ]
         }
-
-        print(f"🔧 Отправляю запрос на сортировку...")       
-
+        
+        print(f"🔧 Отправляю запрос на сортировку...")
+        
         # 3. Выполняем сортировку
         result = service.spreadsheets().batchUpdate(
             spreadsheetId=SHEET_ID,
             body=sort_request
         ).execute()
         
-        print(f"🔧 Результат сортировки: {result}")
-
-        logger.info(f"✅ Таблица 'Записи' отсортирована по дате и времени!")
+        print(f"🔧 Результат сортировки: {result.get('responses', [])}")
         print(f"✅ Сортировка выполнена успешно!")
-
+        
+        logger.info(f"✅ Таблица 'Записи' отсортирована по дате и времени!")
+        
     except Exception as e:
         logger.error(f"⚠️ Не удалось отсортировать таблицу: {e}")
         print(f"❌ ОШИБКА СОРТИРОВКИ: {e}")
         import traceback
         traceback.print_exc()
+        # НЕ прерываем выполнение - это второстепенная функция
+    
+    # === 9. ЗАВЕРШЕНИЕ - НЕ ОСТАНАВЛИВАЕМ БОТ! ===
+    print(f"\n{'='*80}")
+    print(f"✅ FINALIZE_BOOKING ЗАВЕРШЕНА УСПЕШНО")
+    print(f"✅ Бот продолжает работать")
+    print(f"{'='*80}\n")
+    
+    return MENU
        
                     
     return MENU
