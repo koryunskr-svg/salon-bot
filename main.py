@@ -4515,8 +4515,6 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return MENU
        
                     
-    return MENU
-
 
 # --- /FINALIZE BOOKING ---
 
