@@ -4435,8 +4435,7 @@ except Exception as e:
     print(f"{'='*80}\n")
     
     return MENU
-       
-                    
+              
 
 # --- /FINALIZE BOOKING ---
 
