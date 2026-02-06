@@ -4612,7 +4612,7 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
     for r in records:
         # ← ДОБАВИТЬ ЭТУ ПРОВЕРКУ!
         if not r or not isinstance(r, list):
-            str(r[13]).strip() == str(user_id):
+            if str(r[13]).strip() == str(user_id):
         # Ищем по chat_id
         if (
             len(r) > 13
