@@ -317,7 +317,7 @@ def safe_sort_sheet_records(spreadsheet_id):
         sheet_id = None
         
         for sheet in spreadsheet.get('sheets', []):
-            sheet_title = sheet.get('properties', {}).get('title', '').strip()
+            sheet_title = sheet.get('properties', {}).get('title')
             logger.info(f"🔍 Найден лист: '{sheet_title}'")
             if sheet_title == 'Записи':
                 sheet_id = sheet.get('properties', {}).get('sheetId')
@@ -329,25 +329,25 @@ def safe_sort_sheet_records(spreadsheet_id):
         
         logger.info(f"✅ Найден лист 'Записи', sheet_id: {sheet_id}")
         
-        # 2. Создаем запрос на сортировку (БЕЗ ЛИШНИХ ПРОБЕЛОВ В КЛЮЧАХ!)
+        # 2. Создаем запрос на сортировку (БЕЗ ПРОБЕЛОВ В КЛЮЧАХ!)
         sort_request = {
             "requests": [
                 {
                     "sortRange": {
                         "range": {
                             "sheetId": sheet_id,
-                            "startRowIndex": 2,      # Начинаем с 3 строки (A3)
-                            "endRowIndex": 1000,     # До 1000 строк
-                            "startColumnIndex": 0,   # Колонка A
-                            "endColumnIndex": 15     # До колонки O (15 колонок)
+                            "startRowIndex": 2,
+                            "endRowIndex": 1000,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 15
                         },
                         "sortSpecs": [
                             {
-                                "dimensionIndex": 6,  # Колонка G (дата)
+                                "dimensionIndex": 6,
                                 "sortOrder": "ASCENDING"
                             },
                             {
-                                "dimensionIndex": 7,  # Колонка H (время)
+                                "dimensionIndex": 7,
                                 "sortOrder": "ASCENDING"
                             }
                         ]
