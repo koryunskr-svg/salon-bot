@@ -1,4 +1,3 @@
-
 # utils/safe_google.py
 import logging
 import time
@@ -305,7 +304,6 @@ def safe_sort_sheet_records(spreadsheet_id):
     """
     try:
         logger.info(f"🔄 Начинаю сортировку таблицы 'Записи'...")
-        logger.info(f"🔄 spreadsheet_id: {spreadsheet_id}")
         
         credentials = get_google_credentials()
         if not credentials:
@@ -320,7 +318,7 @@ def safe_sort_sheet_records(spreadsheet_id):
         sheet_id = None
         
         for sheet in spreadsheet.get('sheets', []):
-            sheet_title = sheet.get('properties', {}).get('title')
+            sheet_title = sheet.get('properties', {}).get('title', '').strip()
             logger.info(f"🔍 Найден лист: '{sheet_title}'")
             if sheet_title == 'Записи':
                 sheet_id = sheet.get('properties', {}).get('sheetId')
@@ -332,7 +330,7 @@ def safe_sort_sheet_records(spreadsheet_id):
         
         logger.info(f"✅ Найден лист 'Записи', sheet_id: {sheet_id}")
         
-        # 2. Создаем запрос на сортировку
+        # 2. Создаем запрос на сортировку (БЕЗ ЛИШНИХ ПРОБЕЛОВ В КЛЮЧАХ!)
         sort_request = {
             "requests": [
                 {
@@ -360,14 +358,13 @@ def safe_sort_sheet_records(spreadsheet_id):
         }
         
         # 3. Выполняем сортировку
-        logger.info(f"🔧 Отправляю запрос на сортировку...")
+        logger.info("🔧 Отправляю запрос на сортировку...")
         result = service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id,
             body=sort_request
         ).execute()
         
-        logger.info(f"✅ Таблица 'Записи' отсортирована успешно")
-        logger.info(f"✅ Результат: {result}")
+        logger.info("✅ Таблица 'Записи' отсортирована успешно")
         return True
         
     except Exception as e:
