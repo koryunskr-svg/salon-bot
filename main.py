@@ -221,13 +221,13 @@ def calculate_service_step(subservice: str) -> int:
     for row in services:
         # ДОБАВЬ: if not row: continue
         if row and len(row) >= 6:
-        if len(row) > 1 and row[1] == subservice:
-            try:
-                duration = int(row[2]) if row[2] else 0
-                buffer = int(row[3]) if row[3] else 0
-                return duration + buffer
-            except (ValueError, TypeError):
-                break
+            if len(row) > 1 and row[1] == subservice:
+                try:
+                    duration = int(row[2]) if row[2] else 0
+                    buffer = int(row[3]) if row[3] else 0
+                    return duration + buffer
+                except (ValueError, TypeError):
+                    break
     return int(get_setting("Дефолтный шаг услуги", "60"))
 
 
