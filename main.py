@@ -2881,29 +2881,29 @@ date_str, st, ss]):
         logger.info(f"Последний слот: {slots[-1]}")
 
     if not slots:
-    logger.info(f"Нет доступных слотов для {date_str}, специалист {specialist}")
-    try:
-        selected_date = datetime.strptime(date_str, "%d.%m.%Y").date()
-        today_date = datetime.now(TIMEZONE).date()
-        if selected_date < today_date:
-            await query.edit_message_text(
-                f"❌ На {date_str} запись невозможна - это прошедшая дата.\n"
-                f"Пожалуйста, выберите актуальную дату.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📅 Выбрать другую дату", callback_data="back_to_date_select")],
-                    [InlineKeyboardButton("🏠 В меню", callback_data="start")]
-                ])
-            )
-            context.user_data["state"] = SELECT_TIME
-            return SELECT_TIME
-    except ValueError:
-        pass
+        logger.info(f"Нет доступных слотов для {date_str}, специалист {specialist}")
+        try:
+            selected_date = datetime.strptime(date_str, "%d.%m.%Y").date()
+            today_date = datetime.now(TIMEZONE).date()
+            if selected_date < today_date:
+                await query.edit_message_text(
+                    f"❌ На {date_str} запись невозможна - это прошедшая дата.\n"
+                    f"Пожалуйста, выберите актуальную дату.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📅 Выбрать другую дату", callback_data="back_to_date_select")],
+                        [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+                    ])
+                )
+                context.user_data["state"] = SELECT_TIME
+                return SELECT_TIME
+        except ValueError:
+            pass
     
-    kb = [
-        [InlineKeyboardButton("📋 В лист ожидания", callback_data="waiting_list")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
-        [InlineKeyboardButton("🏠 В меню", callback_data="start")],  # ← ДОБАВЛЕНА КНОПКА
-    ]
+        kb = [
+            [InlineKeyboardButton("📋 В лист ожидания", callback_data="waiting_list")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")],  # ← ДОБАВЛЕНА КНОПКА
+        ]
         print(
             f"=== DEBUG SELECT_TIME: date_str='{date_str}', specialist='{specialist}' ==="
         )
