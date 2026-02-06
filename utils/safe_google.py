@@ -311,20 +311,30 @@ def safe_sort_sheet_records(spreadsheet_id):
         
         service = build('sheets', 'v4', credentials=credentials)
         
-        # 1. Находим sheet_id листа "Записи"
+        # 1. Находим sheet_id листа "Записи" (с .strip() для надёжности)
         logger.info("🔍 Ищу лист 'Записи'...")
         spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         sheet_id = None
         
         for sheet in spreadsheet.get('sheets', []):
-            sheet_title = sheet.get('properties', {}).get('title')
-            logger.info(f"🔍 Найден лист: '{sheet_title}'")
-            if sheet_title == 'Записи':
+            sheet_title = sheet.get('properties', {}).get('title', '')
+            if isinstance(sheet_title, str):
+                sheet_title_clean = sheet_title.strip()
+            else:
+                sheet_title_clean = str(sheet_title).strip()
+            logger.info(f"🔍 Найден лист: '{sheet_title}' → очищено: '{sheet_title_clean}'")
+            if sheet_title_clean == 'Записи':
                 sheet_id = sheet.get('properties', {}).get('sheetId')
                 break
         
         if not sheet_id:
             logger.error("❌ Лист 'Записи' не найден в таблице")
+            # Диагностика: покажем все листы
+            all_titles = [
+                sheet.get('properties', {}).get('title', '').strip()
+                for sheet in spreadsheet.get('sheets', [])
+            ]
+            logger.error(f"❌ Доступные листы: {all_titles}")
             return False
         
         logger.info(f"✅ Найден лист 'Записи', sheet_id: {sheet_id}")
@@ -342,8 +352,14 @@ def safe_sort_sheet_records(spreadsheet_id):
                             "endColumnIndex": 15
                         },
                         "sortSpecs": [
-                            {"dimensionIndex": 6, "sortOrder": "ASCENDING"},
-                            {"dimensionIndex": 7, "sortOrder": "ASCENDING"}
+                            {
+                                "dimensionIndex": 6,
+                                "sortOrder": "ASCENDING"
+                            },
+                            {
+                                "dimensionIndex": 7,
+                                "sortOrder": "ASCENDING"
+                            }
                         ]
                     }
                 }
