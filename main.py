@@ -4392,12 +4392,10 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # === 8. АВТОСОРТИРОВКА ТАБЛИЦЫ ===
     try:
         from utils.safe_google import safe_sort_sheet_records
-
-        if safe_sort_sheet_records(SHEET_ID):
+        if safe_sort_sheet_records(SPREADSHEET_ID):
             logger.info("✅ Таблица 'Записи' отсортирована")
         else:
             logger.warning("⚠️ Сортировка не выполнена")
-
     except Exception:
         logger.exception("⚠️ Ошибка при сортировке таблицы")
 
