@@ -304,7 +304,6 @@ def safe_sort_sheet_records(spreadsheet_id):
     """
     try:
         logger.info(f"🔄 Начинаю сортировку таблицы 'Записи'...")
-        
         credentials = get_google_credentials()
         if not credentials:
             logger.error("❌ Нет credentials для Google API")
