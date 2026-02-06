@@ -342,14 +342,8 @@ def safe_sort_sheet_records(spreadsheet_id):
                             "endColumnIndex": 15
                         },
                         "sortSpecs": [
-                            {
-                                "dimensionIndex": 6,
-                                "sortOrder": "ASCENDING"
-                            },
-                            {
-                                "dimensionIndex": 7,
-                                "sortOrder": "ASCENDING"
-                            }
+                            {"dimensionIndex": 6, "sortOrder": "ASCENDING"},
+                            {"dimensionIndex": 7, "sortOrder": "ASCENDING"}
                         ]
                     }
                 }
