@@ -107,6 +107,11 @@ async def debug_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return None
 # --- END DEBUG HANDLER ---
 
+
+# --- GLOBALS ---
+TRIGGER_WORDS = []
+logger = logging.getLogger(__name__)
+
 # Добавить после всех импортов, но перед функциями
 def date_str_to_excel_number(date_str: str) -> float:
     """
@@ -124,14 +129,6 @@ def date_str_to_excel_number(date_str: str) -> float:
         today_excel = (datetime.now(TIMEZONE).date() - datetime(1899, 12, 30).date()).days
         return float(today_excel)
 
-# --- GLOBALS ---
-TRIGGER_WORDS = []
-logger = logging.getLogger(__name__)
-
-
-# --- GLOBALS ---
-TRIGGER_WORDS = []
-logger = logging.getLogger(__name__)
 
 # --- RATE LIMITING ---
 
@@ -4094,18 +4091,15 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             comment = "автоматически" if was_auto_assigned else ""
 
         # === ПРЕОБРАЗОВАНИЕ ДАТЫ ДЛЯ GOOGLE SHEETS ===
-        # ПРАВИЛЬНОЕ преобразование в число Excel
+        # Преобразуем дату в формат Excel
         try:
-            # 1. Парсим дату
-            parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
-            
-            # 2. Простое преобразование: Excel считает дни с 30.12.1899
-            # 01.01.1900 = 1 (но из-за ошибки Excel 1900 считается високосным)
-            # Для Google Sheets эта ошибка тоже есть
-            excel_date = (parsed_date - datetime(1899, 12, 30)).days
-            
-            # 3. Записываем как ЧИСЛО с плавающей точкой
-            gsheet_date_value = float(excel_date)
+            gsheet_date_value = date_str_to_excel_number(date_str)
+        except Exception as e:
+            logger.error(f"Ошибка преобразования даты {date_str}: {e}")
+            # Запасной вариант: сегодняшняя дата
+            today_excel = (datetime.now(TIMEZONE).date() - datetime(1899, 12, 30).date()).days
+            gsheet_date_value = float(today_excel)
+            logger.warning(f"⚠️ Использована сегодняшняя дата: {today_excel}")
             
             # === ДЕТАЛЬНАЯ ОТЛАДКА ===
             print(f"\n{'='*80}")
@@ -4279,19 +4273,28 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if status == "подтверждено":
                     updated_old = list(r)
                     updated_old[8] = "изменено клиентом"
-                    
+    
                     # Добавляем примечание с ID новой записи
                     if len(updated_old) > 10:
                         updated_old[10] = f"изменено на #{record_id}"
                     elif len(updated_old) == 10:
                         updated_old.append(f"изменено на #{record_id}")
-                    
+    
                     # Сохраняем event_id для удаления
                     old_event_id = r[14] if len(r) > 14 else None
                     if old_event_id:
                         event_ids_to_delete.add(old_event_id)
-                    
-                    # Обновляем запись в таблице (ИСПРАВЛЕНО: используем by_id вместо индекса)
+    
+                    # Сохраняем дату как число Excel (если она в строковом формате)
+                    old_date_str = str(r[6]).strip() if len(r) > 6 else ""
+                    if old_date_str and "." in old_date_str:  # Если дата в формате ДД.ММ.ГГГГ
+                        try:
+                            excel_number = date_str_to_excel_number(old_date_str)
+                            updated_old[6] = excel_number  # Заменяем строку на число
+                        except Exception as e:
+                            logger.error(f"Ошибка преобразования даты при изменении: {e}")
+    
+                    # Обновляем запись в таблице
                     success = safe_update_sheet_row_by_id(SHEET_ID, "Записи", old_record_id, updated_old)
                     if success:
                         updated_count += 1
