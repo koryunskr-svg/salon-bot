@@ -1,4 +1,6 @@
-# main.py- D - 05.02.26 - тест
+
+# main.py- 07.02.26 - гибрид даты
+# main_hybrid_date.py
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -106,6 +108,63 @@ async def debug_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE)
         print(f"{'='*80}\n")
     return None
 # --- END DEBUG HANDLER ---
+
+# === ФУНКЦИИ КОНВЕРТАЦИИ ДАТ ДЛЯ ГИБРИДНОГО ФОРМАТА ===
+
+def excel_date_to_text(date_cell):
+    """
+    Конвертирует дату из таблицы в текст ДД.ММ.ГГГГ
+    Принимает: число Excel, строку, datetime объект
+    Возвращает: строку ДД.ММ.ГГГГ или пустую строку
+    """
+    try:
+        # Если это число (Excel дата)
+        if isinstance(date_cell, (int, float)):
+            # Excel считает дни от 30.12.1899
+            excel_epoch = datetime(1899, 12, 30)
+            date_obj = excel_epoch + timedelta(days=float(date_cell))
+            return date_obj.strftime("%d.%m.%Y")
+        
+        # Если это строка
+        elif isinstance(date_cell, str):
+            date_cell = date_cell.strip()
+            # Проверяем, не число ли это в виде строки (например "46069")
+            if date_cell.replace('.', '', 1).isdigit():
+                excel_epoch = datetime(1899, 12, 30)
+                date_obj = excel_epoch + timedelta(days=float(date_cell))
+                return date_obj.strftime("%d.%m.%Y")
+            else:
+                # Уже текст формата ДД.ММ.ГГГГ
+                return date_cell
+        
+        # Если это datetime объект
+        elif isinstance(date_cell, datetime):
+            return date_cell.strftime("%d.%m.%Y")
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка конвертации excel_date_to_text({date_cell}): {e}")
+    
+    return str(date_cell) if date_cell else ""
+
+
+def text_date_to_excel(date_str):
+    """
+    Конвертирует текст ДД.ММ.ГГГГ в число Excel
+    Принимает: строку "ДД.ММ.ГГГГ"
+    Возвращает: число Excel (float) или исходную строку при ошибке
+    """
+    try:
+        # Парсим дату
+        date_obj = datetime.strptime(date_str, "%d.%m.%Y")
+        
+        # Конвертируем в число Excel (дни от 30.12.1899)
+        excel_epoch = datetime(1899, 12, 30)
+        excel_days = (date_obj - excel_epoch).days
+        
+        return float(excel_days)
+    except Exception as e:
+        logger.error(f"❌ Ошибка конвертации text_date_to_excel({date_str}): {e}")
+        return date_str  # Возвращаем как есть (текст)
 
 # --- GLOBALS ---
 TRIGGER_WORDS = []
@@ -699,7 +758,8 @@ async def _display_records(
             rid = str(r[0]).strip() if len(r) > 0 else "N/A"
             svc = str(r[4]).strip() if len(r) > 4 else "N/A"
             mst = str(r[5]).strip() if len(r) > 5 else "N/A"
-            dt = str(r[6]).strip() if len(r) > 6 else "N/A"
+            date_cell = r[6] if len(r) > 6 else ""
+            dt = excel_date_to_text(date_cell) or "N/A"
             tm = str(r[7]).strip() if len(r) > 7 else "N/A"
             st = str(r[8]).strip() if len(r) > 8 else "N/A"
             
@@ -801,7 +861,8 @@ async def show_record_details(
     category = str(target_record[3]).strip() if len(target_record) > 3 else "N/A"
     service = str(target_record[4]).strip() if len(target_record) > 4 else "N/A"
     specialist = str(target_record[5]).strip() if len(target_record) > 5 else "N/A"
-    date = str(target_record[6]).strip() if len(target_record) > 6 else "N/A"
+    date_cell = target_record[6] if len(target_record) > 6 else ""
+    date = excel_date_to_text(date_cell) or "N/A"
     time_range = str(target_record[7]).strip() if len(target_record) > 7 else "N/A"
     status = str(target_record[8]).strip() if len(target_record) > 8 else "N/A"
     
@@ -4076,38 +4137,17 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Обычная запись
             comment = "автоматически" if was_auto_assigned else ""
 
-        # === ПРЕОБРАЗОВАНИЕ ДАТЫ ДЛЯ GOOGLE SHEETS ===
-        # ПРАВИЛЬНОЕ преобразование в число Excel
+        # === ДАТА ДЛЯ GOOGLE SHEETS (ГИБРИДНЫЙ ФОРМАТ) ===
+        # Конвертируем текст в число Excel для правильной сортировки
         try:
-            # 1. Парсим дату
-            parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
-            
-            # 2. Простое преобразование: Excel считает дни с 30.12.1899
-            # 01.01.1900 = 1 (но из-за ошибки Excel 1900 считается високосным)
-            # Для Google Sheets эта ошибка тоже есть
-            excel_date = (parsed_date - datetime(1899, 12, 30)).days
-            
-            # 3. Записываем как ЧИСЛО с плавающей точкой
-            gsheet_date_value = float(excel_date)
-            
-            # === ДЕТАЛЬНАЯ ОТЛАДКА ===
-            print(f"\n{'='*80}")
-            print(f"🔧 DEBUG ПРЕОБРАЗОВАНИЕ ДАТЫ:")
-            print(f"🔧 Входная дата: '{date_str}'")
-            print(f"🔧 Парсированная: {parsed_date}")
-            print(f"🔧 Разница дней от 30.12.1899: {excel_date}")
-            print(f"🔧 gsheet_date_value: {gsheet_date_value}")
-            print(f"🔧 Тип gsheet_date_value: {type(gsheet_date_value)}")
-            print(f"{'='*80}\n")
-
-            logger.info(f"✅ Дата преобразована в число Excel: {date_str} → {excel_date}")
-            
+            gsheet_date_value = text_date_to_excel(date_str)
+            if isinstance(gsheet_date_value, float):
+                logger.info(f"✅ Дата сохранена как число Excel: {date_str} → {gsheet_date_value}")
+            else:
+                logger.warning(f"⚠️ Дата сохранена как текст: {date_str}")
         except Exception as e:
-            logger.error(f"❌ Ошибка преобразования даты {date_str}: {e}")
-            # Запасной вариант: сегодняшняя дата
-            today_excel = (datetime.now(TIMEZONE).date() - datetime(1899, 12, 30).date()).days
-            gsheet_date_value = float(today_excel)
-            logger.warning(f"⚠️ Использована сегодняшняя дата: {today_excel}")
+            logger.error(f"❌ Ошибка обработки даты {date_str}: {e}")
+            gsheet_date_value = date_str  # Запасной вариант - текст
 
         full_record = [
             record_id,  # A: ID
@@ -4469,12 +4509,9 @@ async def show_my_records_edit(update: Update, context: ContextTypes.DEFAULT_TYP
             and str(r[13]).strip() == str(user_id)
             and str(r[8]).strip() == "подтверждено"
         ):
-            # ← ТАКАЯ ЖЕ ПРОВЕРКА ДАТЫ
+            # ← КОНВЕРТАЦИЯ ДАТЫ ИЗ ТАБЛИЦЫ
             date_cell = r[6] if len(r) > 6 else ""
-            if isinstance(date_cell, datetime):
-                record_date_str = date_cell.strftime("%d.%m.%Y")
-            else:
-                record_date_str = str(date_cell).strip()
+            record_date_str = excel_date_to_text(date_cell)
             
             # Проверяем что дата не прошедшая
             try:
@@ -4581,14 +4618,10 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
         ):
             print(f"🔍 НАЙДЕНА ЗАПИСЬ: ID={r[0]}, Дата={r[6]}, Статус={r[8]}")
             
-            # ← ПРОВЕРКА ДАТЫ (может быть датой или строкой)
+            # ← КОНВЕРТАЦИЯ ДАТЫ ИЗ ТАБЛИЦЫ
             date_cell = r[6] if len(r) > 6 else ""
-            if isinstance(date_cell, datetime):
-                record_date_str = date_cell.strftime("%d.%m.%Y")
-                print(f"🔍 Дата как datetime: {date_cell} → строка: {record_date_str}")
-            else:
-                record_date_str = str(date_cell).strip()
-                print(f"🔍 Дата как строка: {record_date_str}")
+            record_date_str = excel_date_to_text(date_cell)
+            print(f"🔍 Дата из таблицы: '{date_cell}' → отображаемая: '{record_date_str}'")
             
             # ← ПРОВЕРКА ВРЕМЕНИ
             time_str = str(r[7]).strip() if len(r) > 7 else ""
@@ -4636,6 +4669,8 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
                 and str(r[2]).strip() == phone
                 and str(r[8]).strip() == "подтверждено"  # ← ИЗМЕНИЛ: только "подтверждено"
             ):
+                # ← ЗДЕСЬ ТОЖЕ ПРОВЕРКА ДАТЫ!
+                # Но она может быть в другом месте или вообще отсутствовать
                 found.append(r)
     
     # ← ИСПРАВЛЕННЫЙ БЛОК ФИЛЬТРАЦИИ
@@ -4645,7 +4680,8 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
     
     for r in found:
         if len(r) > 7:  # Должны быть дата (индекс 6) и время (индекс 7)
-            date_str = str(r[6]).strip()
+            date_cell = r[6] if len(r) > 6 else ""
+            date_str = excel_date_to_text(date_cell)
             time_str = str(r[7]).strip()
             
             # Извлекаем время начала (если формат "10:00-11:00")
@@ -4670,7 +4706,7 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
     found = future_records  # Заменяем на отфильтрованные
     # ← КОНЕЦ ИСПРАВЛЕННОГО БЛОКА
    
-        # СОРТИРУЕМ записи по дате и времени (ПРОСТАЯ ФУНКЦИЯ ВНУТРИ)
+    # СОРТИРУЕМ записи по дате и времени (ПРОСТАЯ ФУНКЦИЯ ВНУТРИ)
     def sort_key(r):
         try:
             # Получаем дату и время из записи
@@ -4683,11 +4719,8 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
             else:
                 time_start = time_str
             
-            # Обрабатываем дату (может быть строкой или датой)
-            if isinstance(date_cell, datetime):
-                date_str = date_cell.strftime("%d.%m.%Y")
-            else:
-                date_str = str(date_cell).strip()
+            # Конвертируем дату из таблицы
+            date_str = excel_date_to_text(date_cell)
             
             # Создаем datetime для сортировки
             dt_str = f"{date_str} {time_start}"
@@ -4767,7 +4800,7 @@ async def cancel_record_from_list(
         
         for r in records:
             if len(r) > 8 and str(r[0]).strip() == record_id:
-                # Проверяем статус
+               # Проверяем статус
                 status = str(r[8]).strip()
                 if status != "подтверждено":
                     continue  # Не отменяем уже отмененные
@@ -4810,7 +4843,8 @@ async def cancel_record_from_list(
             return
         
         # Используем target_record вместо r
-        dt = target_record[6] if len(target_record) > 6 else "N/A"
+        date_cell = target_record[6] if len(target_record) > 6 else ""
+        dt = excel_date_to_text(date_cell) or "N/A"
         tm = target_record[7] if len(target_record) > 7 else "N/A"
         svc = target_record[4] if len(target_record) > 4 else "N/A"
         mst = target_record[5] if len(target_record) > 5 else "N/A"
@@ -5193,7 +5227,7 @@ async def admin_show_record_details(
                 f"📁 Категория: {r[3] if len(r) > 3 else 'N/A'}\n"
                 f"💅 Услуга: {r[4] if len(r) > 4 else 'N/A'}\n"
                 f"👩‍🦰 Специалист: {r[5] if len(r) > 5 else 'N/A'}\n"
-                f"📅 Дата: {r[6] if len(r) > 6 else 'N/A'}\n"
+                f"📅 Дата: {excel_date_to_text(r[6]) if len(r) > 6 else 'N/A'}\n"
                 f"⏰ Время: {r[7] if len(r) > 7 else 'N/A'}\n"
                 f"📊 Статус: {r[8] if len(r) > 8 else 'N/A'}\n"
                 f"🆔 Chat ID: {r[13] if len(r) > 13 else 'N/A'}"
