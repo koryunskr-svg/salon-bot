@@ -1,4 +1,4 @@
-# main.py- D - 06.02.26  тест
+# main.py- 07.02.26 -дата-число
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -4126,6 +4126,16 @@ async def finalize_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             gsheet_date_value = float(today_excel)
             logger.warning(f"⚠️ Использована сегодняшняя дата: {today_excel}")
 
+        # Преобразуем дату в формат Excel (ОБЩИЙ для всех записей)
+        try:
+            excel_number = date_str_to_excel_number(date_str)
+            gsheet_date_value = excel_number
+        except Exception as e:
+            logger.error(f"Ошибка преобразования даты {date_str}: {e}")
+            # Используем старую логику как запасной вариант
+            today_excel = (datetime.now(TIMEZONE).date() - datetime(1899, 12, 30).date()).days
+            gsheet_date_value = float(today_excel)
+
         full_record = [
             record_id,  # A: ID
             name,  # B: Имя
@@ -4869,6 +4879,16 @@ async def cancel_record_from_list(
             
             updated = list(r)
             updated[8] = "отменено клиентом"
+
+            # Сохраняем дату как число Excel (если она в строковом формате)
+            date_str = str(r[6]).strip() if len(r) > 6 else ""
+            if date_str and "." in date_str:  # Если дата в формате ДД.ММ.ГГГГ
+                try:
+                    excel_number = date_str_to_excel_number(date_str)
+                    updated[6] = excel_number  # Заменяем строку на число
+                except Exception as e:
+                    logger.error(f"Ошибка преобразования даты при отмене: {e}")
+
             # Преобразуем дату в формат Excel (если она в строковом формате)
             date_str = str(r[6]).strip() if len(r) > 6 else ""
             if date_str and "." in date_str:  # Если дата в формате ДД.ММ.ГГГГ
