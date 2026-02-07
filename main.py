@@ -107,6 +107,23 @@ async def debug_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return None
 # --- END DEBUG HANDLER ---
 
+# Добавить после всех импортов, но перед функциями
+def date_str_to_excel_number(date_str: str) -> float:
+    """
+    Преобразует строку даты 'ДД.ММ.ГГГГ' в число Excel.
+    Возвращает число типа float (например, 46287.0 для 08.02.2026).
+    Если ошибка, возвращает 0.0.
+    """
+    try:
+        parsed_date = datetime.strptime(date_str, "%d.%m.%Y")
+        excel_date = (parsed_date - datetime(1899, 12, 30)).days
+        return float(excel_date)
+    except (ValueError, TypeError) as e:
+        logger.error(f"Ошибка преобразования даты '{date_str}': {e}")
+        # Возвращаем сегодняшнюю дату как запасной вариант
+        today_excel = (datetime.now(TIMEZONE).date() - datetime(1899, 12, 30).date()).days
+        return float(today_excel)
+
 # --- GLOBALS ---
 TRIGGER_WORDS = []
 logger = logging.getLogger(__name__)
@@ -4852,6 +4869,14 @@ async def cancel_record_from_list(
             
             updated = list(r)
             updated[8] = "отменено клиентом"
+            # Преобразуем дату в формат Excel (если она в строковом формате)
+            date_str = str(r[6]).strip() if len(r) > 6 else ""
+            if date_str and "." in date_str:  # Если дата в формате ДД.ММ.ГГГГ
+                try:
+                    excel_number = date_str_to_excel_number(date_str)
+                    updated[6] = excel_number  # Заменяем строку на число
+                except Exception as e:
+                    logger.error(f"Ошибка преобразования даты при отмене: {e}")
             # Используем поиск по ID вместо индекса строки
             success = safe_update_sheet_row_by_id(SHEET_ID, "Записи", record_id, updated)
             if not success:
@@ -5609,7 +5634,18 @@ async def _admin_save_reschedule(
 
             updated = list(r)
             updated[5] = new_specialist
-            updated[6] = new_date
+
+            # Преобразуем новую дату в формат Excel
+            if new_date and "." in new_date:  # Если дата в формате ДД.ММ.ГГГГ
+                try:
+                    excel_number = date_str_to_excel_number(new_date)
+                    updated[6] = excel_number  # Заменяем строку на число
+                except Exception as e:
+                    logger.error(f"Ошибка преобразования даты при переносе: {e}")
+                    updated[6] = new_date  # Оставляем как строку при ошибке
+            else:
+                updated[6] = new_date
+
             updated[7] = new_time_range
             updated[9] = datetime.now(TIMEZONE).strftime("%d.%m.%Y %H:%M")
             note = f"Перенесено админом {datetime.now(TIMEZONE).strftime('%d.%m.%Y %H:%M')}"
