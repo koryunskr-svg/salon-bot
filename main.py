@@ -1,4 +1,30 @@
 # main.py- 07.02.26 -дата-число
+"""
+ВАРИАНТ: ДАТА КАК ЧИСЛО EXCEL
+
+Особенность этого бота: даты хранятся в формате чисел Excel.
+Пример: дата "08.02.2026" хранится как число 46287.0
+
+ПРЕИМУЩЕСТВА:
+- Google Sheets автоматически форматирует как дату
+- В ячейке отображается "08.02.2026"
+- Правильное выравнивание по правому краю
+- Ручная сортировка работает правильно (по возрастанию чисел)
+
+НЕДОСТАТКИ:
+- Автосортировка через код не реализована (только ручная)
+- В строке формул показывается число (46287.0), а не текст даты
+- Требуется преобразование строки даты в число Excel
+
+ПРОВЕРКА ТИПА ДАННЫХ в Google Sheets:
+1. Если в ячейке дата выровнена по ПРАВОМУ краю → это число (дата Excel)
+2. Если в строке формул показывается 46287.0 → это число
+3. Если можно изменить формат отображения (Формат → Число → Дата) → это число
+
+Пример преобразования в коде:
+'08.02.2026' → datetime(2026, 2, 8) → (2026-02-08 - 1899-12-30) = 46287 дней → 46287.0
+"""
+
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -477,8 +503,9 @@ def remove_lock_file():
     AWAITING_CALLBACK_PHONE,
     AWAITING_CALLBACK_QUESTION,
     AWAITING_CALLBACK_NAME,
+    AWAITING_PHONE_FOR_WAITING_LIST,
     
-) = range(34)
+) = range(35)
 
 ACTIVE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано", "изменено клиентом"}
 CANCELLABLE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано", "изменено клиентом"}
@@ -1969,6 +1996,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- УМНЫЙ ВХОД В ЛИСТ ОЖИДАНИЯ (Вариант 1) ---
     if data == "waiting_list":
+        # ПРОВЕРКА: Есть ли телефон у пользователя?
+        if not context.user_data.get("phone"):
+            # Нет телефона - запрашиваем
+            kb = [
+                [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+                [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+            ]
+            await query.edit_message_text(
+                "📞 <b>Для добавления в лист ожидания нужен ваш телефон.</b>\n\n"
+                "Пожалуйста, введите номер телефона (10-15 цифр):\n"
+                "Пример: <code>89161234567</code>",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(kb)
+            )
+            context.user_data["state"] = AWAITING_PHONE_FOR_WAITING_LIST
+            return AWAITING_PHONE_FOR_WAITING_LIST
+    
+        # Телефон есть - показываем выбор специалиста
         st = context.user_data.get("service_type", "не указана")
         ss = context.user_data.get("subservice", "не указана")
         spec = context.user_data.get("selected_specialist", "любой")
@@ -6280,6 +6325,7 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
         AWAITING_ADMIN_SEARCH: handle_admin_search,
         AWAITING_MY_RECORDS_NAME: handle_my_records_input,
         AWAITING_MY_RECORDS_PHONE: handle_my_records_input,
+        AWAITING_PHONE_FOR_WAITING_LIST: handle_waiting_list_phone,  # ← ДОБАВИТЬ ЭТУ СТРОКУ
     }
     
     if state in handler_map:
@@ -6291,6 +6337,73 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
 
 # --- HANDLE_PHONE_FOR_CALLBACK ---
 
+Шаг 5: Создать функцию handle_waiting_list_phone
+
+МЕСТО для вставки: Найти в коде строку перед generic_message_handler.
+
+Найти в коде (примерно строка 3590):
+python
+
+# --- HANDLE_PHONE_FOR_CALLBACK ---
+
+async def handle_phone_for_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    phone = (update.message.text or "").strip()
+    # ... остальной код функции ...
+
+ВСТАВИТЬ ПЕРЕД этой функцией:
+python
+
+# --- HANDLE PHONE FOR WAITING LIST ---
+
+async def handle_waiting_list_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает ввод телефона для листа ожидания"""
+    phone = update.message.text.strip()
+    normalized_phone = validate_phone(phone)
+    
+    if not normalized_phone:
+        await update.message.reply_text(
+            "❌ Неверный формат телефона. Введите 10-15 цифр.\n"
+            "Пример: 89161234567"
+        )
+        return AWAITING_PHONE_FOR_WAITING_LIST
+    
+    # Сохраняем телефон
+    context.user_data["phone"] = normalized_phone
+    
+    # Показываем выбор специалиста (как в оригинальном коде)
+    st = context.user_data.get("service_type", "не указана")
+    ss = context.user_data.get("subservice", "не указана")
+    spec = context.user_data.get("selected_specialist", "любой")
+    date = context.user_data.get("date", "не указана")
+    user_time = context.user_data.get("time", "не указано")
+
+    msg = (
+        "📋 Вы в листе ожидания.\n\n"
+        f"✅ Услуга: <b>{ss}</b> ({st})\n"
+        f"📅 Дата: <b>{date}</b>\n"
+        f"⏰ Время: <b>{user_time}</b> (проверим ±30 мин)\n"
+        f"👩‍🦰 Предпочтение: <b>{spec}</b>\n\n"
+        "👉 Выберите, кого ждать:"
+    )
+    kb = [
+        [
+            InlineKeyboardButton(
+                f"🧑‍🦰 Только {spec}", callback_data="wl_prefer_specific"
+            )
+        ],
+        [InlineKeyboardButton("👥 Любой", callback_data="wl_prefer_any")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="back")],
+    ]
+    
+    await update.message.reply_text(
+        msg, 
+        reply_markup=InlineKeyboardMarkup(kb), 
+        parse_mode="HTML"
+    )
+    context.user_data["state"] = AWAITING_WL_PRIORITY_CHOICE
+    return AWAITING_WL_PRIORITY_CHOICE
+
+# --- HANDLE_PHONE_FOR_CALLBACK ---
 
 async def handle_phone_for_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = (update.message.text or "").strip()
