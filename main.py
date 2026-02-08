@@ -484,8 +484,10 @@ def remove_lock_file():
     AWAITING_CALLBACK_QUESTION,
     AWAITING_CALLBACK_NAME,
     AWAITING_PHONE_FOR_WAITING_LIST,
+    AWAITING_ADMIN_SEARCH_NAME,
+    AWAITING_ADMIN_SEARCH_PHONE,
     
-) = range(35)
+) = range(37)
 
 ACTIVE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано", "изменено клиентом"}
 CANCELLABLE_STATUSES = {"подтверждено", "ожидает оплаты", "забронировано", "изменено клиентом"}
@@ -5210,26 +5212,95 @@ async def admin_book_for_client(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def admin_manage_record(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.edit_message_text("Введите имя или телефон клиента для поиска записей:")
-    context.user_data["state"] = AWAITING_ADMIN_SEARCH
-    return AWAITING_ADMIN_SEARCH
+    kb = [
+        [InlineKeyboardButton("⬅️ Назад", callback_data="admin_back")],
+        [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+    ]
+    await query.edit_message_text(
+        "🔍 <b>Поиск записей</b>\n\n"
+        "Пожалуйста, введите имя клиента:",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
+    context.user_data["state"] = AWAITING_ADMIN_SEARCH_NAME
+    return AWAITING_ADMIN_SEARCH_NAME
 
+async def handle_admin_search_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Первый шаг: получаем имя"""
+    name = update.message.text.strip()
+    
+    if not name:
+        kb = [
+            [InlineKeyboardButton("⬅️ Назад", callback_data="admin_back")],
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+        ]
+        await update.message.reply_text(
+            "❌ Имя не может быть пустым.\n"
+            "Пожалуйста, введите имя клиента:",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+        return AWAITING_ADMIN_SEARCH_NAME
+    
+    # Сохраняем имя
+    context.user_data["admin_search_name"] = name
+    
+    kb = [
+        [InlineKeyboardButton("⬅️ Назад", callback_data="admin_back")],
+        [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+    ]
+    await update.message.reply_text(
+        f"✅ Имя: <b>{name}</b>\n\n"
+        "Теперь введите телефон клиента:",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
+    context.user_data["state"] = AWAITING_ADMIN_SEARCH_PHONE
+    return AWAITING_ADMIN_SEARCH_PHONE
 
-async def handle_admin_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    term = update.message.text.strip()
+async def handle_admin_search_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Второй шаг: получаем телефон и ищем записи"""
+    phone = update.message.text.strip()
+    
+    if not phone:
+        kb = [
+            [InlineKeyboardButton("⬅️ Назад", callback_data="admin_back")],
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+        ]
+        await update.message.reply_text(
+            "❌ Телефон не может быть пустым.\n"
+            "Пожалуйста, введите телефон клиента:",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+        return AWAITING_ADMIN_SEARCH_PHONE
+    
+    # Получаем сохраненное имя
+    name = context.user_data.get("admin_search_name", "")
+    
     records = safe_get_sheet_data(SHEET_ID, "Записи!A3:O") or []
     found = []
     for r in records:
         if len(r) >= 3:
-            name = r[1]
-            phone = r[2]
-            if term.lower() in name.lower() or term in phone.replace(" ", "").replace(
-                "-", ""
-            ):
+            record_name = r[1]
+            record_phone = r[2]
+            # Ищем по ИМЕНИ И ТЕЛЕФОНУ вместе
+            if (name.lower() in record_name.lower() and 
+                phone in record_phone.replace(" ", "").replace("-", "")):
                 found.append(r)
+    
     if not found:
-        await update.message.reply_text("❌ Записи не найдены.")
-        return AWAITING_ADMIN_SEARCH
+        kb = [
+            [InlineKeyboardButton("🔍 Новый поиск", callback_data="admin_manage_record")],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="admin_back")],
+            [InlineKeyboardButton("🏠 В меню", callback_data="start")]
+        ]
+        await update.message.reply_text(
+            "❌ Записи не найдены по указанным данным.\n\n"
+            f"Имя: {name}\n"
+            f"Телефон: {phone}",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+        return
+    
     kb = []
     for r in found[:10]:
         rid = r[0]
@@ -5245,12 +5316,17 @@ async def handle_admin_search(update: Update, context: ContextTypes.DEFAULT_TYPE
                 )
             ]
         )
+    kb.append([InlineKeyboardButton("🔍 Новый поиск", callback_data="admin_manage_record")])
     kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="admin_back")])
+    
     await update.message.reply_text(
-        f"📋 Найдено записей: {len(found)}\nВыберите запись для управления:",
+        f"📋 <b>Найдено записей:</b> {len(found)}\n"
+        f"<b>Клиент:</b> {name}\n"
+        f"<b>Телефон:</b> {phone}\n\n"
+        "Выберите запись для управления:",
         reply_markup=InlineKeyboardMarkup(kb),
+        parse_mode="HTML"
     )
-
 
 async def admin_show_record_details(
     update: Update, context: ContextTypes.DEFAULT_TYPE, record_id: str
@@ -6302,7 +6378,8 @@ async def generic_message_handler(update: Update, context: ContextTypes.DEFAULT_
         AWAITING_CALLBACK_PHONE: handle_callback_phone,
         AWAITING_CALLBACK_QUESTION: handle_callback_question,
         AWAITING_WAITING_LIST_DETAILS: handle_waiting_list_input,
-        AWAITING_ADMIN_SEARCH: handle_admin_search,
+        AWAITING_ADMIN_SEARCH_NAME: handle_admin_search_name,      # ← НОВОЕ
+        AWAITING_ADMIN_SEARCH_PHONE: handle_admin_search_phone,    # ← НОВОЕ
         AWAITING_MY_RECORDS_NAME: handle_my_records_input,
         AWAITING_MY_RECORDS_PHONE: handle_my_records_input,
         AWAITING_PHONE_FOR_WAITING_LIST: handle_waiting_list_phone,  # ← ДОБАВИТЬ ЭТУ СТРОКУ
