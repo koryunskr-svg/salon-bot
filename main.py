@@ -83,6 +83,12 @@ from utils.admin import load_admins, notify_admins
 from utils.validation import validate_name, validate_phone
 from utils.settings import load_settings_from_table
 
+def clean_phone_number(phone_str: str) -> str:
+    """Очищает номер телефона от апострофов, пробелов, дефисов"""
+    if not phone_str:
+        return ""
+    # Убираем апострофы, пробелы, дефисы
+    return str(phone_str).replace("'", "").replace(" ", "").replace("-", "")
 
 def safe_parse_price(p) -> str:
     """
@@ -4547,7 +4553,7 @@ async def show_my_records_edit(update: Update, context: ContextTypes.DEFAULT_TYP
             if (
                 len(r) > 2
                 and str(r[1]).strip() == name
-                and str(r[2]).strip() == phone
+                and clean_phone_number(str(r[2]).strip()) == clean_phone_number(phone)
                 and str(r[8]).strip() == "подтверждено"  # ТОЛЬКО подтвержденные записи
             ):
                 found.append(r)
@@ -4690,7 +4696,7 @@ async def show_my_records_view(update: Update, context: ContextTypes.DEFAULT_TYP
             if (
                 len(r) > 2
                 and str(r[1]).strip() == name
-                and str(r[2]).strip() == phone
+                and clean_phone_number(str(r[2]).strip()) == clean_phone_number(phone)
                 and str(r[8]).strip() == "подтверждено"  # ← ИЗМЕНИЛ: только "подтверждено"
             ):
                 found.append(r)
@@ -4988,7 +4994,7 @@ async def handle_my_records_input(update: Update, context: ContextTypes.DEFAULT_
             if (
                 len(r) > 2
                 and str(r[1]).strip() == name
-                and str(r[2]).strip() == phone
+                and clean_phone_number(str(r[2]).strip()) == clean_phone_number(phone)
                 and str(r[8]).strip() in ACTIVE_STATUSES
             ):
                 found.append(r)
@@ -5284,7 +5290,7 @@ async def handle_admin_search_phone(update: Update, context: ContextTypes.DEFAUL
             record_phone = r[2]
             # Ищем по ИМЕНИ И ТЕЛЕФОНУ вместе
             if (name.lower() in record_name.lower() and 
-                phone in record_phone.replace(" ", "").replace("-", "")):
+                clean_phone_number(phone) in clean_phone_number(record_phone)):
                 found.append(r)
     
     if not found:
